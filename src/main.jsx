@@ -2,11 +2,12 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "../an-personal-assistant.jsx";
 
-// GitHub Pages is a static site. Keep the OpenAI key in this browser only;
+// GitHub Pages is a static site. Keep the Gemini key in this browser only;
 // never commit it to the public repository. A server-side proxy is safer for
 // a public deployment; this browser-only mode is intended for personal use.
-const OPENAI_KEY_STORAGE = "an-pa:openai-api-key";
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const GEMINI_KEY_STORAGE = "an-pa:gemini-api-key";
+const GEMINI_MODEL = "gemini-3.8-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const nativeFetch = window.fetch.bind(window);
 
 function textFromAnthropicContent(content) {
@@ -23,30 +24,34 @@ function textFromAnthropicContent(content) {
     .join("\n");
 }
 
-function convertAnthropicContent(content) {
-  if (typeof content === "string") return [{ type: "input_text", text: content }];
-  if (!Array.isArray(content)) return [{ type: "input_text", text: "" }];
+function convertGeminiContent(content) {
+  if (typeof content === "string") return [{ text: content }];
+  if (!Array.isArray(content)) return [{ text: "" }];
 
   return content.flatMap((block) => {
-    if (typeof block === "string") return [{ type: "input_text", text: block }];
-    if (block?.type === "text") return [{ type: "input_text", text: block.text || "" }];
+    if (typeof block === "string") return [{ text: block }];
+    if (block?.type === "text") return [{ text: block.text || "" }];
+    if (block?.type === "tool_result") {
+      return [{ text: JSON.stringify(block.content || "") }];
+    }
 
     if (block?.type === "document" && block.source?.type === "base64") {
       const mediaType = block.source.media_type || "application/pdf";
       return [{
-        type: "input_file",
-        filename: mediaType === "application/pdf" ? "uploaded-document.pdf" : "uploaded-document",
-        file_data: `data:${mediaType};base64,${block.source.data}`,
-        detail: "auto",
+        inline_data: {
+          mime_type: mediaType,
+          data: block.source.data,
+        },
       }];
     }
 
     if (block?.type === "image" && block.source?.type === "base64") {
       const mediaType = block.source.media_type || "image/jpeg";
       return [{
-        type: "input_image",
-        image_url: `data:${mediaType};base64,${block.source.data}`,
-        detail: "auto",
+        inline_data: {
+          mime_type: mediaType,
+          data: block.source.data,
+        },
       }];
     }
 
@@ -54,32 +59,32 @@ function convertAnthropicContent(content) {
   });
 }
 
-function convertAnthropicRequest(body) {
+function convertGeminiRequest(body) {
   const messages = Array.isArray(body?.messages) ? body.messages : [];
   const request = {
-    model: "gpt-4.1",
-    input: messages.map((message) => ({
-      role: message.role || "user",
-      content: convertAnthropicContent(message.content),
+    contents: messages.map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: convertGeminiContent(message.content),
     })),
-    max_output_tokens: Math.max(Number(body?.max_tokens) || 0, 3200),
+    generationConfig: {
+      maxOutputTokens: Math.max(Number(body?.max_tokens) || 0, 3200),
+    },
   };
 
   const systemText = textFromAnthropicContent(body?.system);
-  if (systemText) request.instructions = systemText;
+  if (systemText) request.systemInstruction = { parts: [{ text: systemText }] };
 
   // The old UI uses Anthropic's web-search tool in a few research modules.
   // Preserve those requests as ordinary model prompts for now; PDF extraction
-  // does not depend on a search tool and continues to work through GPT.
+  // does not depend on a search tool and continues to work through Gemini.
   return request;
 }
 
-function responsesText(data) {
-  if (typeof data?.output_text === "string") return data.output_text;
-  return (data?.output || [])
-    .flatMap((item) => item?.content || [])
-    .filter((block) => block?.type === "output_text" || typeof block?.text === "string")
-    .map((block) => block.text || "")
+function geminiText(data) {
+  return (data?.candidates || [])
+    .flatMap((candidate) => candidate?.content?.parts || [])
+    .filter((part) => typeof part?.text === "string")
+    .map((part) => part.text)
     .join("\n");
 }
 
@@ -87,14 +92,14 @@ window.fetch = async (input, init = {}) => {
   const url = typeof input === "string" ? input : input?.url || "";
   if (!url.includes("api.anthropic.com/v1/messages")) return nativeFetch(input, init);
 
-  let apiKey = localStorage.getItem(OPENAI_KEY_STORAGE) || "";
+  let apiKey = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
   if (!apiKey) {
     apiKey = window.prompt(
-      "To enable GPT extraction on GitHub Pages, enter your OpenAI API key. It will be stored only in this browser."
+      "To enable Gemini extraction on GitHub Pages, enter your Google AI Studio API key. It will be stored only in this browser."
     ) || "";
     apiKey = apiKey.trim();
-    if (!apiKey) throw new Error("No OpenAI API key was provided.");
-    localStorage.setItem(OPENAI_KEY_STORAGE, apiKey);
+    if (!apiKey) throw new Error("No Gemini API key was provided.");
+    localStorage.setItem(GEMINI_KEY_STORAGE, apiKey);
   }
 
   let body = {};
@@ -105,31 +110,33 @@ window.fetch = async (input, init = {}) => {
   }
 
   const headers = new Headers({ "Content-Type": "application/json" });
-  headers.set("Authorization", `Bearer ${apiKey}`);
+  headers.set("x-goog-api-key", apiKey);
   let response;
   try {
-    response = await nativeFetch(OPENAI_RESPONSES_URL, {
+    response = await nativeFetch(GEMINI_URL, {
       method: "POST",
       headers,
-      body: JSON.stringify(convertAnthropicRequest(body)),
+      body: JSON.stringify(convertGeminiRequest(body)),
     });
   } catch (error) {
-    const message = error?.message || "The browser could not connect to OpenAI.";
-    window.alert(`GPT connection failed: ${message}`);
-    throw new Error(`GPT connection failed: ${message}`);
+    const message = error?.message || "The browser could not connect to Gemini.";
+    window.alert(`Gemini connection failed: ${message}`);
+    throw new Error(`Gemini connection failed: ${message}`);
   }
 
   let result;
   try {
     result = await response.json();
   } catch (e) {
-    throw new Error(`The OpenAI service returned an unreadable response (HTTP ${response.status}).`);
+    throw new Error(`The Gemini service returned an unreadable response (HTTP ${response.status}).`);
   }
 
-  if (response.status === 401) localStorage.removeItem(OPENAI_KEY_STORAGE);
+  if (response.status === 401 || response.status === 403) {
+    localStorage.removeItem(GEMINI_KEY_STORAGE);
+  }
   if (!response.ok || result.error) {
     const message = result.error?.message || result.error?.code || `HTTP ${response.status}`;
-    window.alert(`GPT request failed (${response.status}): ${message}`);
+    window.alert(`Gemini request failed (${response.status}): ${message}`);
     return new Response(JSON.stringify(result), {
       status: response.status,
       headers: { "Content-Type": "application/json" },
@@ -137,9 +144,9 @@ window.fetch = async (input, init = {}) => {
   }
 
   const compatibilityResult = {
-    content: [{ type: "text", text: responsesText(result) }],
-    stop_reason: result.status === "incomplete" ? "max_tokens" : "end_turn",
-    usage: result.usage,
+    content: [{ type: "text", text: geminiText(result) }],
+    stop_reason: result.candidates?.[0]?.finishReason === "MAX_TOKENS" ? "max_tokens" : "end_turn",
+    usage: result.usageMetadata,
   };
   return new Response(JSON.stringify(compatibilityResult), {
     status: response.status,
