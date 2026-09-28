@@ -2,6 +2,34 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "../an-personal-assistant.jsx";
 
+
+// GitHub Pages is a static site. Keep the Anthropic key in this browser only;
+// never commit it to the public repository.
+const ANTHROPIC_KEY_STORAGE = "an-pa:anthropic-api-key";
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (input, init = {}) => {
+  const url = typeof input === "string" ? input : input?.url || "";
+  if (!url.includes("api.anthropic.com/v1/messages")) return nativeFetch(input, init);
+
+  let apiKey = localStorage.getItem(ANTHROPIC_KEY_STORAGE) || "";
+  if (!apiKey) {
+    apiKey = window.prompt(
+      "To enable AI extraction on GitHub Pages, enter your Anthropic API key. It will be stored only in this browser."
+    ) || "";
+    apiKey = apiKey.trim();
+    if (!apiKey) throw new Error("No Anthropic API key was provided.");
+    localStorage.setItem(ANTHROPIC_KEY_STORAGE, apiKey);
+  }
+
+  const headers = new Headers(init.headers || {});
+  headers.set("x-api-key", apiKey);
+  headers.set("anthropic-version", "2023-06-01");
+  headers.set("anthropic-dangerous-direct-browser-access", "true");
+  const response = await nativeFetch(input, { ...init, headers });
+  if (response.status === 401) localStorage.removeItem(ANTHROPIC_KEY_STORAGE);
+  return response;
+};
+
 if (!window.storage) {
   const prefix = "an-pa:";
   window.storage = {
@@ -27,6 +55,7 @@ if (!window.storage) {
     },
   };
 }
+
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
