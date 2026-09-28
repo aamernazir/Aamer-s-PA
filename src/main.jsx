@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.jsx";
+import App from "../an-personal-assistant.jsx";
 
 // GitHub Pages is a static site. Keep the OpenAI key in this browser only;
 // never commit it to the public repository. A server-side proxy is safer for
