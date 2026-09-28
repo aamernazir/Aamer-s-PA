@@ -37,7 +37,7 @@ function convertAnthropicContent(content) {
         type: "input_file",
         filename: mediaType === "application/pdf" ? "uploaded-document.pdf" : "uploaded-document",
         file_data: `data:${mediaType};base64,${block.source.data}`,
-        detail: "high",
+        detail: "auto",
       }];
     }
 
@@ -46,7 +46,7 @@ function convertAnthropicContent(content) {
       return [{
         type: "input_image",
         image_url: `data:${mediaType};base64,${block.source.data}`,
-        detail: "high",
+        detail: "auto",
       }];
     }
 
@@ -106,11 +106,18 @@ window.fetch = async (input, init = {}) => {
 
   const headers = new Headers({ "Content-Type": "application/json" });
   headers.set("Authorization", `Bearer ${apiKey}`);
-  const response = await nativeFetch(OPENAI_RESPONSES_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(convertAnthropicRequest(body)),
-  });
+  let response;
+  try {
+    response = await nativeFetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(convertAnthropicRequest(body)),
+    });
+  } catch (error) {
+    const message = error?.message || "The browser could not connect to OpenAI.";
+    window.alert(`GPT connection failed: ${message}`);
+    throw new Error(`GPT connection failed: ${message}`);
+  }
 
   let result;
   try {
@@ -121,6 +128,8 @@ window.fetch = async (input, init = {}) => {
 
   if (response.status === 401) localStorage.removeItem(OPENAI_KEY_STORAGE);
   if (!response.ok || result.error) {
+    const message = result.error?.message || result.error?.code || `HTTP ${response.status}`;
+    window.alert(`GPT request failed (${response.status}): ${message}`);
     return new Response(JSON.stringify(result), {
       status: response.status,
       headers: { "Content-Type": "application/json" },
