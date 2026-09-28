@@ -25,7 +25,21 @@ window.fetch = async (input, init = {}) => {
   headers.set("x-api-key", apiKey);
   headers.set("anthropic-version", "2023-06-01");
   headers.set("anthropic-dangerous-direct-browser-access", "true");
-  const response = await nativeFetch(input, { ...init, headers });
+  const requestInit = { ...init, headers };
+  // The original artifact used 1,000 output tokens, which is too small for
+  // a project proposal containing a team, budget, objectives, and work packages.
+  if (typeof requestInit.body === "string") {
+    try {
+      const body = JSON.parse(requestInit.body);
+      if (body && body.messages) {
+        body.max_tokens = Math.max(Number(body.max_tokens) || 0, 3200);
+        requestInit.body = JSON.stringify(body);
+      }
+    } catch (e) {
+      // Leave non-JSON request bodies unchanged.
+    }
+  }
+  const response = await nativeFetch(input, requestInit);
   if (response.status === 401) localStorage.removeItem(ANTHROPIC_KEY_STORAGE);
   return response;
 };
