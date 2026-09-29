@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "../an-personal-assistant.jsx";
+import { cloudStorage, localStorageAdapter } from "./cloud-storage.js";
 
 // GitHub Pages is a static site. Keep the Gemini key in this browser only;
 // never commit it to the public repository. A server-side proxy is safer for
@@ -154,36 +155,111 @@ window.fetch = async (input, init = {}) => {
   });
 };
 
-// Claude's preview environment provides window.storage. This browser shim
-// keeps the same async API while storing data locally for GitHub Pages.
+// Keep the original window.storage contract used by all four modules. Once a
+// user connects Google, calls go to Firestore; before that they remain local.
+// A local fallback prevents temporary Firebase/network errors from deleting or
+// hiding data already entered in this browser.
 if (!window.storage) {
-  const prefix = "an-pa:";
+  async function useCloudOrLocal(cloudCall, localCall) {
+    await cloudStorage.waitForAuth();
+    if (!cloudStorage.isSignedIn()) return localCall();
+    try {
+      const result = await cloudCall();
+      cloudStorage.reportError(null);
+      return result;
+    } catch (error) {
+      cloudStorage.reportError(error);
+      return localCall();
+    }
+  }
+
   window.storage = {
-    async get(key) {
-      const value = localStorage.getItem(prefix + key);
-      return value === null ? null : { value };
+    async get(key, shared = false) {
+      return useCloudOrLocal(
+        () => cloudStorage.get(key, shared),
+        () => localStorageAdapter.get(key),
+      );
     },
-    async set(key, value) {
-      localStorage.setItem(prefix + key, value);
-      return { value };
+    async set(key, value, shared = false) {
+      return useCloudOrLocal(
+        () => cloudStorage.set(key, value, shared),
+        () => localStorageAdapter.set(key, value),
+      );
     },
-    async delete(key) {
-      localStorage.removeItem(prefix + key);
-      return true;
+    async delete(key, shared = false) {
+      return useCloudOrLocal(
+        () => cloudStorage.delete(key, shared),
+        () => localStorageAdapter.delete(key),
+      );
     },
-    async list(prefixKey = "") {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const key = localStorage.key(i) || "";
-        if (key.startsWith(prefix + prefixKey)) keys.push(key.slice(prefix.length));
-      }
-      return { keys };
+    async list(prefixKey = "", shared = false) {
+      return useCloudOrLocal(
+        () => cloudStorage.list(prefixKey, shared),
+        () => localStorageAdapter.list(prefixKey),
+      );
     },
   };
 }
 
+function CloudSyncBanner() {
+  const [status, setStatus] = useState(cloudStorage.getStatus());
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => cloudStorage.subscribe(setStatus), []);
+
+  async function connect() {
+    setBusy(true);
+    setMessage("");
+    try {
+      await cloudStorage.signIn();
+      await cloudStorage.migrateLocalData();
+      window.location.reload();
+    } catch (error) {
+      cloudStorage.reportError(error);
+      setMessage(error?.message || "Google sign-in could not be completed.");
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    try {
+      await cloudStorage.signOut();
+      window.location.reload();
+    } catch (error) {
+      setMessage(error?.message || "Could not disconnect cloud sync.");
+      setBusy(false);
+    }
+  }
+
+  const errorText = message || status.error?.message || "";
+  return (
+    <div style={{ position: "sticky", top: 0, zIndex: 100, background: status.user && !status.error ? "#EFF8F1" : "#FFF8E8", borderBottom: "1px solid " + (status.user && !status.error ? "#B9D8C1" : "#E6C77A"), padding: "7px 18px", fontFamily: "Inter, Arial, sans-serif", fontSize: 12.5, color: "#334155" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          {status.user && !status.error
+            ? <>Cloud sync active — {status.user.email || "Google account"}. Your module data is saved in Firestore.</>
+            : <>Cloud sync is not active. Data is currently saved only in this browser.</>}
+          {errorText && <div style={{ color: "#9A3412", marginTop: 3 }}>{errorText}</div>}
+        </div>
+        {status.user && !status.error ? (
+          <button onClick={disconnect} disabled={busy} style={{ border: "1px solid #9BBEA4", background: "#fff", color: "#2F6B4F", borderRadius: 4, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
+            {busy ? "Please wait…" : "Disconnect"}
+          </button>
+        ) : (
+          <button onClick={connect} disabled={busy} style={{ border: "none", background: "#1F5C8B", color: "#fff", borderRadius: 4, padding: "6px 12px", fontWeight: 600, cursor: busy ? "default" : "pointer" }}>
+            {busy ? "Connecting…" : "Connect Google cloud sync"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
+    <CloudSyncBanner />
     <App />
   </React.StrictMode>,
 );
