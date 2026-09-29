@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Private module state: available on every device signed in to the same
+    // Google account, but not to other users.
+    match /users/{userId}/state/{key} {
+      allow read, write: if request.auth != null
+                        && request.auth.uid == userId;
+    }
+
+    // The project module has a legacy "shared" storage flag. Keep those
+    // records private to their owner until a collaborator-sharing UI is added.
+    // Future shared records may include an allowedUids array.
+    match /shared_state/{key} {
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || (resource.data.allowedUids != null
+                          && request.auth.uid in resource.data.allowedUids));
+      allow update: if request.auth != null
+                    && (resource.data.ownerUid == request.auth.uid
+                        || (resource.data.allowedUids != null
+                            && request.auth.uid in resource.data.allowedUids))
+                    && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}
