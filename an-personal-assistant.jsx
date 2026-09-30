@@ -303,9 +303,27 @@ function collectWorkload(projects) {
     });
   });
   return Object.entries(map)
-    .map(([name, v]) => ({ name, objectives: v.objectives, workPackages: v.workPackages, projectCount: v.projects.size }))
-    .sort((a, b) => (b.objectives + b.workPackages) - (a.objectives + a.workPackages));
+    .map(([name, v]) => ({
+      name,
+      objectives: v.objectives,
+      workPackages: v.workPackages,
+      projectCount: v.projects.size,
+      loadScore: v.objectives + v.workPackages,
+    }))
+    .sort((a, b) => b.loadScore - a.loadScore);
 }
+
+function workloadStatus(workload, member) {
+  const scores = workload.map((w) => w.loadScore);
+  const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
+  if (workload.length > 1 && member.loadScore >= average * 1.35) {
+    return { label: "High load", background: "#FFF1F1", border: "#D95C5C", accent: "#A63D3D" };
+  }
+  if (workload.length > 1 && member.loadScore <= average * 0.7) {
+    return { label: "Lower load", background: "#EFF8F1", border: "#78B98D", accent: "#2F6B4F" };
+  }
+  return { label: "Balanced", background: "#F6F8FB", border: "#C8D1DC", accent: "#51606F" };
+}}
 
 function lineBurnFlag(spentPct, progressPct) {
   return spentPct - progressPct >= 20 && spentPct >= 40;
@@ -777,25 +795,38 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
                 ))
               )
             )}
-            {portfolioTab === "workload" && (
+                        {portfolioTab === "workload" && (
               workload.length === 0 ? <div style={{ fontSize: 12.5, color: MUTED }}>No student/postdoc leads assigned yet.</div> : (
-                workload.map((w, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < workload.length - 1 ? "1px solid #EAECF0" : "none" }}>
-                    <span style={{ fontSize: 13, color: INK, fontWeight: 500 }}>{w.name}</span>
-                    <span style={{ fontSize: 12, color: MUTED }}>
-                      {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}
-                      {w.workPackages > 0 && `${w.workPackages} WP${w.workPackages > 1 ? "s" : ""}`}
-                      {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""}`}
-                    </span>
+                <>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 8, fontSize: 11.5, color: MUTED }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#D95C5C", display: "inline-block" }} />High load</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
-                ))
+                  {workload.map((w, i) => {
+                    const status = workloadStatus(workload, w);
+                    return (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < workload.length - 1 ? "1px solid #EAECF0" : "none" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}</div>
+                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{status.label}</span>
+                        </div>
+                        <span style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
+                          {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}
+                          {w.workPackages > 0 && `${w.workPackages} WP${w.workPackages > 1 ? "s" : ""}`}
+                          {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""}`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
               )
             )}
           </div>
         </div>
       )}
 
-      {sharedProjects && sharedProjects.length > 0 && (
+{sharedProjects && sharedProjects.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600 }}>Shared with your team</div>
