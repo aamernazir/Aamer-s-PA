@@ -26,6 +26,92 @@ const HUB_MODULES = [
   { id: "archive", number: "04", name: "Research Intelligence", icon: Sparkles, description: "Every paper and patent, citation tracking, peer benchmarking, growth advice, and skill development — the full picture of your research and how to grow it." },
 ];
 
+
+// Cross-module publication ↔ project linking. The publication archive is the
+// source of truth; Project Dashboard receives a linked, reviewable evidence
+// entry when the acknowledgement number matches a tracked project number.
+const PROJECTS_STORAGE_KEY = "am2r-projects-v1";
+const PUBLICATION_ARCHIVE_STORAGE_KEY = "am2r-publication-archive-v1";
+const PUBLICATION_EVIDENCE_TYPE = {
+  "Journal Paper": "Research Paper",
+  "Conference Paper": "Conference Paper",
+  "Patent": "Other",
+  "Book Chapter": "Report",
+  "Report": "Report",
+  "Other": "Other",
+};
+
+function normalizeProjectReference(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function publicationEvidenceFromOutput(output, projectNumber, existing) {
+  const year = output.year && /^\d{4}$/.test(String(output.year)) ? String(output.year) : "";
+  return {
+    ...(existing || {}),
+    id: existing?.id || ("publication-" + String(output.id)),
+    title: output.title || existing?.title || "Untitled publication",
+    type: PUBLICATION_EVIDENCE_TYPE[output.type] || "Other",
+    date: year ? String(year) + "-01-01" : "",
+    dateType: year ? "Published" : "",
+    authors: output.authors || "",
+    // Keep any objective links the user may have added in Project Dashboard.
+    objectiveIdxs: existing?.objectiveIdxs || [],
+    summary: output.summary || "",
+    uploadedAt: existing?.uploadedAt || new Date().toISOString(),
+    // New automatic links are deliberately reviewable before being relied on.
+    needsReview: existing ? !!existing.needsReview : true,
+    sourcePublicationId: String(output.id),
+    sourceModule: "Research Intelligence",
+    sourceProjectNumber: projectNumber,
+  };
+}
+
+function reconcilePublicationEvidence(projects, outputs) {
+  let matched = 0;
+  let added = 0;
+  let changed = false;
+  const usableOutputs = (outputs || []).filter((o) => o && o.id && o.fundingProjectNumber && String(o.fundingProjectNumber).trim());
+
+  const nextProjects = (projects || []).map((project) => {
+    const projectNumber = String(project.projectNumber || "").trim();
+    if (!projectNumber) return project;
+    const canonicalProjectNumber = normalizeProjectReference(projectNumber);
+    const matchingOutputs = usableOutputs.filter((output) => normalizeProjectReference(output.fundingProjectNumber) === canonicalProjectNumber);
+    const existingEvidence = Array.isArray(project.evidence) ? project.evidence : [];
+    const matchingIds = new Set(matchingOutputs.map((output) => String(output.id)));
+
+    // Remove stale auto-links if an archived publication was deleted or its
+    // extracted acknowledgement number was corrected to another project.
+    let evidence = existingEvidence.filter((entry) => !entry.sourcePublicationId || matchingIds.has(String(entry.sourcePublicationId)));
+
+    matchingOutputs.forEach((output) => {
+      matched += 1;
+      let index = evidence.findIndex((entry) => String(entry.sourcePublicationId || "") === String(output.id));
+      if (index < 0) {
+        // Adopt entries created by the older sync implementation instead of
+        // creating duplicates when this reconciliation runs for the first time.
+        index = evidence.findIndex((entry) => !entry.sourcePublicationId && normalizeProjectReference(entry.title) === normalizeProjectReference(output.title));
+      }
+      if (index >= 0) {
+        const current = evidence[index];
+        const next = publicationEvidenceFromOutput(output, projectNumber, current);
+        if (JSON.stringify(current) !== JSON.stringify(next)) changed = true;
+        evidence[index] = next;
+      } else {
+        evidence.push(publicationEvidenceFromOutput(output, projectNumber));
+        added += 1;
+        changed = true;
+      }
+    });
+
+    if (JSON.stringify(existingEvidence) !== JSON.stringify(evidence)) changed = true;
+    return JSON.stringify(existingEvidence) === JSON.stringify(evidence) ? project : { ...project, evidence };
+  });
+
+  return { projects: nextProjects, matched, added, changed };
+}
+
 const ProjectDashboardModule = (function() {
 const STORAGE_KEY = "am2r-projects-v1";
 const LEGACY_KEY = "kfupm-csf-project-v1";
@@ -441,6 +527,19 @@ function App() {
     refreshSharedProjects();
   }, []);
 
+  // Reconcile publications that were archived before this project was created
+  // or before its project number was entered. This makes the integration
+  // retroactive, not just a feature for future uploads.
+  useEffect(() => {
+    if (!loaded || !projects) return;
+    let cancelled = false;
+    (async () => {
+      const result = await syncArchivedPublicationsToProjects(projects);
+      if (!cancelled && result && result.changed) setProjects(result.projects);
+    })();
+    return () => { cancelled = true; };
+  }, [loaded]);
+
   async function refreshSharedProjects() {
     try {
       const listing = await window.storage.list(SHARED_PREFIX, true);
@@ -458,10 +557,36 @@ function App() {
     }
   }
 
+  async function syncArchivedPublicationsToProjects(currentProjects) {
+    try {
+      const res = await window.storage.get(PUBLICATION_ARCHIVE_STORAGE_KEY);
+      if (!res || !res.value) return { projects: currentProjects, changed: false, matched: 0, added: 0 };
+      const archive = JSON.parse(res.value);
+      return reconcilePublicationEvidence(currentProjects, archive.outputs || []);
+    } catch (e) {
+      return { projects: currentProjects, changed: false, matched: 0, added: 0, error: e.message };
+    }
+  }
+
+  async function syncOneProjectFromArchive(project) {
+    if (!project) return project;
+    const result = await syncArchivedPublicationsToProjects([project]);
+    return result.projects && result.projects[0] ? result.projects[0] : project;
+  }
+
   if (!projects) return null;
 
   function updateProject(id, updater) {
     setProjects((prev) => prev.map((p) => (p.id === id ? updater(p) : p)));
+  }
+
+  async function relinkProjectFromArchive(id) {
+    const current = projects.find((p) => p.id === id);
+    if (!current || !current.projectNumber || !current.projectNumber.trim()) return;
+    const linked = await syncOneProjectFromArchive(current);
+    if (linked && JSON.stringify(linked) !== JSON.stringify(current)) {
+      setProjects((prev) => prev.map((p) => (p.id === id ? linked : p)));
+    }
   }
 
   async function toggleShare(id) {
@@ -496,6 +621,11 @@ function App() {
     setError("");
     const p = emptyProject(newDraft);
     setProjects((prev) => [...prev, p]);
+    syncOneProjectFromArchive(p).then((linked) => {
+      if (linked && JSON.stringify(linked) !== JSON.stringify(p)) {
+        setProjects((prev) => prev.map((item) => (item.id === p.id ? linked : item)));
+      }
+    });
     setNewDraft({ title: "", projectNumber: "", program: "", pi: "", duration: "", budgetTotal: "", budgetCurrency: "SAR" });
     setShowNewProject(false);
     setActiveId(p.id);
@@ -611,6 +741,7 @@ function App() {
       const newProject = {
         id: Date.now().toString(),
         title: p1.title || file.name,
+        projectNumber: p1.projectNumber || "",
         program: p1.program || "",
         pi: p1.pi || "",
         projectLead: "",
@@ -629,6 +760,11 @@ function App() {
       };
 
       setProjects((prev) => [...prev, newProject]);
+      syncOneProjectFromArchive(newProject).then((linked) => {
+        if (linked && JSON.stringify(linked) !== JSON.stringify(newProject)) {
+          setProjects((prev) => prev.map((item) => (item.id === newProject.id ? linked : item)));
+        }
+      });
       setShowNewProject(false);
       setActiveId(newProject.id);
     } catch (err) {
@@ -661,6 +797,7 @@ function App() {
           project={active}
           onBack={() => setActiveId(null)}
           onUpdate={(updater) => updateProject(active.id, updater)}
+          onSyncArchive={() => relinkProjectFromArchive(active.id)}
           error={error}
           onToggleShare={() => toggleShare(active.id)}
         />
@@ -897,7 +1034,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
   );
 }
 
-function ProjectDetail({ project, onBack, onUpdate, error, onToggleShare }) {
+function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onToggleShare }) {
   const data = project;
   const [tab, setTab] = useState("overview");
   const [openWP, setOpenWP] = useState(null);
@@ -1607,6 +1744,7 @@ function ProjectDetail({ project, onBack, onUpdate, error, onToggleShare }) {
             <input
               value={data.projectNumber || ""}
               onChange={(e) => update((p) => ({ ...p, projectNumber: e.target.value }))}
+              onBlur={onSyncArchive}
               placeholder="e.g. SB211010 — as it appears in paper acknowledgments"
               style={{ fontSize: 11.5, padding: "3px 7px", borderRadius: 3, border: "1px solid #C7CCD3", background: "#fff", color: INK, width: 260 }}
             />
@@ -1999,6 +2137,11 @@ function ProjectDetail({ project, onBack, onUpdate, error, onToggleShare }) {
                         </div>
                         {PAPER_TYPES.includes(e.type) && e.authors && (
                           <div style={{ fontSize: 12, color: "#2E3742", marginTop: 2, fontStyle: "italic" }}>{e.authors}</div>
+                        )}
+                        {e.sourcePublicationId && (
+                          <div style={{ fontSize: 11, color: TEAL, marginTop: 4 }}>
+                            Automatically linked from Module 04 · acknowledgement project <span className="pd-mono">{e.sourceProjectNumber}</span>
+                          </div>
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -7252,6 +7395,7 @@ function App() {
   const [syncingQRanks, setSyncingQRanks] = useState(false);
   const [qRankSyncMessage, setQRankSyncMessage] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
+  const [syncingProjects, setSyncingProjects] = useState(false);
   const fileInputRef = useRef(null);
 
   const [expandedId, setExpandedId] = useState(null);
@@ -7409,7 +7553,7 @@ function App() {
     }
     if (added.length > 0) {
       setData((p) => ({ ...p, outputs: [...added, ...p.outputs] }));
-      const syncResult = await syncNewOutputsToProjects(added);
+      const syncResult = await syncNewOutputsToProjects([...added, ...data.outputs]);
       const apsResult = await syncNewOutputsToAPS(added);
       const messages = [];
       if (syncResult.matched > 0) messages.push(`${syncResult.matched} to Project Dashboard (matched by project number)`);
@@ -7489,7 +7633,7 @@ function App() {
     }
     if (added.length > 0) {
       setData((p) => ({ ...p, outputs: [...added, ...p.outputs] }));
-      const syncResult = await syncNewOutputsToProjects(added);
+      const syncResult = await syncNewOutputsToProjects([...added, ...data.outputs]);
       const apsResult = await syncNewOutputsToAPS(added);
       const messages = [];
       if (syncResult.matched > 0) messages.push(`${syncResult.matched} to Project Dashboard (matched by project number)`);
@@ -7512,45 +7656,39 @@ function App() {
     }
   }
 
-  // Cross-module sync: if an archived output has an acknowledgment project number matching a
-  // tracked project in Project Dashboard, add it there too as pending evidence (needsReview) —
-  // so it doesn't have to be uploaded twice. Read-modify-write on Project Dashboard's own storage key.
-  const PROJECTS_STORAGE_KEY = "am2r-projects-v1";
-  const TYPE_TO_EVIDENCE_TYPE = { "Journal Paper": "Research Paper", "Conference Paper": "Conference Paper", "Patent": "Other", "Book Chapter": "Report", "Report": "Report", "Other": "Other" };
-
-  async function syncNewOutputsToProjects(newOutputs) {
-    const withNumbers = newOutputs.filter((o) => o.fundingProjectNumber && o.fundingProjectNumber.trim());
-    if (withNumbers.length === 0) return { matched: 0 };
+  // Cross-module sync: if an archived output has an acknowledgement project
+  // number matching a tracked project in Project Dashboard, reconcile it there
+  // as pending evidence. The stable sourcePublicationId prevents duplicates,
+  // and this also adopts entries created by older app versions.
+  async function syncNewOutputsToProjects(outputsToSync) {
+    if (!outputsToSync || outputsToSync.length === 0) return { matched: 0, added: 0 };
     try {
       const res = await window.storage.get(PROJECTS_STORAGE_KEY);
-      if (!res || !res.value) return { matched: 0 };
+      if (!res || !res.value) return { matched: 0, added: 0 };
       const projects = JSON.parse(res.value);
-      let matchedCount = 0;
-      const updatedProjects = projects.map((proj) => {
-        if (!proj.projectNumber || !proj.projectNumber.trim()) return proj;
-        const matchingOutputs = withNumbers.filter((o) => o.fundingProjectNumber.trim().toLowerCase() === proj.projectNumber.trim().toLowerCase());
-        if (matchingOutputs.length === 0) return proj;
-        matchedCount += matchingOutputs.length;
-        const newEvidence = matchingOutputs.map((o) => ({
-          id: Date.now().toString() + Math.random().toString(36).slice(2),
-          title: o.title,
-          type: TYPE_TO_EVIDENCE_TYPE[o.type] || "Other",
-          date: o.year ? `${o.year}-01-01` : "",
-          dateType: o.year ? "Published" : "",
-          authors: o.authors || "",
-          objectiveIdxs: [],
-          summary: o.summary || "",
-          uploadedAt: new Date().toISOString(),
-          needsReview: true,
-        }));
-        return { ...proj, evidence: [...(proj.evidence || []), ...newEvidence] };
-      });
-      if (matchedCount > 0) {
-        await window.storage.set(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
-      }
-      return { matched: matchedCount };
+      const result = reconcilePublicationEvidence(projects, outputsToSync);
+      if (result.changed) await window.storage.set(PROJECTS_STORAGE_KEY, JSON.stringify(result.projects));
+      return { matched: result.matched, added: result.added };
     } catch (e) {
-      return { matched: 0, error: e.message };
+      return { matched: 0, added: 0, error: e.message };
+    }
+  }
+
+  async function syncAllArchivedOutputsToProjects() {
+    setSyncingProjects(true);
+    try {
+      const result = await syncNewOutputsToProjects(data.outputs);
+      if (result.error) {
+        setSyncMessage("Project linking could not be completed. Try again in a moment.");
+      } else if (result.added > 0) {
+        setSyncMessage("Linked " + result.added + " archived publication" + (result.added === 1 ? "" : "s") + " to Project Dashboard evidence by acknowledgement number.");
+      } else if (result.matched > 0) {
+        setSyncMessage("Project evidence is already up to date — no duplicate publication entries were added.");
+      } else {
+        setSyncMessage("No archived publication has an acknowledgement number matching a tracked project yet.");
+      }
+    } finally {
+      setSyncingProjects(false);
     }
   }
 
@@ -7662,13 +7800,17 @@ function App() {
   }
 
   // ---------- Manual add/edit ----------
-  const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", correspondingAuthors: "", isOwnerCorresponding: false, summary: "", methods: "", keywords: [], qRank: "" });
+  const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "", summary: "", methods: "", keywords: [], qRank: "" });
   function openNew() { setDraft(emptyOutput()); setEditingId(null); setManualDupWarning(""); setShowForm(true); }
   function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setShowForm(true); }
-  function saveOutput(skipDupCheck) {
+  async function saveOutput(skipDupCheck) {
     if (!draft.title.trim()) return;
     if (editingId) {
-      setData((p) => ({ ...p, outputs: p.outputs.map((o) => (o.id === editingId ? { ...draft, id: editingId } : o)) }));
+      const updatedOutput = { ...draft, id: editingId };
+      const nextOutputs = data.outputs.map((o) => (o.id === editingId ? updatedOutput : o));
+      setData((p) => ({ ...p, outputs: nextOutputs }));
+      const syncResult = await syncNewOutputsToProjects(nextOutputs);
+      if (syncResult.added > 0) setSyncMessage("Also added — " + syncResult.added + " publication" + (syncResult.added === 1 ? "" : "s") + " to Project Dashboard (matched by project number).");
       setShowForm(false);
       return;
     }
@@ -7679,7 +7821,11 @@ function App() {
         return;
       }
     }
-    setData((p) => ({ ...p, outputs: [{ ...draft, id: Date.now().toString(), addedAt: new Date().toISOString() }, ...p.outputs] }));
+    const createdOutput = { ...draft, id: Date.now().toString(), addedAt: new Date().toISOString() };
+    const nextOutputs = [createdOutput, ...data.outputs];
+    setData((p) => ({ ...p, outputs: nextOutputs }));
+    const syncResult = await syncNewOutputsToProjects(nextOutputs);
+    if (syncResult.added > 0) setSyncMessage("Also added — " + syncResult.added + " publication" + (syncResult.added === 1 ? "" : "s") + " to Project Dashboard (matched by project number).");
     setShowForm(false);
     setManualDupWarning("");
   }
@@ -7897,6 +8043,7 @@ function App() {
                 {o.isOwnerCorresponding && <span className="pa-mono" style={{ marginLeft: 6, fontSize: 9.5, background: GREEN + "22", color: GREEN, padding: "1px 6px", borderRadius: 7, fontWeight: 700 }}>YOU</span>}
               </div>
             )}
+            {o.fundingProjectNumber && <div style={{ fontSize: 11, color: TEAL, marginTop: 3 }}>Acknowledgement project: <span className="pa-mono">{o.fundingProjectNumber}</span></div>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             <button onClick={(e) => { e.stopPropagation(); openEdit(o); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pencil size={13} color="#9AA2AF" /></button>
@@ -8007,6 +8154,9 @@ function App() {
               </button>
               <button onClick={() => setShowFindPanel(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: GREEN, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
                 <Search size={14} /> Find open-access (no download needed)
+              </button>
+              <button onClick={syncAllArchivedOutputsToProjects} disabled={syncingProjects} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: syncingProjects ? "default" : "pointer" }}>
+                {syncingProjects ? <Loader2 size={14} className="pa-spin" /> : <RefreshCw size={14} />} {syncingProjects ? "Syncing project evidence…" : "Sync project evidence"}
               </button>
               <button onClick={openNew} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px dashed #C7CCD3", color: TEAL, borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
                 <Plus size={14} /> Add manually
@@ -8394,6 +8544,13 @@ function App() {
             </div>
             <Label>Venue</Label>
             <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.venue} onChange={(e) => setDraft({ ...draft, venue: e.target.value })} />
+            <Label>Funding / project number in acknowledgment</Label>
+            <input
+              style={{ ...inputStyle, marginBottom: 14 }}
+              value={draft.fundingProjectNumber || ""}
+              onChange={(e) => setDraft({ ...draft, fundingProjectNumber: e.target.value })}
+              placeholder="e.g. SB211010"
+            />
             {draft.type === "Journal Paper" && (
               <>
                 <Label>Scopus Q-rank</Label>
@@ -8606,4 +8763,3 @@ function AssistantHub({ onOpenModule }) {
     </div>
   );
 }
-
