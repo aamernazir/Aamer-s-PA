@@ -63,7 +63,7 @@ function convertGeminiContent(content) {
 
 function convertGeminiRequest(body) {
 
-  installAiFallback(nativeFetch);const messages = Array.isArray(body?.messages) ? body.messages : [];
+    const messages = Array.isArray(body?.messages) ? body.messages : [];
   const request = {
     contents: messages.map((message) => ({
       role: message.role === "assistant" ? "model" : "user",
@@ -133,9 +133,10 @@ window.fetch = async (input, init = {}) => {
   } catch (e) {
     throw new Error(`The Gemini service returned an unreadable response (HTTP ${response.status}).`);
   }
+if (response.status === 401 || response.status === 403) {
+  
 
-  if (response.status === 401 || response.status === 403) {
-    localStorage.removeItem(GEMINI_KEY_STORAGE);
+
   }
   if (!response.ok || result.error) {
     const message = result.error?.message || result.error?.code || `HTTP ${response.status}`;
@@ -266,4 +267,3 @@ createRoot(document.getElementById("root")).render(
   </React.StrictMode>,
 );
 
-installAiFallback(nativeFetch);
