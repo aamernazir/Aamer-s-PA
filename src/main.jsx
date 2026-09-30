@@ -1,3 +1,4 @@
+import { installAiFallback } from "./ai-providers.js";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "../an-personal-assistant.jsx";
@@ -61,7 +62,8 @@ function convertGeminiContent(content) {
 }
 
 function convertGeminiRequest(body) {
-  const messages = Array.isArray(body?.messages) ? body.messages : [];
+
+  installAiFallback(nativeFetch);const messages = Array.isArray(body?.messages) ? body.messages : [];
   const request = {
     contents: messages.map((message) => ({
       role: message.role === "assistant" ? "model" : "user",
@@ -263,3 +265,5 @@ createRoot(document.getElementById("root")).render(
     <App />
   </React.StrictMode>,
 );
+
+installAiFallback(nativeFetch);
