@@ -1,3 +1,4 @@
+import { installAiFallback } from "./ai-providers.js/ai-providers.js";
 
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -177,7 +178,8 @@ if (!window.storage) {
   }
 
   window.storage = {
-    async get(key, shared = false) {
+
+installAiFallback(nativeFetch);    async get(key, shared = false) {
       return useCloudOrLocal(
         () => cloudStorage.get(key, shared),
         () => localStorageAdapter.get(key),
@@ -266,4 +268,4 @@ createRoot(document.getElementById("root")).render(
     <App />
   </React.StrictMode>,
 );
-
+installAiFallback(nativeFetch);
