@@ -4284,7 +4284,8 @@ function App() {
               <button onClick={copySnapshot} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                 {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy to clipboard"}
 update("evidenceInbox"
-                cycleData.evidenceInbox.filter              </button>
+
+                const validSubsections = (act.subsectionsconst newEntries = activities.map                cycleData.evidenceInbox.filter              </button>
               <button onClick={downloadSnapshot} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", color: INK, border: "1px solid #C7CCD3", borderRadius: 3, padding: "11px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
                 <Download size={16} /> Download .txt
               </button>
@@ -5301,7 +5302,11 @@ function App() {
 
       const newEntries = activities.map((act, i) => {
         const validSubsections = (act.subsections || []).filter((s) => TAGGABLE_SUBSECTIONS.some(([code]) => code === s));
-                const contributionSummary = (act.contributionSummary || act.bulletText || parsed.summary || sourceLabel).trim();
+                        const contributionSummary = (act.contributionSummary || act.bulletText || parsed.summary || sourceLabel).trim();
+        const subsectionApprovals = {};
+        validSubsections.forEach((code) => {
+          subsectionApprovals[code] = { approved: false, bulletText: contributionSummary, comment: "" };
+        });
 return {
           id: Date.now().toString() + "-" + i,
           fileName: activities.length > 1 ? `${sourceLabel} (${i + 1} of ${activities.length})` : sourceLabel,
@@ -5309,6 +5314,7 @@ return {
                     contributionSummary,
           bulletText: contributionSummary,
           subsections: validSubsections,
+            subsectionApprovals,
           period: act.period || "",
           center: act.center || "",
           approved: false,
@@ -5374,7 +5380,23 @@ return {
     update("evidenceInbox", cycleData.evidenceInbox.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
 
-    function approveEvidence(id, relationCode, overrideBulletText) {
+      function addEvidenceRelation(id, relationCode) {
+    const meta = SUBSECTION_MAP[relationCode];
+    if (!meta || !meta.field) return;
+    update("evidenceInbox", cycleData.evidenceInbox.map((e) => {
+      if (e.id !== id) return e;
+      const subsections = Array.from(new Set([...(e.subsections || []), relationCode]));
+      const subsectionApprovals = { ...(e.subsectionApprovals || {}) };
+      subsectionApprovals[relationCode] = subsectionApprovals[relationCode] || {
+        approved: false,
+        bulletText: e.contributionSummary || e.bulletText || e.summary || "",
+        comment: "",
+      };
+      return { ...e, subsections, subsectionApprovals, approved: false };
+    }));
+  }
+
+function approveEvidence(id, relationCode, overrideBulletText) {
     const ev = cycleData.evidenceInbox.find((e) => e.id === id);
     const meta = relationCode && SUBSECTION_MAP[relationCode];
     const relation = ev && meta ? getEvidenceRelation(ev, relationCode) : null;
@@ -5956,7 +5978,8 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
         )}
 
         {section === "inbox" && (() => {
-          const pending = cycleData.evidenceInbox.filter((e) => !e.approved);
+                    const pending = cycleData.evidenceInbox.filter((e) => (e.subsections || []).length === 0 || (e.subsections || []).some((code) => !getEvidenceRelation(e, code).approved));
+
           const approved = cycleData.evidenceInbox.filter((e) => e.approved);
           return (
             <div>
@@ -5969,6 +5992,22 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                   <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: AMBER, fontWeight: 600, marginBottom: 8 }}>Pending approval ({pending.length})</div>
                   {pending.map((ev) => (
                     <div key={ev.id} className="aps-card" style={{ background: "#fff", border: "1px solid " + AMBER, borderRadius: 6, padding: "12px 16px", marginBottom: 8 }}>
+                                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            const code = e.target.value;
+                            if (code) addEvidenceRelation(ev.id, code);
+                            e.target.value = "";
+                          }}
+                          style={{ ...inputStyle, maxWidth: "100%", fontSize: 11.5, padding: "5px 8px", background: "#fff" }}
+                        >
+                          <option value="">Add a supported APS subsection…</option>
+                          {TAGGABLE_SUBSECTIONS.filter(([code]) => !(ev.subsections || []).includes(code)).map(([code, meta]) => (
+                            <option key={code} value={code}>{meta.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div style={{ fontSize: 13, color: INK, fontWeight: 500 }}>{ev.bulletText}{ev.period ? ` (${ev.period})` : ""}</div>
                       <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{ev.fileName} · uploaded {new Date(ev.addedAt).toLocaleDateString()}</div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
