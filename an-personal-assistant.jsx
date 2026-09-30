@@ -4898,10 +4898,31 @@ function isSubsectionEmpty(cycleData, code) {
 function getGaps(cycleData) {
   return TAGGABLE_SUBSECTIONS.filter(([code]) => isSubsectionEmpty(cycleData, code) === true).map(([code]) => code);
 }
+function getEvidenceRelation(ev, code) {
+  const saved = ev && ev.subsectionApprovals && ev.subsectionApprovals[code];
+  if (saved) return saved;
+  return {
+    approved: !!(ev && ev.approved),
+    bulletText: (ev && (ev.contributionSummary || ev.bulletText || ev.summary)) || "",
+    comment: (ev && ev.comment) || "",
+  };
+}
 
 function pendingForCode(cycleData, code) {
-  return (cycleData.evidenceInbox || []).filter((e) => !e.approved && e.subsections.includes(code));
+  return (cycleData.evidenceInbox || [])
+    .filter((e) => (e.subsections || []).includes(code))
+    .map((e) => ({ ...e, relationCode: code, relation: getEvidenceRelation(e, code) }))
+    .filter((e) => !e.relation.approved);
 }
+
+function pendingEvidenceCount(cycleData) {
+  return (cycleData.evidenceInbox || []).reduce(
+    (total, ev) => total + (ev.subsections || []).filter((code) => !getEvidenceRelation(ev, code).approved).length,
+    0,
+  );
+}
+
+
 
 function computeCycleStats(cd) {
   const t1Total = cd.teaching.t1Courses.reduce((s, c) => s + Number(c.creditHours || 0), 0);
@@ -4982,7 +5003,10 @@ function PendingEvidenceList({ pending, onApprovePending, onDiscardPending, onCo
     <div style={{ marginTop: 14 }}>
       {pending.map((ev) => {
         const isExpanded = expandedPendingId === ev.id;
-        return (
+                const relation = ev.relation || getEvidenceRelation(ev, ev.relationCode);
+        const subsectionLabel = ev.relationCode && SUBSECTION_MAP[ev.relationCode] ? SUBSECTION_MAP[ev.relationCode].label : "this subsection";
+        const reviewedText = bulletDrafts[ev.id] ?? relation.bulletText ?? ev.contributionSummary ?? ev.bulletText ?? "";
+return (
           <div key={ev.id} style={{ background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 5, padding: "11px 14px", marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
               <span className="aps-mono" style={{ fontSize: 9.5, background: AMBER, color: "#fff", padding: "1px 6px", borderRadius: 7, fontWeight: 700 }}>PENDING</span>
@@ -4991,7 +5015,7 @@ function PendingEvidenceList({ pending, onApprovePending, onDiscardPending, onCo
               </button>
             </div>
             <textarea
-              value={bulletDrafts[ev.id] ?? ev.bulletText}
+                            value={reviewedText}
               onChange={(e) => setBulletDrafts({ ...bulletDrafts, [ev.id]: e.target.value })}
               style={{ ...inputStyle, minHeight: 50, marginBottom: 4, background: "#fff", fontSize: 12.5 }}
             />
@@ -5000,8 +5024,8 @@ function PendingEvidenceList({ pending, onApprovePending, onDiscardPending, onCo
             </div>
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => onApprovePending(ev.id, bulletDrafts[ev.id] ?? ev.bulletText)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: GREEN, color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                <Check size={12} /> Approve
+                            <button onClick={() => onApprovePending(ev.id, ev.relationCode, reviewedText)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: GREEN, color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                                <Check size={12} /> Approve for this subsection
               </button>
               <button onClick={() => setExpandedPendingId(isExpanded ? null : ev.id)} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 3, padding: "7px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
                 {ev.comment ? "Comment ✓" : "Comment"}
@@ -5254,13 +5278,14 @@ function App() {
         "- \"Recognized as Stanford/Elsevier Top 2% Researcher (2024-Present) worldwide.\"\n" +
         "- \"Served as Course Coordinator of ME301, responsible for maintaining course coverage, uniformity of exam grading, and fair distribution of final grading.\"\n\n" +
         "If the source is written casually or in first person (e.g. \"I gave a talk on X yesterday\"), rewrite it into the same formal third-person-implied register as the examples above — do not just lightly edit the casual phrasing.\n\n" +
-        "For EACH activity, independently decide which of these APS subsections it fits — different activities in the same document very often belong in different subsections, so classify each one on its own merits:\n" + subsectionList + "\n\n" +
+                "For EACH activity, independently decide every APS subsection where the activity genuinely contributes — different activities in the same document often belong in different subsections, so classify each one on its own merits:\n" + subsectionList + "\n\n" +
         "Pay particular attention to R3 vs R6_LEADING: if the person contributed to, participated in, joined, or was a member of an interdisciplinary or collaborative initiative WITHOUT actually leading or founding it, that belongs in R3 (Interdisciplinary Research) — not R6_LEADING, which is reserved specifically for cases where this person is the actual leader, PI, founder, or organizer. Read the wording carefully: \"contributed to initiating\" or \"joined\" is R3; \"founded,\" \"leads,\" or \"initiated as PI\" is R6_LEADING.\n\n" +
-        "For each activity, default to the single subsection that is the strongest, most natural home for it. Only return more than one subsection for the SAME activity if it genuinely has two distinct facets that a reader would look for in two different places — not just because a plausible connection could be drawn. When in doubt, pick one.\n\n" +
+                "One activity may fit more than one subsection when it has distinct, evidence-based contributions to those sections. Return all genuinely suitable subsections, but do not add weak or merely imaginable connections. Each subsection will be reviewed and approved independently by the user.\n\n" +
         "For the period of each activity: prefer a KFUPM term code (e.g. \"261\") over an exact calendar date whenever the source lets you identify or infer the term — a term code is the standard convention here, not a full date. Only fall back to a specific date (YYYY-MM-DD or month/year) if no term is identifiable and a literal date is explicitly stated. If neither a term nor a date is determinable, leave period as an empty string — do not guess or invent either one.\n\n" +
         "If R3 is among an activity's subsections, also identify the partner center, department, or institution it's jointly owned with (e.g. \"IRC-IMR\" or \"Bahir Dar University, Ethiopia\") for that activity's \"center\" field.\n\n" +
+                "For EACH activity, write a concise contributionSummary of one or two sentences. It must state what the faculty member did and why it is relevant, using only information supported by the source. This is the proposed text that the user will review separately for every suggested subsection.\n\n" +
         "Also give an overall one-sentence summary of what this source document is (e.g. \"Annual committee activity report listing service contributions\").\n\n" +
-        'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"summary":"","activities":[{"bulletText":"","subsections":[],"period":"","center":""}]}';
+                'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"summary":"","activities":[{"contributionSummary":"","subsections":[],"period":"","center":""}]}';
 
       const content = isPlainTextNote
         ? [{ type: "text", text: instructionText }]
@@ -5275,11 +5300,13 @@ function App() {
 
       const newEntries = activities.map((act, i) => {
         const validSubsections = (act.subsections || []).filter((s) => TAGGABLE_SUBSECTIONS.some(([code]) => code === s));
-        return {
+                const contributionSummary = (act.contributionSummary || act.bulletText || parsed.summary || sourceLabel).trim();
+return {
           id: Date.now().toString() + "-" + i,
           fileName: activities.length > 1 ? `${sourceLabel} (${i + 1} of ${activities.length})` : sourceLabel,
           summary: parsed.summary || "",
-          bulletText: act.bulletText || sourceLabel,
+                    contributionSummary,
+          bulletText: contributionSummary,
           subsections: validSubsections,
           period: act.period || "",
           center: act.center || "",
@@ -5290,7 +5317,7 @@ function App() {
 
       update("evidenceInbox", [...newEntries, ...(cycleData.evidenceInbox || [])]);
       const firstCode = newEntries[0].subsections[0];
-      if (activities.length > 1) {
+            if (activities.length > 1 || newEntries.some((entry) => entry.subsections.length > 1)) {
         setSection("inbox"); // multiple activities landed in different places — show the overview rather than jumping to just one
       } else if (firstCode) {
         const meta = SUBSECTION_MAP[firstCode];
@@ -5346,31 +5373,40 @@ function App() {
     update("evidenceInbox", cycleData.evidenceInbox.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
 
-  function approveEvidence(id, overrideBulletText) {
+    function approveEvidence(id, relationCode, overrideBulletText) {
     const ev = cycleData.evidenceInbox.find((e) => e.id === id);
-    if (!ev) return;
-    const bulletText = (overrideBulletText != null ? overrideBulletText : ev.bulletText).trim();
-    if (!bulletText || ev.subsections.length === 0) return;
-    const periodSuffix = ev.period ? ` (${ev.period})` : "";
-    const bulletLine = bulletText + periodSuffix;
+    const meta = relationCode && SUBSECTION_MAP[relationCode];
+    const relation = ev && meta ? getEvidenceRelation(ev, relationCode) : null;
+    if (!ev || !meta || !relation || relation.approved) return;
+    const bulletText = (overrideBulletText != null ? overrideBulletText : relation.bulletText).trim();
+    if (!bulletText) return;
     setData((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
       const cd = next.cycles[next.activeCycle];
-      ev.subsections.forEach((code) => {
-        const meta = SUBSECTION_MAP[code];
-        if (!meta || !meta.field) return;
-        if (meta.isProjectRow) {
-          cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), { center: ev.center || "", title: bulletLine }];
-        } else {
-          cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), bulletLine];
-        }
-      });
-      cd.evidenceInbox = cd.evidenceInbox.map((e) => (e.id === id ? { ...e, bulletText, approved: true, approvedAt: new Date().toISOString() } : e));
+      const live = cd.evidenceInbox.find((e) => e.id === id);
+      if (!live) return next;
+      const liveRelation = getEvidenceRelation(live, relationCode);
+      if (liveRelation.approved) return next;
+      const periodSuffix = live.period ? ` (${live.period})` : "";
+      const bulletLine = bulletText + periodSuffix;
+      if (meta.isProjectRow) {
+        cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), { center: live.center || "", title: bulletLine }];
+      } else if (meta.field) {
+        cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), bulletLine];
+      }
+      const subsectionApprovals = { ...(live.subsectionApprovals || {}) };
+      subsectionApprovals[relationCode] = { ...liveRelation, bulletText, approved: true, approvedAt: new Date().toISOString() };
+      const allApproved = (live.subsections || []).every((code) => getEvidenceRelation({ ...live, subsectionApprovals }, code).approved);
+      cd.evidenceInbox = cd.evidenceInbox.map((e) => (
+        e.id === id
+          ? { ...e, bulletText, subsectionApprovals, approved: allApproved, ...(allApproved ? { approvedAt: new Date().toISOString() } : {}) }
+          : e
+      ));
       return next;
     });
   }
 
-  function removeEvidenceRecord(id) {
+
     update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
   }
 
@@ -5510,7 +5546,7 @@ function App() {
         <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
           {SECTIONS.map((s) => {
             const Icon = s.icon;
-            const pendingCount = s.id === "inbox" ? (cycleData.evidenceInbox || []).filter((e) => !e.approved).length : 0;
+                        const pendingCount = s.id === "inbox" ? pendingEvidenceCount(cycleData) : 0;
             return (
               <button key={s.id} onClick={() => { setSection(s.id); setOpenId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: section === s.id ? INK : "#fff", color: section === s.id ? "#fff" : INK, border: "1px solid " + (section === s.id ? INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
                 <Icon size={13} /> {s.label}
@@ -5923,7 +5959,7 @@ function App() {
           return (
             <div>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
-                A full log of everything uploaded. To actually review and approve pending items, open the Teaching / Research / Societal Benefits / Behavior tab it was tagged to — you'll find it sitting right inside the relevant subsection, marked "Pending."
+                                A full log of everything uploaded. Each suggested subsection is a separate review: open the Teaching / Research / Societal Benefits / Behavior tab it was tagged to, edit the contribution text if needed, and approve it there. Approving one subsection never approves the same evidence in another subsection.
               </div>
 
               {pending.length > 0 && (
