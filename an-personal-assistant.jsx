@@ -323,7 +323,7 @@ function workloadStatus(workload, member) {
     return { label: "Lower load", background: "#EFF8F1", border: "#78B98D", accent: "#2F6B4F" };
   }
   return { label: "Balanced", background: "#F6F8FB", border: "#C8D1DC", accent: "#51606F" };
-}}
+}
 
 function lineBurnFlag(spentPct, progressPct) {
   return spentPct - progressPct >= 20 && spentPct >= 40;
