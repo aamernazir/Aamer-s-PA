@@ -4283,7 +4283,8 @@ function App() {
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={copySnapshot} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                 {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy to clipboard"}
-              </button>
+update("evidenceInbox"
+                cycleData.evidenceInbox.filter              </button>
               <button onClick={downloadSnapshot} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", color: INK, border: "1px solid #C7CCD3", borderRadius: 3, padding: "11px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
                 <Download size={16} /> Download .txt
               </button>
@@ -5407,7 +5408,8 @@ return {
   }
 
 
-    update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
+      function removeEvidenceRecord(id) {
+update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
   }
 
   async function generateSuggestion(code) {
