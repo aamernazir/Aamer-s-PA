@@ -5033,6 +5033,89 @@ const SUBSECTION_MAP = {
 };
 const TAGGABLE_SUBSECTIONS = Object.entries(SUBSECTION_MAP).filter(([, v]) => v.field);
 
+// APS27 uses different contribution windows for different existing subsections.
+// The same policy is used by the prompt, the review card, and approval logic.
+const APS27_PERIOD_POLICY = {
+  terms: "Teaching / Societal Benefits / Behavior: 2-semester cycle (Term 261 + upcoming spring term)",
+  calendar: "Interdisciplinary Research (R3) & Research Leadership (R6): 1 calendar year (Jan–Dec 2026)",
+  industry: "Industry Engagement (R4) & Commercialization (R5): Sep 1, 2026 – Aug 31, 2027",
+};
+
+function aps27PeriodGroup(code) {
+  if (!code) return null;
+  const meta = SUBSECTION_MAP[code];
+  if (meta && ["teaching", "societal", "behavior"].includes(meta.section)) return "terms";
+  if (code === "R3" || code.startsWith("R6")) return "calendar";
+  if (code === "R4" || code === "R5") return "industry";
+  return null;
+}
+
+function aps27PeriodPolicyFor(code) {
+  const group = aps27PeriodGroup(code);
+  return group ? APS27_PERIOD_POLICY[group] : "APS27 period needs review for this subsection";
+}
+
+function aps27MonthYearMatches(text) {
+  const monthNames = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+  const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const matches = [];
+  let match;
+  const monthFirst = new RegExp("\\b(" + monthNames + ")\\s+(20\\d{2})\\b", "gi");
+  while ((match = monthFirst.exec(text)) !== null) matches.push({ year: Number(match[2]), month: shortMonths.indexOf(match[1].slice(0, 3).toLowerCase()) + 1 });
+  const yearFirst = /\\b(20\\d{2})[-/]([01]?\\d)\\b/g;
+  while ((match = yearFirst.exec(text)) !== null) matches.push({ year: Number(match[1]), month: Number(match[2]) });
+  const numericDate = /\\b(?:[0-3]?\\d)[/-]([01]?\\d)[/-](20\\d{2})\\b/g;
+  while ((match = numericDate.exec(text)) !== null) matches.push({ year: Number(match[2]), month: Number(match[1]) });
+  return matches.filter((item) => item.year && item.month >= 1 && item.month <= 12);
+}
+
+function assessAPS27Period(code, period) {
+  const raw = String(period || "").trim();
+  if (!raw) return { status: "review", label: "Period needed", detail: "Add the activity's term or date before approving." };
+  const text = raw.toLowerCase();
+  const group = aps27PeriodGroup(code);
+  const years = [...text.matchAll(/\\b(20\\d{2})\\b/g)].map((m) => Number(m[1]));
+  const termMatches = [...text.matchAll(/\\b(?:term\\s*)?([0-9]{3})\\b/g)].map((m) => m[1]);
+  const monthYears = aps27MonthYearMatches(text);
+
+  if (group === "terms") {
+    if (/\\b(?:term\\s*)?261\\b/.test(text) || /\\b(?:term\\s*)?262\\b/.test(text) || /upcoming\\s+spring|spring\\s+term/.test(text)) {
+      return { status: "eligible", label: "Within APS27 term cycle", detail: APS27_PERIOD_POLICY.terms };
+    }
+    if (termMatches.some((term) => term.startsWith("25") || term.startsWith("24") || term.startsWith("27"))) {
+      return { status: "outside", label: "Outside APS27 term cycle", detail: APS27_PERIOD_POLICY.terms };
+    }
+    if (years.some((year) => year < 2026 || year > 2027)) {
+      return { status: "outside", label: "Outside APS27 term cycle", detail: APS27_PERIOD_POLICY.terms };
+    }
+    return { status: "review", label: "Confirm the KFUPM term", detail: APS27_PERIOD_POLICY.terms };
+  }
+
+  if (group === "calendar") {
+    if (/\\b(?:term\\s*)?261\\b/.test(text) || years.includes(2026)) {
+      return { status: "eligible", label: "Within 2026 calendar year", detail: APS27_PERIOD_POLICY.calendar };
+    }
+    if (/\\b(?:term\\s*)?262\\b/.test(text) || years.some((year) => year !== 2026)) {
+      return { status: "outside", label: "Outside the 2026 calendar year", detail: APS27_PERIOD_POLICY.calendar };
+    }
+    return { status: "review", label: "Confirm the activity date", detail: APS27_PERIOD_POLICY.calendar };
+  }
+
+  if (group === "industry") {
+    if (monthYears.length === 0) {
+      if (years.some((year) => year === 2026 || year === 2027)) return { status: "review", label: "Add month and date", detail: APS27_PERIOD_POLICY.industry };
+      return { status: "outside", label: "Outside APS27 industry window", detail: APS27_PERIOD_POLICY.industry };
+    }
+    const eligible = monthYears.some(({ year, month }) => (year === 2026 && month >= 9) || (year === 2027 && month <= 8));
+    const outside = monthYears.some(({ year, month }) => year < 2026 || (year === 2026 && month <= 8) || (year === 2027 && month >= 9) || year > 2027);
+    if (eligible && !outside) return { status: "eligible", label: "Within APS27 industry window", detail: APS27_PERIOD_POLICY.industry };
+    if (outside) return { status: "outside", label: "Outside APS27 industry window", detail: APS27_PERIOD_POLICY.industry };
+  }
+
+  return { status: "review", label: "Period needs review", detail: aps27PeriodPolicyFor(code) };
+}
+
+
 function isSubsectionEmpty(cycleData, code) {
   const meta = SUBSECTION_MAP[code];
   if (!meta || !meta.field) return null; // not applicable (auto-filled or single-value field)
@@ -5141,6 +5224,7 @@ function PendingEvidenceList({ pending, onApprovePending, onDiscardPending, onCo
   const [expandedPendingId, setExpandedPendingId] = useState(null);
   const [commentDrafts, setCommentDrafts] = useState({});
   const [bulletDrafts, setBulletDrafts] = useState({});
+  const [periodDrafts, setPeriodDrafts] = useState({});
 
   if (pending.length === 0) return null;
 
@@ -5151,6 +5235,9 @@ function PendingEvidenceList({ pending, onApprovePending, onDiscardPending, onCo
                 const relation = ev.relation || getEvidenceRelation(ev, ev.relationCode);
         const subsectionLabel = ev.relationCode && SUBSECTION_MAP[ev.relationCode] ? SUBSECTION_MAP[ev.relationCode].label : "this subsection";
         const reviewedText = bulletDrafts[ev.id] ?? relation.bulletText ?? ev.contributionSummary ?? ev.bulletText ?? "";
+        const period = periodDrafts[ev.id] ?? ev.period ?? "";
+        const periodCheck = assessAPS27Period(ev.relationCode, period);
+        const periodColor = periodCheck.status === "eligible" ? GREEN : periodCheck.status === "outside" ? RED : AMBER;
 return (
           <div key={ev.id} style={{ background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 5, padding: "11px 14px", marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
@@ -5164,12 +5251,21 @@ return (
               onChange={(e) => setBulletDrafts({ ...bulletDrafts, [ev.id]: e.target.value })}
               style={{ ...inputStyle, minHeight: 50, marginBottom: 4, background: "#fff", fontSize: 12.5 }}
             />
-            <div style={{ fontSize: 11, color: "#6B5015", marginBottom: 10 }}>
-              {ev.period ? `Period: ${ev.period}` : "No period set"}{ev.center ? ` · Partner: ${ev.center}` : ""}
+            <div style={{ fontSize: 11, color: "#6B5015", marginBottom: 6 }}>
+              Reviewing <strong>{ev.relationCode}</strong> — {subsectionLabel}. The same evidence is reviewed separately in every tagged subsection.
+            </div>
+            <input
+              value={period}
+              onChange={(e) => setPeriodDrafts({ ...periodDrafts, [ev.id]: e.target.value })}
+              placeholder="Activity term/date, e.g. Term 261 or September 2026"
+              style={{ ...inputStyle, maxWidth: "100%", marginBottom: 4, background: "#fff", fontSize: 12 }}
+            />
+            <div style={{ fontSize: 11, color: periodColor, marginBottom: 10 }}>
+              {periodCheck.label} · {periodCheck.detail}{ev.center ? ` · Partner: ${ev.center}` : ""}
             </div>
 
             <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => onApprovePending(ev.id, ev.relationCode, reviewedText)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: GREEN, color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                            <button onClick={() => onApprovePending(ev.id, ev.relationCode, reviewedText, period)} disabled={periodCheck.status !== "eligible"} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: periodCheck.status === "eligible" ? GREEN : "#C7CCD3", color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: periodCheck.status === "eligible" ? "pointer" : "default" }}>
                                 <Check size={12} /> Approve for this subsection
               </button>
               <button onClick={() => setExpandedPendingId(isExpanded ? null : ev.id)} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 3, padding: "7px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
@@ -5427,6 +5523,7 @@ function App() {
         "Pay particular attention to R3 vs R6_LEADING: if the person contributed to, participated in, joined, or was a member of an interdisciplinary or collaborative initiative WITHOUT actually leading or founding it, that belongs in R3 (Interdisciplinary Research) — not R6_LEADING, which is reserved specifically for cases where this person is the actual leader, PI, founder, or organizer. Read the wording carefully: \"contributed to initiating\" or \"joined\" is R3; \"founded,\" \"leads,\" or \"initiated as PI\" is R6_LEADING.\n\n" +
                         "Use a broad contextual matching policy across the existing APS subsections. One activity may support several subsections, even when a subsection is not its primary purpose, if the connection is reasonable and defensible from the source. For example, professional conference attendance may support research engagement, professional/community engagement, a positive working environment, presence and accessibility, and active participation when the source and context support those interpretations. Return all such existing subsection codes so the user can review each one independently. Do not create any new subsection, do not invent a role, and do not convert attendance into organizing, leadership, mentoring, or formal recognition unless the source explicitly supports that role.\n\n" +
         "For the period of each activity: prefer a KFUPM term code (e.g. \"261\") over an exact calendar date whenever the source lets you identify or infer the term — a term code is the standard convention here, not a full date. Only fall back to a specific date (YYYY-MM-DD or month/year) if no term is identifiable and a literal date is explicitly stated. If neither a term nor a date is determinable, leave period as an empty string — do not guess or invent either one.\n\n" +
+        "APS27 applies different contribution windows to different existing subsections: Teaching, Societal Benefits, and Behavior use the two-semester cycle (Term 261 plus the upcoming spring term); R3 and R6 use Jan–Dec 2026; R4 and R5 use Sep 1, 2026–Aug 31, 2027. Extract the activity's own term/date, not the upload date or document access date. The app checks the same activity separately against each subsection's window.\n\n" +
         "If R3 is among an activity's subsections, also identify the partner center, department, or institution it's jointly owned with (e.g. \"IRC-IMR\" or \"Bahir Dar University, Ethiopia\") for that activity's \"center\" field.\n\n" +
                 "For EACH activity, write a concise contributionSummary of one or two sentences. It must state what the faculty member did and why it is relevant, using only information supported by the source. This is the proposed text that the user will review separately for every suggested subsection.\n\n" +
         "Also give an overall one-sentence summary of what this source document is (e.g. \"Annual committee activity report listing service contributions\").\n\n" +
@@ -5539,13 +5636,20 @@ return {
     }));
   }
 
-function approveEvidence(id, relationCode, overrideBulletText) {
+function approveEvidence(id, relationCode, overrideBulletText, overridePeriod) {
     const ev = cycleData.evidenceInbox.find((e) => e.id === id);
     const meta = relationCode && SUBSECTION_MAP[relationCode];
     const relation = ev && meta ? getEvidenceRelation(ev, relationCode) : null;
     if (!ev || !meta || !relation || relation.approved) return;
     const bulletText = (overrideBulletText != null ? overrideBulletText : relation.bulletText).trim();
     if (!bulletText) return;
+    const period = (overridePeriod != null ? overridePeriod : ev.period || "").trim();
+    const periodCheck = assessAPS27Period(relationCode, period);
+    if (periodCheck.status !== "eligible") {
+      setExtractError(`Before approving this evidence for ${relationCode}, confirm a period inside the APS27 window. ${periodCheck.detail}`);
+      return;
+    }
+    setExtractError("");
     setData((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
       const cd = next.cycles[next.activeCycle];
@@ -5553,7 +5657,7 @@ function approveEvidence(id, relationCode, overrideBulletText) {
       if (!live) return next;
       const liveRelation = getEvidenceRelation(live, relationCode);
       if (liveRelation.approved) return next;
-      const periodSuffix = live.period ? ` (${live.period})` : "";
+      const periodSuffix = period ? ` (${period})` : "";
       const bulletLine = bulletText + periodSuffix;
       if (meta.isProjectRow) {
         cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), { center: live.center || "", title: bulletLine }];
@@ -5565,7 +5669,7 @@ function approveEvidence(id, relationCode, overrideBulletText) {
       const allApproved = (live.subsections || []).every((code) => getEvidenceRelation({ ...live, subsectionApprovals }, code).approved);
       cd.evidenceInbox = cd.evidenceInbox.map((e) => (
         e.id === id
-          ? { ...e, bulletText, subsectionApprovals, approved: allApproved, ...(allApproved ? { approvedAt: new Date().toISOString() } : {}) }
+          ? { ...e, bulletText, period, subsectionApprovals, approved: allApproved, ...(allApproved ? { approvedAt: new Date().toISOString() } : {}) }
           : e
       ));
       return next;
@@ -5706,7 +5810,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
           </div>
         </div>
 
-        <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: -12, marginBottom: 20, lineHeight: 1.5 }}>{cycleData.cyclePeriodNote}</div>
+        <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: -12, marginBottom: 20, lineHeight: 1.5 }}><div>{cycleData.cyclePeriodNote}</div><div style={{ marginTop: 5, color: MUTED }}>The same evidence may appear under several existing subsections. Each subsection has its own APS27 period check and its own approval.</div></div>
 
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
 
@@ -7736,7 +7840,8 @@ function App() {
               summary: o.summary || "",
               bulletText: parsed.bulletText,
               subsections: validSubsections,
-              period: "",
+              period: o.year ? String(o.year) : "",
+              subsectionApprovals: Object.fromEntries(validSubsections.map((code) => [code, { approved: false, bulletText: parsed.bulletText, comment: "" }])),
               approved: false,
               addedAt: new Date().toISOString(),
             });
