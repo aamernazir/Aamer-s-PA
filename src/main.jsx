@@ -179,7 +179,7 @@ if (!window.storage) {
 
   window.storage = {
 
-installAiFallback(nativeFetch);    async get(key, shared = false) {
+async get(key, shared = false) {
       return useCloudOrLocal(
         () => cloudStorage.get(key, shared),
         () => localStorageAdapter.get(key),
