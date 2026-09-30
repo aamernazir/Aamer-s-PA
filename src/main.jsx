@@ -1,4 +1,4 @@
-import { installAiFallback } from "./ai-providers.js/ai-providers.js";
+
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "../an-personal-assistant.jsx";
