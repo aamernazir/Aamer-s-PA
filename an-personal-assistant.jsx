@@ -24,6 +24,7 @@ const HUB_MODULES = [
   { id: "strategic", number: "02", name: "Strategic Positioning", icon: TrendingUp, description: "Funding, competitive landscape, and field trends — all in one place." },
   { id: "aps", number: "03", name: "Annual Performance System (APS)", icon: BarChart3, description: "Self-performance evaluation — Teaching, Research, Societal Benefits, Behavior." },
   { id: "archive", number: "04", name: "Research Intelligence", icon: Sparkles, description: "Every paper and patent, citation tracking, peer benchmarking, growth advice, and skill development — the full picture of your research and how to grow it." },
+  { id: "mailbox", number: "05", name: "Mailbox", icon: Inbox, description: "Read-only email triage — important messages, deadlines, activities, and routing." },
 ];
 
 
@@ -8696,6 +8697,232 @@ function App() {
 
   return App;
 })();
+
+const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
+const MAILBOX_ARCHIVE_STORAGE_KEY = "an2r-mailbox-archive-v1";
+
+function mailboxItemId(item) {
+  return String(item?.id || ((item?.subject || "message") + "-" + (item?.receivedAt || "")));
+}
+
+function mailboxText(item) {
+  return [item?.subject, item?.from, item?.snippet, ...(item?.deadlineHints || [])].filter(Boolean).join(" ");
+}
+
+function mailboxProjectReferences(item) {
+  return [...new Set((mailboxText(item).match(/\b[A-Z]{2}\d{4,}\b/gi) || []).map((value) => value.toUpperCase()))];
+}
+
+function mailboxCategory(item) {
+  const text = mailboxText(item).toLowerCase();
+  if (/accept|accepted|decision|revise|revision|reviewer|review invitation|editorial/.test(text)) return "Publication / review";
+  if (/project|grant|funding|work package|milestone/.test(text)) return "Project";
+  if (/conference|award|teaching|service|leadership|committee|outreach|contribution|certificate/.test(text)) return "Academic activity";
+  if (/deadline|due date|respond by|response by/.test(text)) return "Deadline";
+  return "Academic message";
+}
+
+function mailboxSuggestions(item) {
+  const text = mailboxText(item).toLowerCase();
+  const references = mailboxProjectReferences(item);
+  const suggestions = [];
+  if (references.length || /project|grant|funding|work package|milestone/.test(text)) {
+    suggestions.push({ id: "projects", label: "Module 01 · Project Dashboard", reason: references.length ? "Project reference detected: " + references.join(", ") : "Project or grant activity detected." });
+  }
+  if (/conference|award|teaching|service|leadership|committee|outreach|contribution|certificate|activity/.test(text)) {
+    suggestions.push({ id: "aps", label: "Module 03 · APS", reason: "Potential activity or contribution for a future APS cycle." });
+  }
+  if (/journal|manuscript|review|reviewer|revision|editorial|accept|accepted|publication|paper|patent/.test(text) || !suggestions.length) {
+    suggestions.push({ id: "archive", label: "Module 04 · Research Intelligence", reason: "Publication, review, or long-term academic record detected." });
+  }
+  return suggestions;
+}
+
+function mailboxDate(value) {
+  if (!value) return "Date not available";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(parsed);
+}
+
+function mailboxRouteLabel(route) {
+  if (route === "projects") return "Project Dashboard";
+  if (route === "archive") return "Research Intelligence";
+  if (route?.startsWith("aps:")) return "APS · " + route.slice(4);
+  return route || "Mailbox";
+}
+
+function MailboxModule({ onOpenModule }) {
+  const [items, setItems] = useState([]);
+  const [archive, setArchive] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [apsCycle, setApsCycle] = useState("APS27");
+
+  async function loadMailbox() {
+    setLoading(true);
+    try {
+      const [scanResult, archiveResult, apsResult] = await Promise.all([
+        window.storage.get(MAILBOX_SCAN_STORAGE_KEY),
+        window.storage.get(MAILBOX_ARCHIVE_STORAGE_KEY),
+        window.storage.get("am2r-aps-v1"),
+      ]);
+      const storedArchive = archiveResult?.value ? JSON.parse(archiveResult.value) : {};
+      const scanItems = scanResult?.value ? (JSON.parse(scanResult.value).items || []) : [];
+      const scanIds = new Set(scanItems.map(mailboxItemId));
+      const archivedItems = Object.values(storedArchive).filter((item) => !scanIds.has(mailboxItemId(item)));
+      setArchive(storedArchive);
+      setItems([...scanItems, ...archivedItems]);
+      if (apsResult?.value) {
+        const apsData = JSON.parse(apsResult.value);
+        if (apsData.activeCycle) setApsCycle(apsData.activeCycle);
+      }
+      setMessage(scanItems.length ? "Mailbox refreshed from the latest Gmail scan." : "No scanned Gmail messages yet. Connect Gmail and use Scan journal emails above.");
+    } catch (error) {
+      setMessage(error?.message || "Mailbox could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMailbox();
+    const refresh = () => loadMailbox();
+    window.addEventListener("an-mailbox-updated", refresh);
+    return () => window.removeEventListener("an-mailbox-updated", refresh);
+  }, []);
+
+  async function saveRecord(item, approvedRoutes = [], priority) {
+    const id = mailboxItemId(item);
+    const previous = archive[id] || {};
+    const record = {
+      ...item,
+      id,
+      category: previous.category || mailboxCategory(item),
+      projectReferences: previous.projectReferences || mailboxProjectReferences(item),
+      suggestedRoutes: mailboxSuggestions(item).map((route) => route.id),
+      approvedRoutes: [...new Set([...(previous.approvedRoutes || []), ...approvedRoutes])],
+      priority: priority === undefined ? !!previous.priority : priority,
+      archivedAt: previous.archivedAt || new Date().toISOString(),
+      lastReviewedAt: new Date().toISOString(),
+    };
+    const nextArchive = { ...archive, [id]: record };
+    await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(nextArchive));
+    setArchive(nextArchive);
+    setItems((current) => current.map((entry) => mailboxItemId(entry) === id ? record : entry));
+    return record;
+  }
+
+  async function approveRoute(item, routeId) {
+    const destination = routeId === "aps" ? "aps:" + apsCycle : routeId;
+    try {
+      await saveRecord(item, [destination]);
+      setMessage("Saved and routed to " + mailboxRouteLabel(destination) + ".");
+    } catch (error) {
+      setMessage(error?.message || "The route could not be saved.");
+    }
+  }
+
+  async function approveAll(item) {
+    try {
+      const destinations = mailboxSuggestions(item).map((route) => route.id === "aps" ? "aps:" + apsCycle : route.id);
+      await saveRecord(item, destinations);
+      setMessage("Saved and linked to all suggested destinations.");
+    } catch (error) {
+      setMessage(error?.message || "The routes could not be saved.");
+    }
+  }
+
+  async function togglePriority(item) {
+    const existing = archive[mailboxItemId(item)] || {};
+    try { await saveRecord(item, [], !existing.priority); }
+    catch (error) { setMessage(error?.message || "Could not update priority."); }
+  }
+
+  const query = search.trim().toLowerCase();
+  const visibleItems = items.filter((item) => {
+    const saved = archive[mailboxItemId(item)] || item;
+    const approved = saved.approvedRoutes || [];
+    const matchesFilter = filter === "all" || (filter === "priority" && saved.priority) || (filter === "unrouted" && !approved.length) || (filter === "deadlines" && (item.deadlineHints || []).length);
+    const matchesSearch = !query || mailboxText(item).toLowerCase().includes(query);
+    return matchesFilter && matchesSearch;
+  });
+  const priorityCount = items.filter((item) => archive[mailboxItemId(item)]?.priority).length;
+  const unroutedCount = items.filter((item) => !(archive[mailboxItemId(item)]?.approvedRoutes || []).length).length;
+  const deadlineCount = items.filter((item) => (item.deadlineHints || []).length).length;
+
+  return (
+    <div style={{ background: HUB_PAPER, minHeight: "calc(100vh - 48px)", padding: "28px 24px 70px" }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap", marginBottom: 22 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+              <div style={{ width: 48, height: 48, border: "2px solid " + HUB_INK, borderRadius: 8, display: "grid", placeItems: "center", color: HUB_TEAL }}><Inbox size={25} /></div>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: "0.14em", color: HUB_MUTED, textTransform: "uppercase", marginBottom: 3 }}>AN Personal Assistant · Module 05</div>
+                <h1 className="an-display" style={{ fontSize: 32, fontWeight: 700, color: HUB_INK, margin: 0 }}>Mailbox</h1>
+              </div>
+            </div>
+            <p style={{ margin: 0, maxWidth: 720, color: HUB_MUTED, lineHeight: 1.55 }}>Read-only Gmail triage. Important messages are summarized, kept as lightweight records, and linked to the relevant module after your approval.</p>
+          </div>
+          <button onClick={loadMailbox} disabled={loading} style={{ display: "flex", alignItems: "center", gap: 7, background: "#fff", border: "1px solid " + HUB_LINE, color: HUB_TEAL, borderRadius: 5, padding: "9px 13px", cursor: loading ? "default" : "pointer", fontWeight: 600 }}><RefreshCw size={15} className={loading ? "an-spin" : ""} /> Refresh mailbox</button>
+        </div>
+
+        <div style={{ background: "#EFF8F1", border: "1px solid #B9D8C1", borderRadius: 7, padding: "12px 14px", marginBottom: 18, color: "#315B43", fontSize: 13, lineHeight: 1.5 }}>
+          Gmail access is read-only. The mailbox stores message metadata, short snippets, deadline hints, and routing decisions—not attachments or complete email bodies. Use <strong>Scan journal emails</strong> in the secure banner above, then refresh this module.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginBottom: 18 }}>
+          {[{ id: "all", label: "All messages", count: items.length }, { id: "unrouted", label: "Needs routing", count: unroutedCount }, { id: "deadlines", label: "Has deadline", count: deadlineCount }, { id: "priority", label: "Priority", count: priorityCount }].map((card) => (
+            <button key={card.id} onClick={() => setFilter(card.id)} style={{ textAlign: "left", background: filter === card.id ? HUB_INK : "#fff", color: filter === card.id ? "#fff" : HUB_INK, border: "1px solid " + (filter === card.id ? HUB_INK : HUB_LINE), borderRadius: 7, padding: "12px 14px", cursor: "pointer" }}>
+              <div style={{ fontSize: 11, opacity: 0.72, marginBottom: 5 }}>{card.label}</div><div style={{ fontSize: 23, fontWeight: 700 }}>{card.count}</div>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ position: "relative", flex: "1 1 280px" }}><Search size={16} style={{ position: "absolute", left: 10, top: 10, color: HUB_MUTED }} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search sender, subject, project number..." style={{ width: "100%", padding: "9px 10px 9px 32px", border: "1px solid " + HUB_LINE, borderRadius: 5, background: "#fff", color: HUB_INK }} /></div>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, color: HUB_MUTED, fontSize: 13 }}>APS cycle <select value={apsCycle} onChange={(e) => setApsCycle(e.target.value)} style={{ border: "1px solid " + HUB_LINE, borderRadius: 5, padding: "8px 10px", background: "#fff", color: HUB_INK }}><option>APS27</option><option>APS28</option><option>Future APS</option></select></label>
+        </div>
+
+        {message && <div style={{ background: "#fff", border: "1px solid " + HUB_LINE, color: HUB_MUTED, borderRadius: 5, padding: "9px 12px", marginBottom: 14, fontSize: 13 }}>{message}</div>}
+
+        {!loading && !visibleItems.length && <div style={{ background: "#fff", border: "1px dashed #C7CCD3", borderRadius: 8, padding: "42px 22px", textAlign: "center", color: HUB_MUTED }}><Inbox size={32} style={{ color: HUB_TEAL, marginBottom: 10 }} /><div style={{ fontWeight: 600, color: HUB_INK, marginBottom: 6 }}>{items.length ? "No messages match this view" : "Your mailbox is ready"}</div><div style={{ fontSize: 13 }}>{items.length ? "Try another filter or search term." : "Connect Gmail and scan your journal/editorial messages from the secure banner above."}</div></div>}
+
+        <div style={{ display: "grid", gap: 12 }}>
+          {visibleItems.map((item) => {
+            const id = mailboxItemId(item);
+            const saved = archive[id] || {};
+            const suggestions = mailboxSuggestions(item);
+            const approved = saved.approvedRoutes || [];
+            const references = saved.projectReferences || mailboxProjectReferences(item);
+            return <article key={id} className="an-card" style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 8, padding: "16px 17px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 7 }}><span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: HUB_TEAL, background: "#EAF2F8", padding: "4px 7px", borderRadius: 4 }}>{saved.category || mailboxCategory(item)}</span>{approved.length ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Routed</span> : <span style={{ fontSize: 10, color: HUB_AMBER, background: "#FFF8E8", padding: "4px 7px", borderRadius: 4 }}>Needs review</span>}</div>
+                  <h2 style={{ fontSize: 16, lineHeight: 1.35, color: HUB_INK, margin: 0, overflowWrap: "anywhere" }}>{item.subject || "(No subject)"}</h2>
+                  <div style={{ fontSize: 12, color: HUB_MUTED, marginTop: 5 }}>{item.from || "Unknown sender"} · {mailboxDate(item.receivedAt)}</div>
+                </div>
+                <button onClick={() => togglePriority(item)} title="Toggle priority" style={{ border: "none", background: saved.priority ? "#FFF1D6" : "#F6F8FB", color: saved.priority ? HUB_AMBER : HUB_MUTED, borderRadius: 5, padding: "7px 9px", cursor: "pointer", flexShrink: 0 }}>{saved.priority ? "★" : "☆"}</button>
+              </div>
+              {item.snippet && <p style={{ fontSize: 13, lineHeight: 1.55, color: "#465160", margin: "11px 0 9px" }}>{item.snippet}</p>}
+              {(item.deadlineHints || []).length > 0 && <div style={{ background: "#FFF8E8", border: "1px solid #E6C77A", color: "#6B5015", borderRadius: 5, padding: "8px 10px", fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}><strong>Deadline hints:</strong> {item.deadlineHints.join(" · ")}</div>}
+              {references.length > 0 && <div style={{ fontSize: 12, color: HUB_TEAL, marginBottom: 10 }}>Project references: <span className="an-mono">{references.join(", ")}</span></div>}
+              <div style={{ borderTop: "1px solid #EEF0F2", paddingTop: 11 }}>
+                <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{suggestions.map((route) => { const routeKey = route.id === "aps" ? "aps:" + apsCycle : route.id; const isApproved = approved.includes(routeKey); return <button key={route.id} onClick={() => approveRoute(item, route.id)} disabled={isApproved} title={route.reason} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (isApproved ? "#9CC9AA" : HUB_LINE), background: isApproved ? "#EFF8F1" : "#fff", color: isApproved ? HUB_GREEN : HUB_TEAL, borderRadius: 5, padding: "7px 9px", fontSize: 12, cursor: isApproved ? "default" : "pointer" }}>{isApproved ? <Check size={13} /> : <Target size={13} />}{isApproved ? mailboxRouteLabel(routeKey) : route.label}</button>; })}<button onClick={() => approveAll(item)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Approve all</button></div>
+              </div>
+              {approved.length > 0 && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 11, paddingTop: 10, borderTop: "1px solid #EEF0F2" }}><div style={{ fontSize: 12, color: HUB_GREEN }}>Saved links: {approved.map(mailboxRouteLabel).join(" · ")}</div><div style={{ display: "flex", gap: 6 }}>{[...new Set(approved.map((route) => route.startsWith("aps:") ? "aps" : route))].map((moduleId) => <button key={moduleId} onClick={() => onOpenModule && onOpenModule(moduleId)} style={{ border: "1px solid #B9D8C1", background: "#fff", color: HUB_GREEN, borderRadius: 4, padding: "5px 8px", fontSize: 11, cursor: "pointer" }}>Open {moduleId === "aps" ? "APS" : moduleId === "projects" ? "Project Dashboard" : "Research Intelligence"}</button>)}</div></div>}
+            </article>;
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModuleFrame({ onBack, children }) {
   return (
     <div>
@@ -8725,6 +8952,9 @@ export default function App() {
   }
   if (activeModule === "archive") {
     return <ModuleFrame onBack={() => setActiveModule(null)}><PublicationArchiveModule /></ModuleFrame>;
+  }
+  if (activeModule === "mailbox") {
+    return <ModuleFrame onBack={() => setActiveModule(null)}><MailboxModule onOpenModule={setActiveModule} /></ModuleFrame>;
   }
 
   return <AssistantHub onOpenModule={setActiveModule} />;
