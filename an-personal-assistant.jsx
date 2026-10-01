@@ -8968,6 +8968,7 @@ function AssistantHub({ onOpenModule }) {
     projects: "am2r-projects-v1",
     aps: "am2r-aps-v1",
     archive: "am2r-publication-archive-v1",
+    mailbox: "an2r-mailbox-archive-v1",
   };
 
   function summarize(id, raw) {
@@ -9000,6 +9001,11 @@ function AssistantHub({ onOpenModule }) {
         const count = (d.outputs || []).length;
         if (count === 0) return "No outputs archived yet";
         return `${count} output${count === 1 ? "" : "s"} archived${d.expertiseSynthesis ? " · strengths analyzed" : ""}`;
+      }
+      if (id === "mailbox") {
+        const d = JSON.parse(raw);
+        const count = Object.keys(d || {}).length;
+        return count ? `${count} message${count === 1 ? "" : "s"} archived` : "No routed messages yet";
       }
     } catch (e) {
       return "—";
@@ -9068,7 +9074,7 @@ function AssistantHub({ onOpenModule }) {
         <div style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 6, padding: "12px 16px", marginTop: 20, marginBottom: 28, display: "flex", gap: 10, alignItems: "flex-start" }}>
           <Info size={15} color={HUB_TEAL} style={{ flexShrink: 0, marginTop: 1 }} />
           <div style={{ fontSize: 12.5, color: HUB_MUTED, lineHeight: 1.5 }}>
-            One tool, four modules, all in this window. Click any module below to open it — you'll come back here anytime via "AN Personal Assistant" at the top left.
+            One tool, five modules, all in this window. Click any module below to open it — you'll come back here anytime via "AN Personal Assistant" at the top left.
           </div>
         </div>
 
