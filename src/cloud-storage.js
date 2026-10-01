@@ -3,7 +3,6 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
-  reauthenticateWithPopup,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
@@ -33,14 +32,19 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+// Gmail has its own Firebase Auth session, so its Google account may differ
+// from the account that owns the Firestore cloud-sync data.
+const gmailApp = initializeApp(firebaseConfig, "gmail-auth");
+const gmailAuth = getAuth(gmailApp);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 const gmailProvider = new GoogleAuthProvider();
 gmailProvider.addScope("https://www.googleapis.com/auth/gmail.readonly");
-gmailProvider.setCustomParameters({ prompt: "consent" });
+gmailProvider.setCustomParameters({ prompt: "select_account" });
 
 let currentUser = null;
 let gmailAccessToken = null;
+let gmailAccountEmail = null;
 let authSettled = false;
 let authResolve;
 const authReady = new Promise((resolve) => { authResolve = resolve; });
@@ -59,7 +63,10 @@ function setError(error) {
 
 onAuthStateChanged(auth, (user) => {
   currentUser = user || null;
-  if (!user) gmailAccessToken = null;
+  if (!user) {
+    gmailAccessToken = null;
+    gmailAccountEmail = null;
+  }
   if (!authSettled) {
     authSettled = true;
     authResolve(currentUser);
@@ -69,20 +76,14 @@ onAuthStateChanged(auth, (user) => {
 });
 
 function collectionFor(user, shared) {
-  return shared
-    ? collection(db, "shared_state")
-    : collection(db, "users", user.uid, "state");
+  return shared ? collection(db, "shared_state") : collection(db, "users", user.uid, "state");
 }
-
 function docFor(user, key, shared) {
   return doc(collectionFor(user, shared), key);
 }
-
 async function requireUser() {
   await authReady;
-  if (!currentUser) {
-    throw new Error("Connect Google to enable cloud sync.");
-  }
+  if (!currentUser) throw new Error("Connect Google to enable cloud sync.");
   return currentUser;
 }
 
@@ -111,15 +112,9 @@ export const localStorageAdapter = {
 };
 
 export const cloudStorage = {
-  async waitForAuth() {
-    return authReady;
-  },
-  isSignedIn() {
-    return !!currentUser;
-  },
-  getStatus() {
-    return { user: currentUser, error: lastError };
-  },
+  async waitForAuth() { return authReady; },
+  isSignedIn() { return !!currentUser; },
+  getStatus() { return { user: currentUser, error: lastError }; },
   subscribe(listener) {
     listeners.add(listener);
     listener({ user: currentUser, error: lastError });
@@ -129,23 +124,21 @@ export const cloudStorage = {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   },
-  // Gmail access is separate from cloud sync. The short-lived OAuth token is
-  // kept in memory and is never written to storage.
+  // Gmail is read-only and independent from the Firestore account.
   async connectGmailReadonly() {
     if (!currentUser) throw new Error("Connect Google cloud sync first.");
-    const result = await reauthenticateWithPopup(currentUser, gmailProvider);
+    const result = await signInWithPopup(gmailAuth, gmailProvider);
     gmailAccessToken = GoogleAuthProvider.credentialFromResult(result)?.accessToken || null;
+    gmailAccountEmail = result.user?.email || null;
     if (!gmailAccessToken) throw new Error("Google did not return a Gmail access token.");
     return currentUser;
   },
-  getGmailAccessToken() {
-    return gmailAccessToken;
-  },
-  isGmailConnected() {
-    return !!gmailAccessToken;
-  },
+  getGmailAccessToken() { return gmailAccessToken; },
+  isGmailConnected() { return !!gmailAccessToken; },
+  getGmailAccountEmail() { return gmailAccountEmail; },
   async signOut() {
     await signOut(auth);
+    await signOut(gmailAuth);
   },
   async get(key, shared = false) {
     const user = await requireUser();
@@ -156,11 +149,7 @@ export const cloudStorage = {
   },
   async set(key, value, shared = false) {
     const user = await requireUser();
-    await setDoc(docFor(user, key, shared), {
-      value,
-      updatedAt: serverTimestamp(),
-      ownerUid: user.uid,
-    });
+    await setDoc(docFor(user, key, shared), { value, updatedAt: serverTimestamp(), ownerUid: user.uid });
     return { value };
   },
   async delete(key, shared = false) {
@@ -171,9 +160,7 @@ export const cloudStorage = {
   async list(prefix = "", shared = false) {
     const user = await requireUser();
     const snapshot = await getDocs(collectionFor(user, shared));
-    return {
-      keys: snapshot.docs.map((item) => item.id).filter((key) => key.startsWith(prefix)),
-    };
+    return { keys: snapshot.docs.map((item) => item.id).filter((key) => key.startsWith(prefix)) };
   },
   async migrateLocalData() {
     const { keys } = await localStorageAdapter.list("");
@@ -186,9 +173,7 @@ export const cloudStorage = {
       if (!remote) await this.set(key, local.value, shared);
     }
   },
-  reportError(error) {
-    setError(error);
-  },
+  reportError(error) { setError(error); },
 };
 
 export function isFirebasePermissionError(error) {
