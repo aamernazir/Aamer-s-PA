@@ -3,6 +3,7 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
+  reauthenticateWithPopup,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
@@ -34,8 +35,12 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
+const gmailProvider = new GoogleAuthProvider();
+gmailProvider.addScope("https://www.googleapis.com/auth/gmail.readonly");
+gmailProvider.setCustomParameters({ prompt: "consent" });
 
 let currentUser = null;
+let gmailAccessToken = null;
 let authSettled = false;
 let authResolve;
 const authReady = new Promise((resolve) => { authResolve = resolve; });
@@ -54,6 +59,7 @@ function setError(error) {
 
 onAuthStateChanged(auth, (user) => {
   currentUser = user || null;
+  if (!user) gmailAccessToken = null;
   if (!authSettled) {
     authSettled = true;
     authResolve(currentUser);
@@ -108,30 +114,39 @@ export const cloudStorage = {
   async waitForAuth() {
     return authReady;
   },
-
   isSignedIn() {
     return !!currentUser;
   },
-
   getStatus() {
     return { user: currentUser, error: lastError };
   },
-
   subscribe(listener) {
     listeners.add(listener);
     listener({ user: currentUser, error: lastError });
     return () => listeners.delete(listener);
   },
-
   async signIn() {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   },
-
+  // Gmail access is separate from cloud sync. The short-lived OAuth token is
+  // kept in memory and is never written to storage.
+  async connectGmailReadonly() {
+    if (!currentUser) throw new Error("Connect Google cloud sync first.");
+    const result = await reauthenticateWithPopup(currentUser, gmailProvider);
+    gmailAccessToken = GoogleAuthProvider.credentialFromResult(result)?.accessToken || null;
+    if (!gmailAccessToken) throw new Error("Google did not return a Gmail access token.");
+    return currentUser;
+  },
+  getGmailAccessToken() {
+    return gmailAccessToken;
+  },
+  isGmailConnected() {
+    return !!gmailAccessToken;
+  },
   async signOut() {
     await signOut(auth);
   },
-
   async get(key, shared = false) {
     const user = await requireUser();
     const snapshot = await getDoc(docFor(user, key, shared));
@@ -139,7 +154,6 @@ export const cloudStorage = {
     const data = snapshot.data();
     return typeof data.value === "string" ? { value: data.value } : null;
   },
-
   async set(key, value, shared = false) {
     const user = await requireUser();
     await setDoc(docFor(user, key, shared), {
@@ -149,29 +163,21 @@ export const cloudStorage = {
     });
     return { value };
   },
-
   async delete(key, shared = false) {
     const user = await requireUser();
     await deleteDoc(docFor(user, key, shared));
     return true;
   },
-
   async list(prefix = "", shared = false) {
     const user = await requireUser();
     const snapshot = await getDocs(collectionFor(user, shared));
     return {
-      keys: snapshot.docs
-        .map((item) => item.id)
-        .filter((key) => key.startsWith(prefix)),
+      keys: snapshot.docs.map((item) => item.id).filter((key) => key.startsWith(prefix)),
     };
   },
-
-  // Existing browser data is copied only when a cloud document does not exist.
-  // This protects the user's local data while making the first migration easy.
   async migrateLocalData() {
     const { keys } = await localStorageAdapter.list("");
     for (const key of keys) {
-      // Never copy the Gemini API key into Firestore.
       if (key === "gemini-api-key") continue;
       const local = await localStorageAdapter.get(key);
       if (!local) continue;
@@ -180,7 +186,6 @@ export const cloudStorage = {
       if (!remote) await this.set(key, local.value, shared);
     }
   },
-
   reportError(error) {
     setError(error);
   },
