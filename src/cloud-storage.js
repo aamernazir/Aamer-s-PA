@@ -29,6 +29,16 @@ const firebaseConfig = {
   measurementId: "G-TSS61RVCZW",
 };
 
+const ALLOWED_ACCOUNT_EMAILS = new Set([
+  "aamernazir.an@gmail.com",
+  "rajaaamer30@gmail.com",
+]);
+
+function isAllowedAccount(userOrEmail) {
+  const email = typeof userOrEmail === "string" ? userOrEmail : userOrEmail?.email;
+  return ALLOWED_ACCOUNT_EMAILS.has(String(email || "").trim().toLowerCase());
+}
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -62,6 +72,17 @@ function setError(error) {
 }
 
 onAuthStateChanged(auth, (user) => {
+  if (user && !isAllowedAccount(user)) {
+    currentUser = null;
+    lastError = new Error("This Google account is not authorized for AN Personal Assistant.");
+    if (!authSettled) {
+      authSettled = true;
+      authResolve(null);
+    }
+    notify();
+    signOut(auth).catch(() => {});
+    return;
+  }
   currentUser = user || null;
   if (!user) {
     gmailAccessToken = null;
@@ -122,12 +143,20 @@ export const cloudStorage = {
   },
   async signIn() {
     const result = await signInWithPopup(auth, googleProvider);
+    if (!isAllowedAccount(result.user)) {
+      await signOut(auth);
+      throw new Error("This Google account is not authorized for AN Personal Assistant.");
+    }
     return result.user;
   },
   // Gmail is read-only and independent from the Firestore account.
   async connectGmailReadonly() {
     if (!currentUser) throw new Error("Connect Google cloud sync first.");
     const result = await signInWithPopup(gmailAuth, gmailProvider);
+    if (!isAllowedAccount(result.user)) {
+      await signOut(gmailAuth);
+      throw new Error("This Gmail account is not on the approved account list.");
+    }
     gmailAccessToken = GoogleAuthProvider.credentialFromResult(result)?.accessToken || null;
     gmailAccountEmail = result.user?.email || null;
     if (!gmailAccessToken) throw new Error("Google did not return a Gmail access token.");
