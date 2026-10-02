@@ -1,3 +1,4 @@
+import { migrateLocalData } from "./migrate-local-data.js";
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider,
@@ -192,15 +193,7 @@ export const cloudStorage = {
     return { keys: snapshot.docs.map((item) => item.id).filter((key) => key.startsWith(prefix)) };
   },
   async migrateLocalData() {
-    const { keys } = await localStorageAdapter.list("");
-    for (const key of keys) {
-      if (key === "gemini-api-key") continue;
-      const local = await localStorageAdapter.get(key);
-      if (!local) continue;
-      const shared = key.startsWith("shared-project:");
-      const remote = await this.get(key, shared);
-      if (!remote) await this.set(key, local.value, shared);
-    }
+    await migrateLocalData(localStorageAdapter, this);
   },
   reportError(error) { setError(error); },
 };
