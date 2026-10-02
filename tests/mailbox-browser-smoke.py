@@ -27,12 +27,12 @@ with sync_playwright() as p:
   url=route.request.url;calls.append(url)
   if '/messages?' in url:
    ids=['a','b'] if len(detail_ids) else ['a']
-   data={'messages':[{'id':i,'threadId':'thread-1'} for i in ids]}
+   data={'messages':[{'id':i,'threadId':'thread-'+i} for i in ids]}
   else:
    mid=url.split('/messages/')[1].split('?')[0];detail_ids.append(mid)
    subject='Paper accepted for publication' if mid=='b' else 'Manuscript '+mid
    body=b'<p>The journal accepted this paper for publication. This completed research outcome can be archived.</p>' if mid=='b' else b'<p>Review deadline November 15, 2026.</p><img src="https://tracking.invalid/pixel" onerror="window.emailExecuted=true"><script>window.emailExecuted=true</script>'
-   data={'id':mid,'threadId':'thread-1','internalDate':'1790899200000','payload':{'headers':[{'name':'Subject','value':subject},{'name':'From','value':'editor@example.test'}],'mimeType':'text/html','body':{'data':base64.urlsafe_b64encode(body).decode()}}}
+   data={'id':mid,'threadId':'thread-'+mid,'internalDate':'1790899200000','payload':{'headers':[{'name':'Subject','value':subject},{'name':'From','value':'editor@example.test'}],'mimeType':'text/html','body':{'data':base64.urlsafe_b64encode(body).decode()}}}
   route.fulfill(status=200,content_type='application/json',body=json.dumps(data))
  page.route('https://gmail.googleapis.com/**',gmail)
  page.goto(os.environ.get('MAILBOX_TEST_URL', 'http://127.0.0.1:5173/Aamer-s-PA/'))
@@ -44,13 +44,13 @@ with sync_playwright() as p:
  assert panel.get_by_role('button',name='1 year',exact=True).get_attribute('aria-pressed')=='true'
  assert panel.get_by_label('Mailbox scope').input_value()=='focused'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 0 skipped · 1 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 0 older conversation messages hidden · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a']
  assert 'category%3Aprimary' in calls[0]
  assert 'manuscript' in calls[0]
  assert panel.get_by_role('button',name='1 year',exact=True).get_attribute('aria-pressed')=='true'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 1 skipped · 0 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 0 older conversation messages hidden · 1 skipped · 0 with deadlines').wait_for()
  assert detail_ids==['a','b'],detail_ids
  article_b=page.locator('article').filter(has_text='Paper accepted for publication')
  article_b.get_by_role('button',name='Review transfer to Research Intelligence',exact=True).click()
@@ -82,7 +82,7 @@ with sync_playwright() as p:
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-10-02')
  panel.get_by_label('Force rescan').check()
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 auto-excluded · 0 skipped · 1 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 auto-excluded · 0 older conversation messages hidden · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a','b','a','b'],detail_ids
  panel.get_by_text('Scan history (3)',exact=True).click()
  assert panel.get_by_role('row').count()==4

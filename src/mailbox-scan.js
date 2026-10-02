@@ -134,6 +134,25 @@ export function parsedDeadlineDates(item) {
   return [...new Map(results.map(date => [date.toISOString(), date])).values()];
 }
 
+function conversationKey(item) {
+  if (item?.threadId) return `thread:${item.threadId}`;
+  const sender = String(item?.from || "").match(/<([^>]+)>/)?.[1] || String(item?.from || "");
+  const subject = String(item?.subject || "").replace(/^\s*(?:(?:re|fw|fwd)\s*:\s*)+/i, "").replace(/\s+/g, " ").trim();
+  return `fallback:${sender.trim().toLowerCase()}|${subject.toLowerCase()}`;
+}
+
+export function latestConversationItems(source) {
+  const latest = new Map();
+  for (const item of source || []) {
+    const key = conversationKey(item);
+    const previous = latest.get(key);
+    const itemTime = Date.parse(item?.receivedAt || "") || 0;
+    const previousTime = Date.parse(previous?.receivedAt || "") || 0;
+    if (!previous || itemTime >= previousTime) latest.set(key, item);
+  }
+  return [...latest.values()];
+}
+
 // Focused scans require a current academic action, outcome, contribution or deadline.
 // This runs after Gmail's query because broad keywords alone still match newsletters.
 export function isFocusedMailboxMessage(item, now = new Date()) {
@@ -269,12 +288,14 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   }
   history.finishedAt = clock().toISOString();
   history.durationMs = Math.max(0, Date.parse(history.finishedAt) - Date.parse(history.startedAt));
+  const latestItems = latestConversationItems([...items.values()]);
+  history.superseded = items.size - latestItems.length;
   report(history.status === "completed" ? "complete" : history.status);
   return {
     version: 2, accountEmail: account,
     initialStartDate: mode === "initial" || (!previous.initialStartDate && options.period === "year") ? range.startDate : previous.initialStartDate,
     scanScope: scope,
-    updatedAt: history.finishedAt, processedMessageIds: [...known], items: [...items.values()],
+    updatedAt: history.finishedAt, processedMessageIds: [...known], items: latestItems,
     history: [history, ...(previous.history || [])].slice(0, 50),
   };
 }

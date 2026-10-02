@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFocusedMailboxMessage, parsedDeadlineDates, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
+import { isFocusedMailboxMessage, latestConversationItems, parsedDeadlineDates, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
 
 const now = new Date("2026-10-02T12:00:00Z");
 const message = (id, text = "Please respond by November 15, 2026.") => ({ id, threadId: "same-thread", internalDate: "1790899200000", snippet: "do not persist this snippet", payload: { headers: [{ name: "Subject", value: "Review invitation" }, { name: "From", value: "editor@example.test" }], mimeType: "text/plain", body: { data: Buffer.from(text).toString("base64url") }, parts: [{ filename: "private.txt", mimeType: "text/plain", body: { data: Buffer.from("private attachment deadline tomorrow").toString("base64url") } }] } });
@@ -45,18 +45,30 @@ test("scan period buttons map to clear date windows", () => {
   assert.throws(() => scanOptionsForPeriod("century", {}, now));
 });
 
-test("pagination analyzes every unique message, including replies within the same thread", async () => {
+test("pagination analyzes every unique message but retains only the latest reply in a thread", async () => {
   const f = fixture({ first: { messages: [{id:"a"}], nextPageToken:"next" }, next: {messages:[{id:"a"},{id:"b"}]} });
   const state = await run(f);
   assert.deepEqual(state.processedMessageIds, ["a", "b"]);
-  assert.equal(state.items.length, 2);
+  assert.equal(state.items.length, 1);
+  assert.equal(state.items[0].id, "b");
   assert.equal(state.history[0].analyzed, 2);
+  assert.equal(state.history[0].superseded, 1);
   assert.equal(state.history[0].deadlines, 2);
   assert.equal(state.history[0].skipped, 0);
   assert.equal(f.calls.length, 4);
   assert.equal(f.calls[2].searchParams.get("pageToken"), "next");
   const saved = JSON.stringify(state);
   for (const forbidden of ["test-only-token", "private attachment", "do not persist", "payload", "attachmentId"]) assert.ok(!saved.includes(forbidden));
+});
+
+test("conversation collapsing keeps unrelated mail from the same sender", () => {
+  const items = [
+    {id:"old",threadId:"thread-a",from:"Editor <editor@example.test>",subject:"Re: Paper",receivedAt:"2026-01-01T00:00:00Z"},
+    {id:"new",threadId:"thread-a",from:"Editor <editor@example.test>",subject:"Re: Paper",receivedAt:"2026-02-01T00:00:00Z"},
+    {id:"other",threadId:"thread-b",from:"Editor <editor@example.test>",subject:"Review invitation",receivedAt:"2026-01-15T00:00:00Z"},
+  ];
+  assert.deepEqual(latestConversationItems(items).map(item => item.id), ["new", "other"]);
+  assert.deepEqual(latestConversationItems(items.map(({threadId, ...item}) => item)).map(item => item.id), ["new", "other"]);
 });
 
 test("incremental reload skips saved IDs but analyzes a new reply and preserves older results", async () => {
@@ -72,7 +84,8 @@ test("incremental reload skips saved IDs but analyzes a new reply and preserves 
 });
 
 test("force rescan in broad mode refreshes messages in range without dropping results outside it", async () => {
-  const initial = await run(fixture({first:{messages:[{id:"a"},{id:"old"}]}}));
+  const old = message("old"); old.threadId = "older-unrelated-thread";
+  const initial = await run(fixture({first:{messages:[{id:"a"},{id:"old"}]}}, {old}));
   const next = await run(fixture({first:{messages:[{id:"a"}]}}, {a:message("a", "Nothing actionable here.")}), { previous: initial, options:{mode:"manual",scope:"all-primary",startDate:"2026-01-01",endDate:"2026-01-02",force:true} });
   assert.equal(next.history[0].analyzed, 1);
   assert.equal(next.history[0].skipped, 0);
