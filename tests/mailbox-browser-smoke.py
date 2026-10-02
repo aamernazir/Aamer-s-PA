@@ -43,11 +43,25 @@ with sync_playwright() as p:
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
  panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a']
+ assert 'category%3Aprimary' in calls[0]
  assert panel.get_by_label('Scan type').input_value()=='incremental'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
  panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 1 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a','b'],detail_ids
  assert page.get_by_text('Manuscript b',exact=True).count()==1
+ article_b=page.locator('article').filter(has_text='Manuscript b')
+ assert article_b.get_by_text('No archive destination recommended',exact=False).count()==1
+ assert article_b.get_by_text('Module 04',exact=False).count()==0
+ article_b.get_by_role('button',name='Keep · relevant',exact=True).click()
+ article_b.get_by_text('Kept',exact=True).wait_for()
+ article_a=page.locator('article').filter(has_text='Manuscript a')
+ article_a.get_by_role('button',name='Ignore',exact=True).click()
+ article_a.wait_for(state='detached')
+ page.get_by_role('button',name='Ignored 1',exact=True).click()
+ article_a=page.locator('article').filter(has_text='Manuscript a')
+ article_a.get_by_role('button',name='Restore to review',exact=True).click()
+ article_a.wait_for(state='detached')
+ page.get_by_role('button',name='Active messages 2',exact=True).click()
  panel.get_by_label('Scan type').select_option('manual')
  panel.get_by_label('Start date (UTC)',exact=True).fill('2026-10-02')
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-01-01')
@@ -78,5 +92,5 @@ with sync_playwright() as p:
  assert not remote_images,remote_images
  assert not page.evaluate('window.emailExecuted || false')
  assert not errors,errors
- print('PASS: full Mailbox UI; no automatic scans; default 12 months; incremental new-thread replies; inclusive manual range; force rescan; history; metadata-only persistence; storage failure; reload')
+ print('PASS: full Mailbox UI; Primary-only query; keep/ignore/restore triage; no premature archive route; incremental replies; manual/forced scans; metadata-only persistence; failure recovery; reload')
  browser.close()

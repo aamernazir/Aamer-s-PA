@@ -33,13 +33,13 @@ function gmailBody(payload) {
 }
 
 function deadlineHints(text) {
-  const source = String(text || "");
+  const source = String(text || "")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\b\S*(?:utm_[a-z]+|mc_(?:cid|eid)|UNIQID)\S*\b/gi, " ")
+    .replace(/\s+/g, " ");
   const hints = [];
-  const month = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{1,2}(?:,?\\s+20\\d{2})?";
   [
-    new RegExp("[^.]{0,80}(?:deadline|due date|respond by|response by|review due|revision due)[^.]{0,100}", "ig"),
-    new RegExp("[^.]{0,60}(?:" + month + ")[^.]{0,80}", "ig"),
-    /[^.]{0,60}\b\d{1,2}[/-]\d{1,2}[/-]20\d{2}\b[^.]{0,80}/ig,
+    /[^.!?]{0,80}(?:deadline|due date|respond by|response by|review due|revision due|submit(?:ted|sion)? by)[^.!?]{0,120}/ig,
   ].forEach((pattern) => (source.match(pattern) || []).forEach((match) => {
     const clean = match.replace(/\s+/g, " ").trim();
     if (clean && !hints.includes(clean)) hints.push(clean);
@@ -64,7 +64,7 @@ export function scanRange({ mode = "initial", months = 12, startDate, endDate } 
   }
   const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
   if (!valid(startDate) || !valid(endDate) || startDate > endDate) throw new Error("Choose a valid start and end date, with start on or before end.");
-  return { startDate, endDate, query: `after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
+  return { startDate, endDate, query: `category:primary after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
 }
 
 // Explicit projection: raw payloads, bodies, attachments and tokens never enter saved state.

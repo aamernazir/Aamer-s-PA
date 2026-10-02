@@ -127,7 +127,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
 
   return <section aria-label="Mailbox scan controls" style={{ background: "#fff", border: "1px solid #D9E1EA", borderRadius: 7, padding: 16, marginBottom: 18 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 10px" }}>Scan Gmail</h2>
-    <p style={{ fontSize: 13, color: "#64748B" }}>Scans run only when you press Scan Gmail. Incremental scans skip saved message IDs and analyze new replies separately, even in existing threads.</p>
+    <p style={{ fontSize: 13, color: "#64748B" }}>Scans run only when you press Scan Gmail and include only Gmail’s Primary category. Promotions, Social, Updates, and Forums are excluded. Incremental scans skip saved message IDs and analyze new replies separately, even in existing threads.</p>
     {saved?.accountEmail && <p style={{ fontSize: 12 }}>Mailbox account: {saved.accountEmail}</p>}
     <fieldset disabled={busy || loading || saved === null} style={{ border: 0, margin: 0, padding: 0, display: "flex", alignItems: "end", flexWrap: "wrap", gap: 12 }}>
       <label>Scan type<br /><select style={field} value={mode} onChange={e => setMode(e.target.value)}>
