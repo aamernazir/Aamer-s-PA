@@ -13,11 +13,16 @@ const APPLICATION_KEYS = new Set([
   "an2r-mailbox-archive-v1",
 ]);
 
+export function isApplicationKey(key) {
+  return typeof key === "string" && (APPLICATION_KEYS.has(key)
+    || (key.startsWith("shared-project:") && key.length > "shared-project:".length));
+}
+
 export async function migrateLocalData(localStorageAdapter, cloudStorage) {
   const { keys } = await localStorageAdapter.list("");
   for (const key of keys) {
     const shared = key.startsWith("shared-project:") && key.length > "shared-project:".length;
-    if (!APPLICATION_KEYS.has(key) && !shared) continue;
+    if (!isApplicationKey(key)) continue;
     const local = await localStorageAdapter.get(key);
     if (!local) continue;
     const remote = await cloudStorage.get(key, shared);

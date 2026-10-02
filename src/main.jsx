@@ -1,40 +1,20 @@
+import SyncStatus from "./SyncStatus.jsx";
 import { installAiFallback } from "./ai-providers.js/ai-providers.js";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "../an-personal-assistant.jsx";
-import { cloudStorage, localStorageAdapter } from "./cloud-storage.js";
+import { cloudStorage } from "./cloud-storage.js";
 
 const nativeFetch = window.fetch.bind(window);
 installAiFallback(nativeFetch);
 
-if (!window.storage) {
-  async function useCloudOrLocal(cloudCall, localCall) {
-    await cloudStorage.waitForAuth();
-    if (!cloudStorage.isSignedIn()) return localCall();
-    try {
-      const result = await cloudCall();
-      cloudStorage.reportError(null);
-      return result;
-    } catch (error) {
-      cloudStorage.reportError(error);
-      return localCall();
-    }
-  }
-  window.storage = {
-    async get(key, shared = false) {
-      return useCloudOrLocal(() => cloudStorage.get(key, shared), () => localStorageAdapter.get(key));
-    },
-    async set(key, value, shared = false) {
-      return useCloudOrLocal(() => cloudStorage.set(key, value, shared), () => localStorageAdapter.set(key, value));
-    },
-    async delete(key, shared = false) {
-      return useCloudOrLocal(() => cloudStorage.delete(key, shared), () => localStorageAdapter.delete(key));
-    },
-    async list(prefix = "", shared = false) {
-      return useCloudOrLocal(() => cloudStorage.list(prefix, shared), () => localStorageAdapter.list(prefix));
-    },
-  };
-}
+// All modules use the same account-scoped, durable persistence layer.
+window.storage = {
+  get: (...args) => cloudStorage.get(...args),
+  set: (...args) => cloudStorage.set(...args),
+  delete: (...args) => cloudStorage.delete(...args),
+  list: (...args) => cloudStorage.list(...args),
+};
 
 function decodeGmailText(value) {
   if (!value) return "";
@@ -120,7 +100,6 @@ function CloudSyncBanner() {
     setBusy(true); setMessage("");
     try {
       await cloudStorage.signIn();
-      await cloudStorage.migrateLocalData();
       window.location.reload();
     } catch (error) {
       cloudStorage.reportError(error);
@@ -158,8 +137,8 @@ function CloudSyncBanner() {
   const errorText = message || status.error?.message || "";
   return <div style={{ position: "sticky", top: 0, zIndex: 100, background: status.user && !status.error ? "#EFF8F1" : "#FFF8E8", borderBottom: "1px solid " + (status.user && !status.error ? "#B9D8C1" : "#E6C77A"), padding: "7px 18px", fontFamily: "Inter, Arial, sans-serif", fontSize: 12.5, color: "#334155" }}>
     <div style={{ maxWidth: 1280, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-      <div>{status.user && !status.error ? <>Cloud sync active — {status.user.email || "Google account"}. Your module data is saved in Firestore.</> : <>Cloud sync is not active. Data is currently saved only in this browser.</>}{errorText && <div style={{ color: "#9A3412", marginTop: 3 }}>{errorText}</div>}</div>
-      {status.user && !status.error ? <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div>{status.user && !status.error ? <>Signed in as {status.user.email || "Google account"}. See data save status below.</> : <>Cloud connection needs attention. Check data save status below.</>}{errorText && <div style={{ color: "#9A3412", marginTop: 3 }}>{errorText}</div>}</div>
+      {status.user ? <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <button onClick={gmailConnected ? scanGmail : connectGmail} disabled={busy} style={{ border: "1px solid #9BBEA4", background: gmailConnected ? "#EFF8F1" : "#fff", color: "#2F6B4F", borderRadius: 4, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>{busy ? "Please wait..." : gmailConnected ? "Scan journal emails" : "Connect Gmail (read-only)"}</button>
         <button onClick={disconnect} disabled={busy} style={{ border: "1px solid #9BBEA4", background: "#fff", color: "#2F6B4F", borderRadius: 4, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>Disconnect</button>
       </div> : <button onClick={connect} disabled={busy} style={{ border: "none", background: "#1F5C8B", color: "#fff", borderRadius: 4, padding: "6px 12px", fontWeight: 600 }}>{busy ? "Connecting..." : "Connect Google cloud sync"}</button>}
@@ -186,7 +165,6 @@ function AccessGate() {
     setMessage("");
     try {
       await cloudStorage.signIn();
-      await cloudStorage.migrateLocalData();
     } catch (error) {
       setMessage(error?.message || "Google sign-in could not be completed.");
     } finally {
@@ -211,10 +189,14 @@ function AccessGate() {
     </main>;
   }
 
-  return <>
+  function reloadData() { window.location.reload(); }
+  return <React.Fragment key={status.user.uid}>
     <CloudSyncBanner />
-    <App />
-  </>;
+    <SyncStatus status={status} onReload={reloadData} />
+    {status.sync?.blocked
+      ? <p role="alert" style={{ padding: 24 }}>This module could not load safely. Reconnect, then choose Reload data. Existing cloud records have not been replaced with sample data.</p>
+      : <App key={status.user.uid} />}
+  </React.Fragment>;
 }
 
 createRoot(document.getElementById("root")).render(<React.StrictMode><AccessGate /></React.StrictMode>);
