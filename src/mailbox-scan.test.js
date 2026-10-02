@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFocusedMailboxMessage, scanMailbox, scanRange, messageMetadata } from "./mailbox-scan.js";
+import { isFocusedMailboxMessage, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
 
 const now = new Date("2026-10-02T12:00:00Z");
 const message = (id, text = "Please respond by November 15, 2026.") => ({ id, threadId: "same-thread", internalDate: "1790899200000", snippet: "do not persist this snippet", payload: { headers: [{ name: "Subject", value: "Review invitation" }, { name: "From", value: "editor@example.test" }], mimeType: "text/plain", body: { data: Buffer.from(text).toString("base64url") }, parts: [{ filename: "private.txt", mimeType: "text/plain", body: { data: Buffer.from("private attachment deadline tomorrow").toString("base64url") } }] } });
@@ -33,6 +33,16 @@ test("default scan covers twelve calendar months and manual dates include the en
   assert.equal(broad.query, `category:primary after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
   assert.equal(scanRange({months: 1}, {}, new Date("2026-03-31T00:00Z")).startDate, "2026-02-28");
   for (const options of [{ months: 0 }, { months: 1.2 }, { mode: "bad" }, { mode: "manual", startDate: "2026-02-30", endDate: "2026-03-01" }, { mode: "manual", startDate: "2026-10-01", endDate: "2026-01-01" }]) assert.throws(() => scanRange(options, {}, now));
+});
+
+test("scan period buttons map to clear date windows", () => {
+  assert.deepEqual(scanOptionsForPeriod("new", {}, now), {mode:"incremental"});
+  assert.deepEqual(scanOptionsForPeriod("week", {}, now), {mode:"manual",startDate:"2026-09-26",endDate:"2026-10-02"});
+  assert.deepEqual(scanOptionsForPeriod("month", {}, now), {mode:"manual",startDate:"2026-09-02",endDate:"2026-10-02"});
+  assert.deepEqual(scanOptionsForPeriod("quarter", {}, now), {mode:"manual",startDate:"2026-07-02",endDate:"2026-10-02"});
+  assert.deepEqual(scanOptionsForPeriod("year", {}, now), {mode:"manual",startDate:"2025-10-02",endDate:"2026-10-02"});
+  assert.deepEqual(scanOptionsForPeriod("custom", {startDate:"2020-01-01",endDate:"2020-02-01"}, now), {mode:"manual",startDate:"2020-01-01",endDate:"2020-02-01"});
+  assert.throws(() => scanOptionsForPeriod("century", {}, now));
 });
 
 test("pagination analyzes every unique message, including replies within the same thread", async () => {

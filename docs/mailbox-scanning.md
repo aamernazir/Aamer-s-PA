@@ -4,9 +4,9 @@ Module 05 owns the scan button. Opening Mailbox, refreshing its saved records, c
 
 Every scan adds Gmail's `category:primary` search operator. Messages categorized as Promotions, Social, Updates, or Forums are excluded at Gmail before message details are fetched. The default Focused academic scope asks Gmail for academic/action terms and then rejects obvious newsletters and messages without a credible academic action, outcome, contribution, or deadline. Auto-excluded messages are remembered by ID but do not enter the review list or Ignored count. All Primary mail remains available as a broader scope.
 
-- **Initial scan:** defaults to the last 12 calendar months, with a configurable 1–120 month lookback.
-- **Incremental scan:** revisits the initial scan's date window through today and skips successfully analyzed Gmail **message IDs**. A new reply is processed even when its thread has already been seen. Revisiting the window also permits retries and finds newly imported messages with old dates. Without an initial baseline, it uses the last 12 months.
-- **Manual range:** inclusive start/end calendar dates in UTC. Gmail epoch queries avoid Gmail's PST interpretation of date strings. Manual scans do not change the initial baseline.
+- **Period buttons:** New mail, 1 week, 1 month, 3 months, 1 year, or Custom dates replace the implementation-oriented scan-type menu. A new mailbox opens on 1 year; a mailbox with scan history opens on New mail.
+- **New mail:** revisits the established scan window through today and skips successfully analyzed Gmail **message IDs**. A new reply is processed even when its thread has already been seen. Without an established baseline, it uses the last 12 months.
+- **Date periods:** week/month/year presets and Custom dates use inclusive UTC calendar dates. Gmail epoch queries avoid Gmail's PST interpretation of date strings.
 - **Force rescan:** ignores saved IDs in the selected window and refreshes their metadata. Messages outside the window and separately saved routing decisions are retained.
 
 All pages of Gmail's messages list are visited; Gmail's default spam/trash exclusions apply. Each unique message is counted once per run. Details are fetched sequentially to avoid bursts. Each request has a 30-second timeout. Attachments are not downloaded or analyzed. Bodies are transient analysis inputs only; HTML is parsed in an inert template, with script/style text excluded.
