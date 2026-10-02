@@ -41,14 +41,14 @@ with sync_playwright() as p:
  panel.get_by_role('button',name='Scan Gmail',exact=True).wait_for()
  page.wait_for_timeout(300)
  assert not calls, calls
- assert panel.get_by_label('Look back (months)').input_value()=='12'
+ assert panel.get_by_role('button',name='1 year',exact=True).get_attribute('aria-pressed')=='true'
  assert panel.get_by_label('Mailbox scope').input_value()=='focused'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
  panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a']
  assert 'category%3Aprimary' in calls[0]
  assert 'manuscript' in calls[0]
- assert panel.get_by_label('Scan type').input_value()=='incremental'
+ assert panel.get_by_role('button',name='1 year',exact=True).get_attribute('aria-pressed')=='true'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
  panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 1 skipped · 0 with deadlines').wait_for()
  assert detail_ids==['a','b'],detail_ids
@@ -72,7 +72,7 @@ with sync_playwright() as p:
  page.get_by_role('button',name='Confirm clear 1',exact=True).click()
  page.get_by_text('1 ignored record cleared.',exact=False).wait_for()
  page.get_by_role('button',name='Active messages 1',exact=True).click()
- panel.get_by_label('Scan type').select_option('manual')
+ panel.get_by_role('button',name='Custom dates',exact=True).click()
  panel.get_by_label('Start date (UTC)',exact=True).fill('2026-10-02')
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-01-01')
  before=len(calls)
@@ -97,7 +97,7 @@ with sync_playwright() as p:
  page.get_by_role('heading',name='Mailbox',exact=True).click()
  panel=page.get_by_role('region',name='Mailbox scan controls')
  panel.get_by_text('Scan history (3)',exact=True).wait_for()
- assert panel.get_by_label('Scan type').input_value()=='incremental'
+ assert panel.get_by_role('button',name='New mail',exact=True).get_attribute('aria-pressed')=='true'
  before=len(calls);page.wait_for_timeout(300);assert len(calls)==before
  assert not remote_images,remote_images
  assert not page.evaluate('window.emailExecuted || false')

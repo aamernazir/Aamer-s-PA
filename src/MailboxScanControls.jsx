@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { cloudStorage } from "./cloud-storage.js";
-import { FOCUSED_SCAN_SCOPE, MAILBOX_SCAN_STORAGE_KEY, scanMailbox, scanRange } from "./mailbox-scan.js";
+import { FOCUSED_SCAN_SCOPE, MAILBOX_SCAN_STORAGE_KEY, scanMailbox, scanOptionsForPeriod, scanRange } from "./mailbox-scan.js";
 
 let scanInProgress = false;
 const field = { padding: "8px 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: "white", color: "#1F2937" };
+const periods = [{ id: "new", label: "New mail" }, { id: "week", label: "1 week" }, { id: "month", label: "1 month" }, { id: "quarter", label: "3 months" }, { id: "year", label: "1 year" }, { id: "custom", label: "Custom dates" }];
 
 function formatDuration(milliseconds) {
   if (!Number.isFinite(milliseconds)) return "—";
@@ -22,9 +23,8 @@ function statusLabel(status) {
 
 export default function MailboxScanControls({ onSaved, storage = cloudStorage }) {
   const [saved, setSaved] = useState(null);
-  const [mode, setMode] = useState("initial");
+  const [period, setPeriod] = useState("year");
   const [scope, setScope] = useState(FOCUSED_SCAN_SCOPE);
-  const [months, setMonths] = useState(12);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [force, setForce] = useState(false);
@@ -43,7 +43,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       if (!active) return;
       const value = result?.value ? JSON.parse(result.value) : {};
       setSaved(value);
-      setMode(value.initialStartDate ? "incremental" : "initial");
+      setPeriod(value.initialStartDate || value.history?.length ? "new" : "year");
       setScope(value.scanScope || FOCUSED_SCAN_SCOPE);
     }).catch(error => { if (active) setMessage(error.message || "Scan history could not be loaded. Refresh Mailbox to retry."); })
       .finally(() => { if (active) setLoading(false); });
@@ -60,7 +60,11 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
 
   async function scan() {
     if (scanInProgress || busy) return;
-    try { scanRange({ mode, scope, months, startDate, endDate }, saved || {}); }
+    let periodOptions;
+    try {
+      periodOptions = scanOptionsForPeriod(period, { startDate, endDate });
+      scanRange({ ...periodOptions, scope }, saved || {});
+    }
     catch (error) { setMessage(error.message); return; }
     scanInProgress = true;
     setBusy(true);
@@ -79,7 +83,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       const previous = result?.value ? JSON.parse(result.value) : {};
       const next = await scanMailbox({
         accessToken: storage.getGmailAccessToken(), accountEmail, previous,
-        options: { mode, scope, months, startDate, endDate, force },
+        options: { ...periodOptions, period, scope, force },
         signal: abortRef.current.signal,
         onProgress: update => { if (mounted.current) setProgress(update); },
       });
@@ -88,7 +92,6 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       await storage.set(MAILBOX_SCAN_STORAGE_KEY, JSON.stringify(next));
       if (mounted.current) {
         setSaved(next);
-        if (next.initialStartDate) setMode("incremental");
         const run = next.history[0];
         setProgress({ ...run, stage: run.status });
         setElapsedMs(run.durationMs || 0);
@@ -129,22 +132,21 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
 
   return <section aria-label="Mailbox scan controls" style={{ background: "#fff", border: "1px solid #D9E1EA", borderRadius: 7, padding: 16, marginBottom: 18 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 10px" }}>Scan Gmail</h2>
-    <p style={{ fontSize: 13, color: "#64748B" }}>Scans run only when you press Scan Gmail and include only Gmail’s Primary category. Focused academic scan also removes obvious newsletters and messages without a credible academic action, outcome, contribution, or deadline. Incremental scans skip saved message IDs and analyze new replies separately, even in existing threads.</p>
+    <p style={{ fontSize: 13, color: "#64748B" }}>Choose a period, then press Scan Gmail. Only Gmail’s Primary category is checked. Saved message IDs are skipped automatically, while new replies in existing threads are analyzed separately.</p>
     {saved?.accountEmail && <p style={{ fontSize: 12 }}>Mailbox account: {saved.accountEmail}</p>}
     <fieldset disabled={busy || loading || saved === null} style={{ border: 0, margin: 0, padding: 0, display: "flex", alignItems: "end", flexWrap: "wrap", gap: 12 }}>
-      <label>Scan type<br /><select style={field} value={mode} onChange={e => setMode(e.target.value)}>
-        <option value="initial">Initial scan</option><option value="incremental">Incremental scan</option><option value="manual">Manual date range</option>
-      </select></label>
+      <div style={{ flexBasis: "100%" }}><div style={{ marginBottom: 6 }}>Scan period</div><div role="group" aria-label="Scan period" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {periods.map(option => <button key={option.id} type="button" aria-pressed={period === option.id} onClick={() => setPeriod(option.id)} style={{ ...field, padding: "9px 12px", cursor: "pointer", borderColor: period === option.id ? "#1F5C8B" : "#CBD5E1", background: period === option.id ? "#EAF2F8" : "#fff", color: period === option.id ? "#174B70" : "#475569", fontWeight: period === option.id ? 700 : 400 }}>{option.label}</button>)}
+      </div></div>
       <label>Mailbox scope<br /><select style={field} value={scope} onChange={e => setScope(e.target.value)}>
         <option value="focused">Focused academic (recommended)</option><option value="all-primary">All Primary mail</option>
       </select></label>
-      {mode === "initial" && <label>Look back (months)<br /><input style={{ ...field, width: 100 }} type="number" min="1" max="120" value={months} onChange={e => setMonths(e.target.value)} /></label>}
-      {mode === "manual" && <><label>Start date (UTC)<br /><input style={field} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label><label>End date (UTC, inclusive)<br /><input style={field} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label></>}
+      {period === "custom" && <><label>Start date (UTC)<br /><input style={field} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label><label>End date (UTC, inclusive)<br /><input style={field} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label></>}
       <label style={{ paddingBottom: 8 }}><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} /> Force rescan of saved messages in this range</label>
       <button onClick={scan} style={{ ...field, background: "#1F5C8B", color: "#fff", cursor: "pointer" }}>{busy ? "Scanning…" : "Scan Gmail"}</button>
     </fieldset>
     {busy && <button onClick={() => abortRef.current?.abort()} style={{ ...field, marginTop: 10, color: "#9A3412", cursor: "pointer" }}>Cancel scan</button>}
-    {mode === "incremental" && <p style={{ fontSize: 12, color: "#64748B" }}>Checks {saved?.initialStartDate || "the last 12 months"} through today. Use a manual range to check older mail. No background or scheduled scans.</p>}
+    {period === "new" && <p style={{ fontSize: 12, color: "#64748B" }}>Checks the previously scanned window through today and processes only unseen Gmail message IDs. No background or scheduled scans.</p>}
     {scope === FOCUSED_SCAN_SCOPE && <p style={{ fontSize: 12, color: "#64748B" }}>Focused mode automatically excludes obvious noise before it reaches your review list. Excluded messages are remembered by ID and do not increase the Ignored count.</p>}
     <p style={{ fontSize: 12, color: "#64748B" }}>Message bodies are analyzed temporarily. Only IDs, sender, subject, date, deadline hints and scan counts are saved; bodies and attachments are not stored. Dates use UTC.</p>
     {shownRun && <div role="status" aria-live="polite" style={{ marginTop: 14, padding: 12, borderRadius: 6, border: `1px solid ${shownRun.status === "completed" ? "#9CC9AA" : shownRun.error ? "#E6C77A" : "#B9D8E8"}`, background: shownRun.status === "completed" ? "#EFF8F1" : shownRun.error ? "#FFF8E8" : "#F3F8FC", fontSize: 13 }}>
@@ -161,7 +163,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       {!saved?.history?.length ? <p>No scans recorded yet.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", textAlign: "left", fontSize: 12, borderSpacing: "10px" }}>
         <thead><tr>{["Started (UTC)", "Range", "Scope", "Type", "Status", "Duration", "Found", "Analyzed", "Auto-excluded", "Skipped", "Deadlines", "Failures", "Reason"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{saved.history.map((run, index) => <tr key={run.startedAt + index}>
-          <td>{run.startedAt.replace("T", " ").slice(0, 19)}</td><td>{run.startDate} – {run.endDate}</td><td>{run.scope === "all-primary" ? "All Primary" : "Focused"}</td><td>{run.mode}{run.force ? " (forced)" : ""}</td><td>{statusLabel(run.status)}</td><td>{formatDuration(run.durationMs)}</td><td>{run.found ?? "—"}</td><td>{run.analyzed}</td><td>{run.excluded || 0}</td><td>{run.skipped}</td><td>{run.deadlines}</td><td>{(run.failed || 0) + (run.listFailures || 0)}</td><td>{run.error || (run.status === "partial" ? "Recorded before detailed failure reporting; retry the scan." : "—")}</td>
+          <td>{run.startedAt.replace("T", " ").slice(0, 19)}</td><td>{run.startDate} – {run.endDate}</td><td>{run.scope === "all-primary" ? "All Primary" : "Focused"}</td><td>{periods.find(option => option.id === run.period)?.label || run.mode}{run.force ? " (forced)" : ""}</td><td>{statusLabel(run.status)}</td><td>{formatDuration(run.durationMs)}</td><td>{run.found ?? "—"}</td><td>{run.analyzed}</td><td>{run.excluded || 0}</td><td>{run.skipped}</td><td>{run.deadlines}</td><td>{(run.failed || 0) + (run.listFailures || 0)}</td><td>{run.error || (run.status === "partial" ? "Recorded before detailed failure reporting; retry the scan." : "—")}</td>
         </tr>)}</tbody>
       </table></div>}
     </details>

@@ -3,6 +3,24 @@ export const FOCUSED_SCAN_SCOPE = "focused";
 
 const FOCUSED_GMAIL_TERMS = '{manuscript revision reviewer editorial journal certificate award recognition "technical committee" conference symposium grant proposal funding project patent accepted published publication deadline "due date" "respond by" "submit by" teaching thesis workshop}';
 
+export function scanOptionsForPeriod(period, { startDate, endDate } = {}, now = new Date()) {
+  if (period === "new") return { mode: "incremental" };
+  if (period === "custom") return { mode: "manual", startDate, endDate };
+  const end = now.toISOString().slice(0, 10);
+  const start = new Date(end + "T00:00:00Z");
+  if (period === "week") start.setUTCDate(start.getUTCDate() - 6);
+  else {
+    const months = { month: 1, quarter: 3, year: 12 }[period];
+    if (!months) throw new Error("Choose a valid scan period.");
+    const day = start.getUTCDate();
+    start.setUTCDate(1);
+    start.setUTCMonth(start.getUTCMonth() - months);
+    const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+    start.setUTCDate(Math.min(day, lastDay));
+  }
+  return { mode: "manual", startDate: start.toISOString().slice(0, 10), endDate: end };
+}
+
 function decodeGmailText(value) {
   if (!value) return "";
   const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
@@ -140,7 +158,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
   const scope = range.scope;
-  const history = { startedAt: now.toISOString(), mode, scope, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
   const report = stage => onProgress({ ...history, stage });
   async function request(path) {
     const controller = new AbortController();
@@ -227,7 +245,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   report(history.status === "completed" ? "complete" : history.status);
   return {
     version: 2, accountEmail: account,
-    initialStartDate: mode === "initial" ? range.startDate : previous.initialStartDate,
+    initialStartDate: mode === "initial" || (!previous.initialStartDate && options.period === "year") ? range.startDate : previous.initialStartDate,
     scanScope: scope,
     updatedAt: history.finishedAt, processedMessageIds: [...known], items: [...items.values()],
     history: [history, ...(previous.history || [])].slice(0, 50),
