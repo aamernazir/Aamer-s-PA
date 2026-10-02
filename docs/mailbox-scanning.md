@@ -1,0 +1,18 @@
+# Mailbox scans
+
+Module 05 owns the scan button. Opening Mailbox, refreshing its saved records, changing scan settings, signing in, and connecting Gmail do not scan email. The banner now only connects/reconnects Gmail; it can no longer overwrite the Mailbox scan record through the old 20-message scanner.
+
+- **Initial scan:** defaults to the last 12 calendar months, with a configurable 1–120 month lookback.
+- **Incremental scan:** revisits the initial scan's date window through today and skips successfully analyzed Gmail **message IDs**. A new reply is processed even when its thread has already been seen. Revisiting the window also permits retries and finds newly imported messages with old dates. Without an initial baseline, it uses the last 12 months.
+- **Manual range:** inclusive start/end calendar dates in UTC. Gmail epoch queries avoid Gmail's PST interpretation of date strings. Manual scans do not change the initial baseline.
+- **Force rescan:** ignores saved IDs in the selected window and refreshes their metadata. Messages outside the window and separately saved routing decisions are retained.
+
+All pages of Gmail's messages list are visited; Gmail's default spam/trash exclusions apply. Each unique message is counted once per run. Details are fetched sequentially to avoid bursts. Each request has a 30-second timeout. Attachments are not downloaded or analyzed. Bodies are transient analysis inputs only; HTML is parsed in an inert template, with script/style text excluded.
+
+The existing account-scoped `an2r-gmail-deadlines-v1` record stores message and thread IDs, sender, subject, date, bounded deadline hints, successfully processed message IDs, initial start date, connected Gmail account, and the latest 50 scan summaries. Raw bodies, snippets, attachments, and access tokens are not saved by the new scanner. Legacy scan snippets are removed when the scan record is rewritten; existing user-managed archive records are left intact. Legacy IDs without a verified Gmail account are analyzed again. Switching to a different Gmail account is rejected to avoid mixing IDs and messages.
+
+History distinguishes analyzed messages, skipped saved IDs, messages with deadline hints, failed detail requests, and completed/partial scans. A failed message remains eligible for retry, including after a failed forced refresh. A listing error preserves completed work as a partial scan. Authorization/quota errors stop the run and preserve retryable progress. Failed persistence does not claim success or advance the saved IDs/history. The existing sync-status panel reports whether locally saved results have reached Firestore.
+
+Validation: `node --test src/*.test.js` and `npm run build`. Automated scanner fixtures cover pagination, message-vs-thread identity, date boundaries, force refresh, account isolation, partial failures/retries, and metadata-only output. Browser smoke checks use simulated Gmail/auth/storage responses; production Gmail access and Firestore rules require an approved account. Existing browser quota and Firestore document-size limits still apply to the shared scan record; a storage redesign is outside this change.
+
+For the browser smoke test, start Vite with `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`, then run `python tests/mailbox-browser-smoke.py` in an environment with Python Playwright and Chromium installed. Override `CHROMIUM_PATH` or `MAILBOX_TEST_URL` when needed. The test intercepts the cloud-storage module and Gmail requests; it never signs in to production or changes production records.

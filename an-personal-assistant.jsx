@@ -1,3 +1,4 @@
+import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -8763,7 +8764,7 @@ function MailboxModule({ onOpenModule }) {
         const apsData = JSON.parse(apsResult.value);
         if (apsData.activeCycle) setApsCycle(apsData.activeCycle);
       }
-      setMessage(scanItems.length ? "Mailbox refreshed from the latest Gmail scan." : "No scanned Gmail messages yet. Connect Gmail and use Scan journal emails above.");
+      setMessage(scanItems.length ? "Mailbox refreshed from the latest Gmail scan." : "No scanned Gmail messages yet. Use the scan controls below to start.");
     } catch (error) {
       setMessage(error?.message || "Mailbox could not be loaded.");
     } finally {
@@ -8855,8 +8856,10 @@ function MailboxModule({ onOpenModule }) {
         </div>
 
         <div style={{ background: "#EFF8F1", border: "1px solid #B9D8C1", borderRadius: 7, padding: "12px 14px", marginBottom: 18, color: "#315B43", fontSize: 13, lineHeight: 1.5 }}>
-          Gmail access is read-only. The mailbox stores message metadata, short snippets, deadline hints, and routing decisions—not attachments or complete email bodies. Use <strong>Scan journal emails</strong> in the secure banner above, then refresh this module.
+          Gmail access is read-only. The mailbox stores message metadata, deadline hints, and routing decisions. Scanning starts only when you press Scan Gmail below.
         </div>
+
+        <MailboxScanControls onSaved={loadMailbox} />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginBottom: 18 }}>
           {[{ id: "all", label: "All messages", count: items.length }, { id: "unrouted", label: "Needs routing", count: unroutedCount }, { id: "deadlines", label: "Has deadline", count: deadlineCount }, { id: "priority", label: "Priority", count: priorityCount }].map((card) => (
@@ -8873,7 +8876,7 @@ function MailboxModule({ onOpenModule }) {
 
         {message && <div style={{ background: "#fff", border: "1px solid " + HUB_LINE, color: HUB_MUTED, borderRadius: 5, padding: "9px 12px", marginBottom: 14, fontSize: 13 }}>{message}</div>}
 
-        {!loading && !visibleItems.length && <div style={{ background: "#fff", border: "1px dashed #C7CCD3", borderRadius: 8, padding: "42px 22px", textAlign: "center", color: HUB_MUTED }}><Inbox size={32} style={{ color: HUB_TEAL, marginBottom: 10 }} /><div style={{ fontWeight: 600, color: HUB_INK, marginBottom: 6 }}>{items.length ? "No messages match this view" : "Your mailbox is ready"}</div><div style={{ fontSize: 13 }}>{items.length ? "Try another filter or search term." : "Connect Gmail and scan your journal/editorial messages from the secure banner above."}</div></div>}
+        {!loading && !visibleItems.length && <div style={{ background: "#fff", border: "1px dashed #C7CCD3", borderRadius: 8, padding: "42px 22px", textAlign: "center", color: HUB_MUTED }}><Inbox size={32} style={{ color: HUB_TEAL, marginBottom: 10 }} /><div style={{ fontWeight: 600, color: HUB_INK, marginBottom: 6 }}>{items.length ? "No messages match this view" : "Your mailbox is ready"}</div><div style={{ fontSize: 13 }}>{items.length ? "Try another filter or search term." : "Use Scan Gmail above to analyze messages in your chosen date range."}</div></div>}
 
         <div style={{ display: "grid", gap: 12 }}>
           {visibleItems.map((item) => {

@@ -1,0 +1,154 @@
+export const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
+
+function decodeGmailText(value) {
+  if (!value) return "";
+  const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  try {
+    return decodeURIComponent(escape(globalThis.atob(normalized + "=".repeat((4 - normalized.length % 4) % 4))));
+  } catch (error) {
+    try { return globalThis.atob(normalized); } catch (ignored) { return ""; }
+  }
+}
+
+function htmlToPlainText(value) {
+  // Template contents are inert: email HTML must never execute or load remote images.
+  const node = document.createElement("template");
+  node.innerHTML = value || "";
+  node.content.querySelectorAll("script, style").forEach(element => element.remove());
+  return (node.content.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function gmailBody(payload) {
+  const parts = [];
+  function visit(part) {
+    if (!part || part.filename || part.body?.attachmentId) return;
+    const type = part.mimeType || "";
+    if (part.body?.data && (type === "text/plain" || type === "text/html")) {
+      parts.push(type === "text/html" ? htmlToPlainText(decodeGmailText(part.body.data)) : decodeGmailText(part.body.data));
+    }
+    (part.parts || []).forEach(visit);
+  }
+  visit(payload);
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function deadlineHints(text) {
+  const source = String(text || "");
+  const hints = [];
+  const month = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{1,2}(?:,?\\s+20\\d{2})?";
+  [
+    new RegExp("[^.]{0,80}(?:deadline|due date|respond by|response by|review due|revision due)[^.]{0,100}", "ig"),
+    new RegExp("[^.]{0,60}(?:" + month + ")[^.]{0,80}", "ig"),
+    /[^.]{0,60}\b\d{1,2}[/-]\d{1,2}[/-]20\d{2}\b[^.]{0,80}/ig,
+  ].forEach((pattern) => (source.match(pattern) || []).forEach((match) => {
+    const clean = match.replace(/\s+/g, " ").trim();
+    if (clean && !hints.includes(clean)) hints.push(clean);
+  }));
+  return hints.slice(0, 3);
+}
+
+// Dates are inclusive UTC calendar dates; Gmail epoch queries avoid its PST date default.
+export function scanRange({ mode = "initial", months = 12, startDate, endDate } = {}, previous = {}, now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  if (!["initial", "incremental", "manual"].includes(mode)) throw new Error("Choose a valid scan mode.");
+  if (mode !== "manual") {
+    const start = new Date(today + "T00:00:00Z");
+    if (!Number.isInteger(Number(months)) || months < 1 || months > 120) throw new Error("Choose 1 to 120 months.");
+    const day = start.getUTCDate();
+    start.setUTCDate(1);
+    start.setUTCMonth(start.getUTCMonth() - Number(months));
+    const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+    start.setUTCDate(Math.min(day, lastDay));
+    startDate = mode === "incremental" && previous.initialStartDate ? previous.initialStartDate : start.toISOString().slice(0, 10);
+    endDate = today;
+  }
+  const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if (!valid(startDate) || !valid(endDate) || startDate > endDate) throw new Error("Choose a valid start and end date, with start on or before end.");
+  return { startDate, endDate, query: `after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
+}
+
+// Explicit projection: raw payloads, bodies, attachments and tokens never enter saved state.
+export function messageMetadata(data) {
+  const headers = Object.fromEntries((data.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
+  const body = gmailBody(data.payload) || data.snippet || "";
+  return {
+    id: String(data.id), threadId: String(data.threadId || ""),
+    subject: String(headers.subject || "").slice(0, 500),
+    from: String(headers.from || "").slice(0, 300),
+    receivedAt: data.internalDate ? new Date(Number(data.internalDate)).toISOString() : String(headers.date || "").slice(0, 100),
+    deadlineHints: deadlineHints(body).map(hint => hint.slice(0, 200)),
+  };
+}
+
+function savedMetadata(item) {
+  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)) };
+}
+
+export async function scanMailbox({ accessToken, accountEmail, previous = {}, options = {}, fetchImpl = fetch, now = new Date(), onProgress = () => {} }) {
+  if (!accessToken || !accountEmail) throw new Error("Connect Gmail before scanning.");
+  const account = accountEmail.toLowerCase();
+  if (previous.accountEmail && previous.accountEmail.toLowerCase() !== account) throw new Error("Reconnect the Gmail account used for this mailbox: " + previous.accountEmail);
+  const mode = options.mode || "initial";
+  const range = scanRange(options, previous, now);
+  // Legacy results have no verified Gmail owner: keep them, but do not use their IDs to skip analysis.
+  const known = new Set(previous.accountEmail ? previous.processedMessageIds || [] : []);
+  const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
+  const seen = new Set();
+  const history = { startedAt: now.toISOString(), mode, force: !!options.force, startDate: range.startDate, endDate: range.endDate, analyzed: 0, skipped: 0, deadlines: 0, failed: 0, status: "completed" };
+  async function request(path) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetchImpl("https://gmail.googleapis.com/gmail/v1/users/me/" + path, { headers: { Authorization: "Bearer " + accessToken }, signal: controller.signal });
+      if (!response.ok) {
+        const error = new Error(response.status === 401 ? "Gmail authorization expired. Reconnect Gmail and retry." : `Gmail returned HTTP ${response.status}. Retry the scan.`);
+        error.status = response.status;
+        throw error;
+      }
+      return await response.json();
+    } finally { clearTimeout(timeout); }
+  }
+  let pageToken;
+  const pages = new Set();
+  try {
+    do {
+      const params = new URLSearchParams({ q: range.query, maxResults: "100" });
+      if (pageToken) params.set("pageToken", pageToken);
+      const page = await request("messages?" + params);
+      for (const message of page.messages || []) {
+        if (!message.id || seen.has(message.id)) continue;
+        seen.add(message.id);
+        if (!options.force && known.has(message.id)) { history.skipped++; continue; }
+        try {
+          const data = await request("messages/" + encodeURIComponent(message.id) + "?format=full");
+          if (data.id !== message.id) throw new Error("Gmail returned an unexpected message ID.");
+          const item = messageMetadata(data);
+          items.set(item.id, item);
+          known.add(item.id);
+          history.analyzed++;
+          if (item.deadlineHints.length) history.deadlines++;
+        } catch (error) {
+          history.failed++;
+          // Forced refresh failures must remain retryable on the next incremental scan.
+          known.delete(message.id);
+          if ([401, 403, 429].includes(error.status)) throw error;
+        }
+        onProgress({ ...history });
+      }
+      pageToken = page.nextPageToken;
+      if (pageToken && pages.has(pageToken)) throw new Error("Gmail repeated a page token. Retry the scan.");
+      if (pageToken) pages.add(pageToken);
+    } while (pageToken);
+    if (history.failed) history.status = "partial";
+  } catch (error) {
+    history.status = "partial";
+    history.error = error.status === 401 ? "Gmail authorization expired. Reconnect Gmail and retry." : "Gmail scan interrupted. Retry to process remaining messages.";
+  }
+  history.finishedAt = new Date().toISOString();
+  return {
+    version: 2, accountEmail: account,
+    initialStartDate: mode === "initial" ? range.startDate : previous.initialStartDate,
+    updatedAt: history.finishedAt, processedMessageIds: [...known], items: [...items.values()],
+    history: [history, ...(previous.history || [])].slice(0, 50),
+  };
+}
