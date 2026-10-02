@@ -30,7 +30,9 @@ with sync_playwright() as p:
    data={'messages':[{'id':i,'threadId':'thread-1'} for i in ids]}
   else:
    mid=url.split('/messages/')[1].split('?')[0];detail_ids.append(mid)
-   data={'id':mid,'threadId':'thread-1','internalDate':'1790899200000','payload':{'headers':[{'name':'Subject','value':'Manuscript '+mid},{'name':'From','value':'editor@example.test'}],'mimeType':'text/html','body':{'data':base64.urlsafe_b64encode(b'<p>Review deadline November 15, 2026.</p><img src="https://tracking.invalid/pixel" onerror="window.emailExecuted=true"><script>window.emailExecuted=true</script>' ).decode()}}}
+   subject='Paper accepted for publication' if mid=='b' else 'Manuscript '+mid
+   body=b'<p>The journal accepted this paper for publication. This completed research outcome can be archived.</p>' if mid=='b' else b'<p>Review deadline November 15, 2026.</p><img src="https://tracking.invalid/pixel" onerror="window.emailExecuted=true"><script>window.emailExecuted=true</script>'
+   data={'id':mid,'threadId':'thread-1','internalDate':'1790899200000','payload':{'headers':[{'name':'Subject','value':subject},{'name':'From','value':'editor@example.test'}],'mimeType':'text/html','body':{'data':base64.urlsafe_b64encode(body).decode()}}}
   route.fulfill(status=200,content_type='application/json',body=json.dumps(data))
  page.route('https://gmail.googleapis.com/**',gmail)
  page.goto(os.environ.get('MAILBOX_TEST_URL', 'http://127.0.0.1:5173/Aamer-s-PA/'))
@@ -46,15 +48,21 @@ with sync_playwright() as p:
  assert 'category%3Aprimary' in calls[0]
  assert panel.get_by_label('Scan type').input_value()=='incremental'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 1 skipped · 1 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 1 skipped · 0 with deadlines').wait_for()
  assert detail_ids==['a','b'],detail_ids
- assert page.get_by_text('Manuscript b',exact=True).count()==1
- article_b=page.locator('article').filter(has_text='Manuscript b')
- assert article_b.get_by_text('No archive destination recommended',exact=False).count()==1
- assert article_b.get_by_text('Module 04',exact=False).count()==0
- article_b.get_by_role('button',name='Keep · relevant',exact=True).click()
- article_b.get_by_text('Kept',exact=True).wait_for()
+ article_b=page.locator('article').filter(has_text='Paper accepted for publication')
+ article_b.get_by_role('button',name='Review transfer to Research Intelligence',exact=True).click()
+ dialog=page.get_by_role('dialog',name='Review transfer')
+ dialog.get_by_text('This is the complete record that will be transferred',exact=False).wait_for()
+ dialog.get_by_label('Contribution / outcome summary').fill('The journal accepted the completed paper for publication; retain this as a reviewable research output.')
+ dialog.get_by_role('button',name='Confirm and save',exact=True).click()
+ page.get_by_text('Transferred to Research Intelligence as a reviewable record.',exact=True).wait_for()
+ archive=page.evaluate('JSON.parse(window.testRecords["am2r-publication-archive-v1"])')
+ assert archive['outputs'][0]['summary'].startswith('The journal accepted')
+ assert archive['outputs'][0]['needsReview'] is True
  article_a=page.locator('article').filter(has_text='Manuscript a')
+ article_a.get_by_role('button',name='Keep · relevant',exact=True).click()
+ article_a.get_by_text('Kept',exact=True).wait_for()
  article_a.get_by_role('button',name='Ignore',exact=True).click()
  article_a.wait_for(state='detached')
  page.get_by_role('button',name='Ignored 1',exact=True).click()
@@ -72,7 +80,7 @@ with sync_playwright() as p:
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-10-02')
  panel.get_by_label('Force rescan').check()
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 skipped · 2 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a','b','a','b'],detail_ids
  panel.get_by_text('Scan history (3)',exact=True).click()
  assert panel.get_by_role('row').count()==4
@@ -92,5 +100,5 @@ with sync_playwright() as p:
  assert not remote_images,remote_images
  assert not page.evaluate('window.emailExecuted || false')
  assert not errors,errors
- print('PASS: full Mailbox UI; Primary-only query; keep/ignore/restore triage; no premature archive route; incremental replies; manual/forced scans; metadata-only persistence; failure recovery; reload')
+ print('PASS: Primary-only scan; keep/ignore/restore; editable transfer preview; real reviewable module record; duplicate-safe routing; bounded summary without body/attachments; failure recovery; reload')
  browser.close()

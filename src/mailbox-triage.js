@@ -3,7 +3,7 @@ export function mailboxItemId(item) {
 }
 
 export function mailboxText(item) {
-  return [item?.subject, item?.from, ...(item?.deadlineHints || [])].filter(Boolean).join(" ");
+  return [item?.subject, item?.from, item?.summary, ...(item?.deadlineHints || [])].filter(Boolean).join(" ");
 }
 
 export function mailboxProjectReferences(item) {

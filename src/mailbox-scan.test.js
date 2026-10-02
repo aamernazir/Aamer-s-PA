@@ -116,6 +116,8 @@ test("tracking parameters and unrelated dates do not become deadline hints", () 
   assert.deepEqual(messageMetadata(noisy).deadlineHints, []);
   const revision = message("revision", "The deadline for submission of your revised manuscript is 5 October 2026.");
   assert.match(messageMetadata(revision).deadlineHints[0], /deadline for submission/i);
+  assert.match(messageMetadata(revision).summary, /revised manuscript/i);
+  assert.ok(messageMetadata(revision).summary.length <= 700);
 });
 
 test("a repeated page token stops with interrupted history instead of looping", async () => {

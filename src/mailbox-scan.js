@@ -32,11 +32,15 @@ function gmailBody(payload) {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
-function deadlineHints(text) {
-  const source = String(text || "")
+function cleanMessageText(text) {
+  return String(text || "")
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(/\b\S*(?:utm_[a-z]+|mc_(?:cid|eid)|UNIQID)\S*\b/gi, " ")
     .replace(/\s+/g, " ");
+}
+
+function deadlineHints(text) {
+  const source = cleanMessageText(text);
   const hints = [];
   [
     /[^.!?]{0,80}(?:deadline|due date|respond by|response by|review due|revision due|submit(?:ted|sion)? by)[^.!?]{0,120}/ig,
@@ -45,6 +49,13 @@ function deadlineHints(text) {
     if (clean && !hints.includes(clean)) hints.push(clean);
   }));
   return hints.slice(0, 3);
+}
+
+function messageSummary(subject, body, hints) {
+  const boilerplate = /unsubscribe|manage (?:your )?preferences|view (?:this )?in (?:a )?browser|privacy policy|do not reply/i;
+  const sentences = cleanMessageText(body).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
+  const details = [...new Set([...(hints || []), ...sentences])].slice(0, 3).join(" ").slice(0, 700);
+  return details || String(subject || "Email record").slice(0, 500);
 }
 
 // Dates are inclusive UTC calendar dates; Gmail epoch queries avoid its PST date default.
@@ -71,17 +82,19 @@ export function scanRange({ mode = "initial", months = 12, startDate, endDate } 
 export function messageMetadata(data) {
   const headers = Object.fromEntries((data.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
   const body = gmailBody(data.payload) || data.snippet || "";
+  const hints = deadlineHints(body).map(hint => hint.slice(0, 200));
   return {
     id: String(data.id), threadId: String(data.threadId || ""),
     subject: String(headers.subject || "").slice(0, 500),
     from: String(headers.from || "").slice(0, 300),
     receivedAt: data.internalDate ? new Date(Number(data.internalDate)).toISOString() : String(headers.date || "").slice(0, 100),
-    deadlineHints: deadlineHints(body).map(hint => hint.slice(0, 200)),
+    deadlineHints: hints,
+    summary: messageSummary(headers.subject, body, hints),
   };
 }
 
 function savedMetadata(item) {
-  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)) };
+  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)), summary: String(item.summary || item.subject || "").slice(0, 700) };
 }
 
 function scanFailure(error, cancelled) {
