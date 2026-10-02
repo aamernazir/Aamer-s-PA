@@ -8714,6 +8714,8 @@ function MailboxModule({ onOpenModule }) {
   const [routeProjects, setRouteProjects] = useState([]);
   const [savingRoute, setSavingRoute] = useState(false);
   const [routeError, setRouteError] = useState("");
+  const [confirmClearIgnored, setConfirmClearIgnored] = useState(false);
+  const [clearingIgnored, setClearingIgnored] = useState(false);
 
   async function loadMailbox() {
     setLoading(true);
@@ -8825,6 +8827,29 @@ function MailboxModule({ onOpenModule }) {
     }
   }
 
+  async function clearIgnoredRecords() {
+    const ignoredIds = new Set(Object.entries(archive).filter(([, record]) => record.reviewStatus === "ignored").map(([id]) => id));
+    if (!ignoredIds.size || clearingIgnored) return;
+    setClearingIgnored(true);
+    try {
+      const scanResult = await window.storage.get(MAILBOX_SCAN_STORAGE_KEY);
+      const scanRecord = scanResult?.value ? JSON.parse(scanResult.value) : {};
+      const nextScan = { ...scanRecord, items: (scanRecord.items || []).filter(item => !ignoredIds.has(mailboxItemId(item))) };
+      const nextArchive = Object.fromEntries(Object.entries(archive).filter(([id]) => !ignoredIds.has(id)));
+      // Keep processedMessageIds so incremental scans do not bring cleared mail back.
+      await window.storage.set(MAILBOX_SCAN_STORAGE_KEY, JSON.stringify(nextScan));
+      await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(nextArchive));
+      setArchive(nextArchive);
+      setItems(current => current.filter(item => !ignoredIds.has(mailboxItemId(item))));
+      setConfirmClearIgnored(false);
+      setMessage(`${ignoredIds.size} ignored record${ignoredIds.size === 1 ? "" : "s"} cleared. Incremental scans will continue to skip these Gmail message IDs.`);
+    } catch (error) {
+      setMessage(error?.message || "Ignored records could not be cleared.");
+    } finally {
+      setClearingIgnored(false);
+    }
+  }
+
   const query = search.trim().toLowerCase();
   const visibleItems = items.filter((item) => {
     const saved = archive[mailboxItemId(item)] || item;
@@ -8872,6 +8897,14 @@ function MailboxModule({ onOpenModule }) {
             </button>
           ))}
         </div>
+
+        {filter === "ignored" && ignoredCount > 0 && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "-4px 0 16px" }}>
+          {!confirmClearIgnored ? <button onClick={() => setConfirmClearIgnored(true)} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "8px 11px", cursor: "pointer" }}>Clear ignored list</button> : <>
+            <span style={{ fontSize: 12, color: HUB_MUTED }}>Remove all {ignoredCount} ignored records from Mailbox?</span>
+            <button onClick={clearIgnoredRecords} disabled={clearingIgnored} style={{ border: "1px solid #C97A6A", background: "#FFF4F1", color: "#8A3428", borderRadius: 5, padding: "8px 11px", cursor: clearingIgnored ? "default" : "pointer" }}>{clearingIgnored ? "Clearing…" : `Confirm clear ${ignoredCount}`}</button>
+            <button onClick={() => setConfirmClearIgnored(false)} disabled={clearingIgnored} style={{ border: 0, background: "none", color: HUB_MUTED, padding: "8px", cursor: "pointer" }}>Cancel</button>
+          </>}
+        </div>}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
           <div style={{ position: "relative", flex: "1 1 280px" }}><Search size={16} style={{ position: "absolute", left: 10, top: 10, color: HUB_MUTED }} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search sender, subject, project number..." style={{ width: "100%", padding: "9px 10px 9px 32px", border: "1px solid " + HUB_LINE, borderRadius: 5, background: "#fff", color: HUB_INK }} /></div>

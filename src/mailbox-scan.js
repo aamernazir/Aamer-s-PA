@@ -1,4 +1,7 @@
 export const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
+export const FOCUSED_SCAN_SCOPE = "focused";
+
+const FOCUSED_GMAIL_TERMS = '{manuscript revision reviewer editorial journal certificate award recognition "technical committee" conference symposium grant proposal funding project patent accepted published publication deadline "due date" "respond by" "submit by" teaching thesis workshop}';
 
 function decodeGmailText(value) {
   if (!value) return "";
@@ -62,9 +65,10 @@ function messageSummary(subject, body, hints) {
 }
 
 // Dates are inclusive UTC calendar dates; Gmail epoch queries avoid its PST date default.
-export function scanRange({ mode = "initial", months = 12, startDate, endDate } = {}, previous = {}, now = new Date()) {
+export function scanRange({ mode = "initial", scope = FOCUSED_SCAN_SCOPE, months = 12, startDate, endDate } = {}, previous = {}, now = new Date()) {
   const today = now.toISOString().slice(0, 10);
   if (!["initial", "incremental", "manual"].includes(mode)) throw new Error("Choose a valid scan mode.");
+  if (![FOCUSED_SCAN_SCOPE, "all-primary"].includes(scope)) throw new Error("Choose a valid mailbox scope.");
   if (mode !== "manual") {
     const start = new Date(today + "T00:00:00Z");
     if (!Number.isInteger(Number(months)) || months < 1 || months > 120) throw new Error("Choose 1 to 120 months.");
@@ -78,7 +82,8 @@ export function scanRange({ mode = "initial", months = 12, startDate, endDate } 
   }
   const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
   if (!valid(startDate) || !valid(endDate) || startDate > endDate) throw new Error("Choose a valid start and end date, with start on or before end.");
-  return { startDate, endDate, query: `category:primary after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
+  const focus = scope === FOCUSED_SCAN_SCOPE ? ` ${FOCUSED_GMAIL_TERMS}` : "";
+  return { startDate, endDate, scope, query: `category:primary${focus} after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
 }
 
 // Explicit projection: raw payloads, bodies, attachments and tokens never enter saved state.
@@ -94,6 +99,20 @@ export function messageMetadata(data) {
     deadlineHints: hints,
     summary: messageSummary(headers.subject, body, hints),
   };
+}
+
+// Focused scans require a credible academic action, outcome, contribution or deadline.
+// This runs after Gmail's query because broad keywords alone still match newsletters.
+export function isFocusedMailboxMessage(item) {
+  const subject = String(item?.subject || "");
+  const summary = String(item?.summary || "");
+  const sender = String(item?.from || "");
+  const combined = `${subject} ${summary} ${sender}`;
+  const noisy = /\b(?:newsletter|digest|roundup|unsubscribe|promotion|marketing|special offer|sale|advertisement|daily briefing|weekly update)\b/i.test(combined);
+  const strongSubject = /\b(?:manuscript|revision|reviewer|peer review|editorial decision|certificate|award|recognition|technical committee|conference committee|grant|proposal|funding|research project|patent|accepted for publication|paper (?:accepted|published)|publication decision|thesis|teaching assignment|deadline|due date)\b/i.test(subject);
+  const credibleAction = /\b(?:submit(?:ted|sion)? by|respond by|response by|review due|revision due|invited to review|review invitation|action required|certificate of|served as|appointed to|accepted for publication|has been published|project milestone)\b/i.test(combined);
+  if (noisy && !strongSubject && !credibleAction) return false;
+  return strongSubject || credibleAction || (item?.deadlineHints || []).length > 0;
 }
 
 function savedMetadata(item) {
@@ -120,7 +139,8 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const known = new Set(previous.accountEmail ? previous.processedMessageIds || [] : []);
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
-  const history = { startedAt: now.toISOString(), mode, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  const scope = range.scope;
+  const history = { startedAt: now.toISOString(), mode, scope, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
   const report = stage => onProgress({ ...history, stage });
   async function request(path) {
     const controller = new AbortController();
@@ -170,10 +190,15 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
           const data = await request("messages/" + encodeURIComponent(message.id) + "?format=full");
           if (data.id !== message.id) throw new Error("Gmail returned an unexpected message ID.");
           const item = messageMetadata(data);
-          items.set(item.id, item);
           known.add(item.id);
           history.analyzed++;
-          if (item.deadlineHints.length) history.deadlines++;
+          if (scope === FOCUSED_SCAN_SCOPE && !isFocusedMailboxMessage(item)) {
+            items.delete(item.id);
+            history.excluded++;
+          } else {
+            items.set(item.id, item);
+            if (item.deadlineHints.length) history.deadlines++;
+          }
         } catch (error) {
           if (error.name === "AbortError" || error.requestTimedOut) throw error;
           history.failed++;
@@ -203,6 +228,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   return {
     version: 2, accountEmail: account,
     initialStartDate: mode === "initial" ? range.startDate : previous.initialStartDate,
+    scanScope: scope,
     updatedAt: history.finishedAt, processedMessageIds: [...known], items: [...items.values()],
     history: [history, ...(previous.history || [])].slice(0, 50),
   };

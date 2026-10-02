@@ -42,13 +42,15 @@ with sync_playwright() as p:
  page.wait_for_timeout(300)
  assert not calls, calls
  assert panel.get_by_label('Look back (months)').input_value()=='12'
+ assert panel.get_by_label('Mailbox scope').input_value()=='focused'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 skipped · 1 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a']
  assert 'category%3Aprimary' in calls[0]
+ assert 'manuscript' in calls[0]
  assert panel.get_by_label('Scan type').input_value()=='incremental'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 1 skipped · 0 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 1 skipped · 0 with deadlines').wait_for()
  assert detail_ids==['a','b'],detail_ids
  article_b=page.locator('article').filter(has_text='Paper accepted for publication')
  article_b.get_by_role('button',name='Review transfer to Research Intelligence',exact=True).click()
@@ -66,10 +68,10 @@ with sync_playwright() as p:
  article_a.get_by_role('button',name='Ignore',exact=True).click()
  article_a.wait_for(state='detached')
  page.get_by_role('button',name='Ignored 1',exact=True).click()
- article_a=page.locator('article').filter(has_text='Manuscript a')
- article_a.get_by_role('button',name='Restore to review',exact=True).click()
- article_a.wait_for(state='detached')
- page.get_by_role('button',name='Active messages 2',exact=True).click()
+ page.get_by_role('button',name='Clear ignored list',exact=True).click()
+ page.get_by_role('button',name='Confirm clear 1',exact=True).click()
+ page.get_by_text('1 ignored record cleared.',exact=False).wait_for()
+ page.get_by_role('button',name='Active messages 1',exact=True).click()
  panel.get_by_label('Scan type').select_option('manual')
  panel.get_by_label('Start date (UTC)',exact=True).fill('2026-10-02')
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-01-01')
@@ -80,7 +82,7 @@ with sync_playwright() as p:
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-10-02')
  panel.get_by_label('Force rescan').check()
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 skipped · 1 with deadlines').wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 auto-excluded · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a','b','a','b'],detail_ids
  panel.get_by_text('Scan history (3)',exact=True).click()
  assert panel.get_by_role('row').count()==4
@@ -100,5 +102,5 @@ with sync_playwright() as p:
  assert not remote_images,remote_images
  assert not page.evaluate('window.emailExecuted || false')
  assert not errors,errors
- print('PASS: Primary-only scan; keep/ignore/restore; editable transfer preview; real reviewable module record; duplicate-safe routing; bounded summary without body/attachments; failure recovery; reload')
+ print('PASS: Focused Primary scan; keep/ignore/bulk clear; editable transfer preview; real reviewable module record; duplicate-safe routing; bounded summary without body/attachments; failure recovery; reload')
  browser.close()

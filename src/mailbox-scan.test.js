@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { scanMailbox, scanRange, messageMetadata } from "./mailbox-scan.js";
+import { isFocusedMailboxMessage, scanMailbox, scanRange, messageMetadata } from "./mailbox-scan.js";
 
 const now = new Date("2026-10-02T12:00:00Z");
 const message = (id, text = "Please respond by November 15, 2026.") => ({ id, threadId: "same-thread", internalDate: "1790899200000", snippet: "do not persist this snippet", payload: { headers: [{ name: "Subject", value: "Review invitation" }, { name: "From", value: "editor@example.test" }], mimeType: "text/plain", body: { data: Buffer.from(text).toString("base64url") }, parts: [{ filename: "private.txt", mimeType: "text/plain", body: { data: Buffer.from("private attachment deadline tomorrow").toString("base64url") } }] } });
@@ -26,8 +26,11 @@ test("default scan covers twelve calendar months and manual dates include the en
   assert.equal(initial.startDate, "2025-10-02");
   assert.equal(initial.endDate, "2026-10-02");
   assert.match(initial.query, /^category:primary /);
+  assert.match(initial.query, /manuscript/);
   const manual = scanRange({ mode: "manual", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
-  assert.equal(manual.query, `category:primary after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
+  assert.match(manual.query, new RegExp(`after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}$`));
+  const broad = scanRange({ mode: "manual", scope: "all-primary", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
+  assert.equal(broad.query, `category:primary after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
   assert.equal(scanRange({months: 1}, {}, new Date("2026-03-31T00:00Z")).startDate, "2026-02-28");
   for (const options of [{ months: 0 }, { months: 1.2 }, { mode: "bad" }, { mode: "manual", startDate: "2026-02-30", endDate: "2026-03-01" }, { mode: "manual", startDate: "2026-10-01", endDate: "2026-01-01" }]) assert.throws(() => scanRange(options, {}, now));
 });
@@ -58,15 +61,32 @@ test("incremental reload skips saved IDs but analyzes a new reply and preserves 
   assert.equal(next.initialStartDate, "2025-10-02");
 });
 
-test("force rescan refreshes messages in range without dropping results outside it", async () => {
+test("force rescan in broad mode refreshes messages in range without dropping results outside it", async () => {
   const initial = await run(fixture({first:{messages:[{id:"a"},{id:"old"}]}}));
-  const next = await run(fixture({first:{messages:[{id:"a"}]}}, {a:message("a", "Nothing actionable here.")}), { previous: initial, options:{mode:"manual",startDate:"2026-01-01",endDate:"2026-01-02",force:true} });
+  const next = await run(fixture({first:{messages:[{id:"a"}]}}, {a:message("a", "Nothing actionable here.")}), { previous: initial, options:{mode:"manual",scope:"all-primary",startDate:"2026-01-01",endDate:"2026-01-02",force:true} });
   assert.equal(next.history[0].analyzed, 1);
   assert.equal(next.history[0].skipped, 0);
   assert.equal(next.history[0].deadlines, 0);
   assert.equal(next.items.length, 2);
   assert.deepEqual(next.items.find(i=>i.id==="a").deadlineHints, []);
   assert.equal(next.initialStartDate, initial.initialStartDate);
+});
+
+test("focused scan automatically excludes noise and remembers its message ID", async () => {
+  const newsletter = message("noise", "Our weekly newsletter and special offer are ready. Unsubscribe here.");
+  newsletter.payload.headers[0].value = "Weekly technology digest";
+  const certificate = message("evidence", "Thank you for serving as a technical committee member. Your certificate of contribution is attached.");
+  certificate.payload.headers[0].value = "Technical committee certificate";
+  const state = await run(fixture({first:{messages:[{id:"noise"},{id:"evidence"}]}}, {noise:newsletter,evidence:certificate}));
+  assert.deepEqual(state.processedMessageIds, ["noise", "evidence"]);
+  assert.deepEqual(state.items.map(item => item.id), ["evidence"]);
+  assert.equal(state.history[0].analyzed, 2);
+  assert.equal(state.history[0].excluded, 1);
+});
+
+test("focused relevance accepts academic evidence and rejects ordinary messages", () => {
+  assert.equal(isFocusedMailboxMessage({subject:"Manuscript revision reminder",summary:"Please submit by Friday.",deadlineHints:[]}), true);
+  assert.equal(isFocusedMailboxMessage({subject:"Lunch tomorrow",summary:"Would noon work for you?",deadlineHints:[]}), false);
 });
 
 test("failed details remain retryable and partial pagination never marks unseen IDs processed", async () => {
