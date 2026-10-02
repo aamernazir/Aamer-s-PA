@@ -1,3 +1,4 @@
+import { migrateLocalData } from "../migrate-local-data.js";
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider,
@@ -169,16 +170,7 @@ export const cloudStorage = {
   // Existing browser data is copied only when a cloud document does not exist.
   // This protects the user's local data while making the first migration easy.
   async migrateLocalData() {
-    const { keys } = await localStorageAdapter.list("");
-    for (const key of keys) {
-      // Never copy the Gemini API key into Firestore.
-      if (key === "gemini-api-key") continue;
-      const local = await localStorageAdapter.get(key);
-      if (!local) continue;
-      const shared = key.startsWith("shared-project:");
-      const remote = await this.get(key, shared);
-      if (!remote) await this.set(key, local.value, shared);
-    }
+    await migrateLocalData(localStorageAdapter, this);
   },
 
   reportError(error) {
