@@ -2,6 +2,8 @@
 
 Module 05 owns the scan button. Opening Mailbox, refreshing its saved records, changing scan settings, signing in, and connecting Gmail do not scan email. The banner now only connects/reconnects Gmail; it can no longer overwrite the Mailbox scan record through the old 20-message scanner.
 
+Every scan adds Gmail's `category:primary` search operator. Messages categorized as Promotions, Social, Updates, or Forums are excluded at Gmail before message details are fetched. Existing results from scans made before this filter can be marked Ignored in Mailbox.
+
 - **Initial scan:** defaults to the last 12 calendar months, with a configurable 1–120 month lookback.
 - **Incremental scan:** revisits the initial scan's date window through today and skips successfully analyzed Gmail **message IDs**. A new reply is processed even when its thread has already been seen. Revisiting the window also permits retries and finds newly imported messages with old dates. Without an initial baseline, it uses the last 12 months.
 - **Manual range:** inclusive start/end calendar dates in UTC. Gmail epoch queries avoid Gmail's PST interpretation of date strings. Manual scans do not change the initial baseline.
@@ -10,6 +12,10 @@ Module 05 owns the scan button. Opening Mailbox, refreshing its saved records, c
 All pages of Gmail's messages list are visited; Gmail's default spam/trash exclusions apply. Each unique message is counted once per run. Details are fetched sequentially to avoid bursts. Each request has a 30-second timeout. Attachments are not downloaded or analyzed. Bodies are transient analysis inputs only; HTML is parsed in an inert template, with script/style text excluded.
 
 The existing account-scoped `an2r-gmail-deadlines-v1` record stores message and thread IDs, sender, subject, date, bounded deadline hints, successfully processed message IDs, initial start date, connected Gmail account, and the latest 50 scan summaries. Raw bodies, snippets, attachments, and access tokens are not saved by the new scanner. Legacy scan snippets are removed when the scan record is rewritten; existing user-managed archive records are left intact. Legacy IDs without a verified Gmail account are analyzed again. Switching to a different Gmail account is rejected to avoid mixing IDs and messages.
+
+Each result begins in Needs review. Keep marks it as relevant without forcing a module destination. Ignore hides it from active views while retaining a recoverable decision under the Ignored filter. Routing implies Keep. Active revision, reviewer, and deadline messages remain in Mailbox; Module 04 is suggested only for completed research outcomes such as an accepted/published paper or granted patent. Completed certificates and awards may be suggested for APS. Deadline extraction requires deadline language and strips URL/tracking parameters rather than treating every date as a deadline.
+
+Selecting a suggested destination opens a transfer preview; it never saves immediately. The preview shows an editable record title and contribution/outcome summary plus source, date, and deadline. Confirming creates a reviewable record in the selected destination module and then records the Mailbox link. APS entries remain unapproved with no subsection assumed, Project entries require an explicit project, and Research Intelligence entries remain reviewable. A stable Gmail message ID prevents duplicate transfers. The scanner stores a bounded derived summary of up to 700 characters for this preview, but never stores the full email body or attachments.
 
 The live status panel moves through Connecting, Finding, Analyzing, Saving, and Completed. It shows elapsed time, processed counts, Gmail's approximate result total, and an ETA once enough messages have been processed to estimate one. Users can cancel and later continue with an incremental scan.
 

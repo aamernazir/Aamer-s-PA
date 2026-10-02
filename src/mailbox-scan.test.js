@@ -25,8 +25,9 @@ test("default scan covers twelve calendar months and manual dates include the en
   const initial = scanRange({}, {}, now);
   assert.equal(initial.startDate, "2025-10-02");
   assert.equal(initial.endDate, "2026-10-02");
+  assert.match(initial.query, /^category:primary /);
   const manual = scanRange({ mode: "manual", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
-  assert.equal(manual.query, `after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
+  assert.equal(manual.query, `category:primary after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
   assert.equal(scanRange({months: 1}, {}, new Date("2026-03-31T00:00Z")).startDate, "2026-02-28");
   for (const options of [{ months: 0 }, { months: 1.2 }, { mode: "bad" }, { mode: "manual", startDate: "2026-02-30", endDate: "2026-03-01" }, { mode: "manual", startDate: "2026-10-01", endDate: "2026-01-01" }]) assert.throws(() => scanRange(options, {}, now));
 });
@@ -108,6 +109,15 @@ test("empty scans are recorded, history is bounded, and attachment text is exclu
   assert.equal(state.history[0].analyzed,0);
   assert.equal(state.history[0].status,"completed");
   assert.deepEqual(messageMetadata(message("a","No action needed.")).deadlineHints,[]);
+});
+
+test("tracking parameters and unrelated dates do not become deadline hints", () => {
+  const noisy = message("newsletter", "engagement&utm_term=x&utm_content=10-02-2026&mc_cid=abc&mc_eid=UNIQID. Our weekly newsletter was published October 2, 2026.");
+  assert.deepEqual(messageMetadata(noisy).deadlineHints, []);
+  const revision = message("revision", "The deadline for submission of your revised manuscript is 5 October 2026.");
+  assert.match(messageMetadata(revision).deadlineHints[0], /deadline for submission/i);
+  assert.match(messageMetadata(revision).summary, /revised manuscript/i);
+  assert.ok(messageMetadata(revision).summary.length <= 700);
 });
 
 test("a repeated page token stops with interrupted history instead of looping", async () => {

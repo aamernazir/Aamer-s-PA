@@ -1,4 +1,6 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
+import { mailboxCategory, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
+import { applyMailboxRoute, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -8686,43 +8688,6 @@ function App() {
 const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
 const MAILBOX_ARCHIVE_STORAGE_KEY = "an2r-mailbox-archive-v1";
 
-function mailboxItemId(item) {
-  return String(item?.id || ((item?.subject || "message") + "-" + (item?.receivedAt || "")));
-}
-
-function mailboxText(item) {
-  return [item?.subject, item?.from, item?.snippet, ...(item?.deadlineHints || [])].filter(Boolean).join(" ");
-}
-
-function mailboxProjectReferences(item) {
-  return [...new Set((mailboxText(item).match(/\b[A-Z]{2}\d{4,}\b/gi) || []).map((value) => value.toUpperCase()))];
-}
-
-function mailboxCategory(item) {
-  const text = mailboxText(item).toLowerCase();
-  if (/accept|accepted|decision|revise|revision|reviewer|review invitation|editorial/.test(text)) return "Publication / review";
-  if (/project|grant|funding|work package|milestone/.test(text)) return "Project";
-  if (/conference|award|teaching|service|leadership|committee|outreach|contribution|certificate/.test(text)) return "Academic activity";
-  if (/deadline|due date|respond by|response by/.test(text)) return "Deadline";
-  return "Academic message";
-}
-
-function mailboxSuggestions(item) {
-  const text = mailboxText(item).toLowerCase();
-  const references = mailboxProjectReferences(item);
-  const suggestions = [];
-  if (references.length || /project|grant|funding|work package|milestone/.test(text)) {
-    suggestions.push({ id: "projects", label: "Module 01 · Project Dashboard", reason: references.length ? "Project reference detected: " + references.join(", ") : "Project or grant activity detected." });
-  }
-  if (/conference|award|teaching|service|leadership|committee|outreach|contribution|certificate|activity/.test(text)) {
-    suggestions.push({ id: "aps", label: "Module 03 · APS", reason: "Potential activity or contribution for a future APS cycle." });
-  }
-  if (/journal|manuscript|review|reviewer|revision|editorial|accept|accepted|publication|paper|patent/.test(text) || !suggestions.length) {
-    suggestions.push({ id: "archive", label: "Module 04 · Research Intelligence", reason: "Publication, review, or long-term academic record detected." });
-  }
-  return suggestions;
-}
-
 function mailboxDate(value) {
   if (!value) return "Date not available";
   const parsed = new Date(value);
@@ -8745,6 +8710,10 @@ function MailboxModule({ onOpenModule }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [apsCycle, setApsCycle] = useState("APS27");
+  const [routeDraft, setRouteDraft] = useState(null);
+  const [routeProjects, setRouteProjects] = useState([]);
+  const [savingRoute, setSavingRoute] = useState(false);
+  const [routeError, setRouteError] = useState("");
 
   async function loadMailbox() {
     setLoading(true);
@@ -8779,7 +8748,7 @@ function MailboxModule({ onOpenModule }) {
     return () => window.removeEventListener("an-mailbox-updated", refresh);
   }, []);
 
-  async function saveRecord(item, approvedRoutes = [], priority) {
+  async function saveRecord(item, { approvedRoutes = [], priority, reviewStatus, replaceRoutes = false } = {}) {
     const id = mailboxItemId(item);
     const previous = archive[id] || {};
     const record = {
@@ -8788,7 +8757,8 @@ function MailboxModule({ onOpenModule }) {
       category: previous.category || mailboxCategory(item),
       projectReferences: previous.projectReferences || mailboxProjectReferences(item),
       suggestedRoutes: mailboxSuggestions(item).map((route) => route.id),
-      approvedRoutes: [...new Set([...(previous.approvedRoutes || []), ...approvedRoutes])],
+      approvedRoutes: replaceRoutes ? approvedRoutes : [...new Set([...(previous.approvedRoutes || []), ...approvedRoutes])],
+      reviewStatus: reviewStatus || previous.reviewStatus || "pending",
       priority: priority === undefined ? !!previous.priority : priority,
       archivedAt: previous.archivedAt || new Date().toISOString(),
       lastReviewedAt: new Date().toISOString(),
@@ -8800,43 +8770,77 @@ function MailboxModule({ onOpenModule }) {
     return record;
   }
 
-  async function approveRoute(item, routeId) {
-    const destination = routeId === "aps" ? "aps:" + apsCycle : routeId;
+  async function openRoutePreview(item, destination) {
+    setRouteError("");
     try {
-      await saveRecord(item, [destination]);
-      setMessage("Saved and routed to " + mailboxRouteLabel(destination) + ".");
+      const draft = { ...createRouteDraft(item, destination, apsCycle), item };
+      if (destination === "projects") {
+        const result = await window.storage.get("am2r-projects-v1");
+        const projects = result?.value ? JSON.parse(result.value) : [];
+        const references = mailboxProjectReferences(item).map(value => value.replace(/[^A-Z0-9]/g, ""));
+        const match = projects.find(project => references.includes(String(project.projectNumber || "").toUpperCase().replace(/[^A-Z0-9]/g, "")));
+        setRouteProjects(projects);
+        draft.projectId = match?.id || (projects.length === 1 ? projects[0].id : "");
+      }
+      setRouteDraft(draft);
     } catch (error) {
-      setMessage(error?.message || "The route could not be saved.");
+      setMessage(error?.message || "The transfer preview could not be opened.");
     }
   }
 
-  async function approveAll(item) {
+  async function confirmRoute() {
+    if (!routeDraft || savingRoute) return;
+    const destination = routeDraft.destination;
+    const routeKey = destination === "aps" ? "aps:" + routeDraft.apsCycle : destination;
+    const storageKey = destination === "projects" ? "am2r-projects-v1" : destination === "aps" ? "am2r-aps-v1" : "am2r-publication-archive-v1";
+    setSavingRoute(true);
+    setRouteError("");
     try {
-      const destinations = mailboxSuggestions(item).map((route) => route.id === "aps" ? "aps:" + apsCycle : route.id);
-      await saveRecord(item, destinations);
-      setMessage("Saved and linked to all suggested destinations.");
+      const result = await window.storage.get(storageKey);
+      const current = result?.value ? JSON.parse(result.value) : (destination === "archive" ? { outputs: [] } : destination === "projects" ? [] : null);
+      const applied = applyMailboxRoute(destination, current, routeDraft);
+      if (!applied.duplicate) await window.storage.set(storageKey, JSON.stringify(applied.data));
+      await saveRecord(routeDraft.item, { approvedRoutes: [routeKey], reviewStatus: "kept" });
+      setMessage(applied.duplicate ? "This email was already transferred; its Mailbox link is restored." : "Transferred to " + mailboxRouteLabel(routeKey) + " as a reviewable record.");
+      setRouteDraft(null);
     } catch (error) {
-      setMessage(error?.message || "The routes could not be saved.");
+      setRouteError(error?.message || "The record could not be transferred.");
+    } finally {
+      setSavingRoute(false);
     }
   }
 
   async function togglePriority(item) {
     const existing = archive[mailboxItemId(item)] || {};
-    try { await saveRecord(item, [], !existing.priority); }
+    try { await saveRecord(item, { priority: !existing.priority }); }
     catch (error) { setMessage(error?.message || "Could not update priority."); }
+  }
+
+  async function setReviewStatus(item, reviewStatus) {
+    try {
+      await saveRecord(item, { reviewStatus, approvedRoutes: reviewStatus === "ignored" ? [] : undefined, replaceRoutes: reviewStatus === "ignored" });
+      setMessage(reviewStatus === "kept" ? "Kept in Mailbox." : reviewStatus === "ignored" ? "Ignored. You can restore it from the Ignored view." : "Returned to the review queue.");
+    } catch (error) {
+      setMessage(error?.message || "The review decision could not be saved.");
+    }
   }
 
   const query = search.trim().toLowerCase();
   const visibleItems = items.filter((item) => {
     const saved = archive[mailboxItemId(item)] || item;
-    const approved = saved.approvedRoutes || [];
-    const matchesFilter = filter === "all" || (filter === "priority" && saved.priority) || (filter === "unrouted" && !approved.length) || (filter === "deadlines" && (item.deadlineHints || []).length);
+    const reviewStatus = saved.reviewStatus || "pending";
+    const active = reviewStatus !== "ignored";
+    const matchesFilter = (filter === "all" && active) || (filter === "review" && reviewStatus === "pending") || (filter === "kept" && reviewStatus === "kept") || (filter === "ignored" && reviewStatus === "ignored") || (filter === "priority" && active && saved.priority) || (filter === "deadlines" && active && (item.deadlineHints || []).length);
     const matchesSearch = !query || mailboxText(item).toLowerCase().includes(query);
     return matchesFilter && matchesSearch;
   });
-  const priorityCount = items.filter((item) => archive[mailboxItemId(item)]?.priority).length;
-  const unroutedCount = items.filter((item) => !(archive[mailboxItemId(item)]?.approvedRoutes || []).length).length;
-  const deadlineCount = items.filter((item) => (item.deadlineHints || []).length).length;
+  const statusFor = item => archive[mailboxItemId(item)]?.reviewStatus || "pending";
+  const activeItems = items.filter(item => statusFor(item) !== "ignored");
+  const priorityCount = activeItems.filter((item) => archive[mailboxItemId(item)]?.priority).length;
+  const reviewCount = items.filter(item => statusFor(item) === "pending").length;
+  const keptCount = items.filter(item => statusFor(item) === "kept").length;
+  const ignoredCount = items.filter(item => statusFor(item) === "ignored").length;
+  const deadlineCount = activeItems.filter((item) => (item.deadlineHints || []).length).length;
 
   return (
     <div style={{ background: HUB_PAPER, minHeight: "calc(100vh - 48px)", padding: "28px 24px 70px" }}>
@@ -8862,7 +8866,7 @@ function MailboxModule({ onOpenModule }) {
         <MailboxScanControls onSaved={loadMailbox} />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginBottom: 18 }}>
-          {[{ id: "all", label: "All messages", count: items.length }, { id: "unrouted", label: "Needs routing", count: unroutedCount }, { id: "deadlines", label: "Has deadline", count: deadlineCount }, { id: "priority", label: "Priority", count: priorityCount }].map((card) => (
+          {[{ id: "all", label: "Active messages", count: activeItems.length }, { id: "review", label: "Needs review", count: reviewCount }, { id: "kept", label: "Kept", count: keptCount }, { id: "deadlines", label: "Has deadline", count: deadlineCount }, { id: "priority", label: "Priority", count: priorityCount }, { id: "ignored", label: "Ignored", count: ignoredCount }].map((card) => (
             <button key={card.id} onClick={() => setFilter(card.id)} style={{ textAlign: "left", background: filter === card.id ? HUB_INK : "#fff", color: filter === card.id ? "#fff" : HUB_INK, border: "1px solid " + (filter === card.id ? HUB_INK : HUB_LINE), borderRadius: 7, padding: "12px 14px", cursor: "pointer" }}>
               <div style={{ fontSize: 11, opacity: 0.72, marginBottom: 5 }}>{card.label}</div><div style={{ fontSize: 23, fontWeight: 700 }}>{card.count}</div>
             </button>
@@ -8884,11 +8888,12 @@ function MailboxModule({ onOpenModule }) {
             const saved = archive[id] || {};
             const suggestions = mailboxSuggestions(item);
             const approved = saved.approvedRoutes || [];
+            const reviewStatus = saved.reviewStatus || "pending";
             const references = saved.projectReferences || mailboxProjectReferences(item);
             return <article key={id} className="an-card" style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 8, padding: "16px 17px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 7 }}><span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: HUB_TEAL, background: "#EAF2F8", padding: "4px 7px", borderRadius: 4 }}>{saved.category || mailboxCategory(item)}</span>{approved.length ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Routed</span> : <span style={{ fontSize: 10, color: HUB_AMBER, background: "#FFF8E8", padding: "4px 7px", borderRadius: 4 }}>Needs review</span>}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 7 }}><span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: HUB_TEAL, background: "#EAF2F8", padding: "4px 7px", borderRadius: 4 }}>{saved.category || mailboxCategory(item)}</span>{approved.length ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Routed</span> : reviewStatus === "kept" ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Kept</span> : reviewStatus === "ignored" ? <span style={{ fontSize: 10, color: HUB_MUTED, background: "#EEF0F2", padding: "4px 7px", borderRadius: 4 }}>Ignored</span> : <span style={{ fontSize: 10, color: HUB_AMBER, background: "#FFF8E8", padding: "4px 7px", borderRadius: 4 }}>Needs review</span>}</div>
                   <h2 style={{ fontSize: 16, lineHeight: 1.35, color: HUB_INK, margin: 0, overflowWrap: "anywhere" }}>{item.subject || "(No subject)"}</h2>
                   <div style={{ fontSize: 12, color: HUB_MUTED, marginTop: 5 }}>{item.from || "Unknown sender"} · {mailboxDate(item.receivedAt)}</div>
                 </div>
@@ -8898,14 +8903,38 @@ function MailboxModule({ onOpenModule }) {
               {(item.deadlineHints || []).length > 0 && <div style={{ background: "#FFF8E8", border: "1px solid #E6C77A", color: "#6B5015", borderRadius: 5, padding: "8px 10px", fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}><strong>Deadline hints:</strong> {item.deadlineHints.join(" · ")}</div>}
               {references.length > 0 && <div style={{ fontSize: 12, color: HUB_TEAL, marginBottom: 10 }}>Project references: <span className="an-mono">{references.join(", ")}</span></div>}
               <div style={{ borderTop: "1px solid #EEF0F2", paddingTop: 11 }}>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: suggestions.length ? 12 : 4 }}>
+                  {reviewStatus !== "kept" && <button onClick={() => setReviewStatus(item, "kept")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #9CC9AA", background: "#EFF8F1", color: HUB_GREEN, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><Check size={13} /> Keep · relevant</button>}
+                  {reviewStatus !== "ignored" && <button onClick={() => setReviewStatus(item, "ignored")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #D2D6DC", background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><X size={13} /> Ignore</button>}
+                  {reviewStatus === "ignored" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>Restore to review</button>}
+                  {reviewStatus === "kept" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Return to review</button>}
+                </div>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{suggestions.map((route) => { const routeKey = route.id === "aps" ? "aps:" + apsCycle : route.id; const isApproved = approved.includes(routeKey); return <button key={route.id} onClick={() => approveRoute(item, route.id)} disabled={isApproved} title={route.reason} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (isApproved ? "#9CC9AA" : HUB_LINE), background: isApproved ? "#EFF8F1" : "#fff", color: isApproved ? HUB_GREEN : HUB_TEAL, borderRadius: 5, padding: "7px 9px", fontSize: 12, cursor: isApproved ? "default" : "pointer" }}>{isApproved ? <Check size={13} /> : <Target size={13} />}{isApproved ? mailboxRouteLabel(routeKey) : route.label}</button>; })}<button onClick={() => approveAll(item)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Approve all</button></div>
+                {suggestions.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{suggestions.map((route) => { const routeKey = route.id === "aps" ? "aps:" + apsCycle : route.id; const isApproved = approved.includes(routeKey); return <button key={route.id} onClick={() => openRoutePreview(item, route.id)} disabled={isApproved} title={route.reason} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (isApproved ? "#9CC9AA" : HUB_LINE), background: isApproved ? "#EFF8F1" : "#fff", color: isApproved ? HUB_GREEN : HUB_TEAL, borderRadius: 5, padding: "7px 9px", fontSize: 12, cursor: isApproved ? "default" : "pointer" }}>{isApproved ? <Check size={13} /> : <Target size={13} />}{isApproved ? mailboxRouteLabel(routeKey) : `Review transfer to ${mailboxRouteLabel(routeKey)}`}</button>; })}</div> : <div style={{ fontSize: 12, color: HUB_MUTED }}>No archive destination recommended. Keep this message in Mailbox while it is active, then ignore it when it is no longer needed.</div>}
               </div>
               {approved.length > 0 && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 11, paddingTop: 10, borderTop: "1px solid #EEF0F2" }}><div style={{ fontSize: 12, color: HUB_GREEN }}>Saved links: {approved.map(mailboxRouteLabel).join(" · ")}</div><div style={{ display: "flex", gap: 6 }}>{[...new Set(approved.map((route) => route.startsWith("aps:") ? "aps" : route))].map((moduleId) => <button key={moduleId} onClick={() => onOpenModule && onOpenModule(moduleId)} style={{ border: "1px solid #B9D8C1", background: "#fff", color: HUB_GREEN, borderRadius: 4, padding: "5px 8px", fontSize: 11, cursor: "pointer" }}>Open {moduleId === "aps" ? "APS" : moduleId === "projects" ? "Project Dashboard" : "Research Intelligence"}</button>)}</div></div>}
             </article>;
           })}
         </div>
       </div>
+      {routeDraft && <div role="dialog" aria-modal="true" aria-label="Review transfer" style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(26,35,50,0.48)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => !savingRoute && setRouteDraft(null)}>
+        <div onClick={(event) => event.stopPropagation()} style={{ width: "min(100%, 620px)", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 8, padding: 22, boxShadow: "0 18px 55px rgba(0,0,0,0.28)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+            <div><div style={{ fontSize: 11, color: HUB_MUTED, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Review before transfer</div><h2 style={{ margin: 0, fontSize: 21, color: HUB_INK }}>Save to {mailboxRouteLabel(routeDraft.destination === "aps" ? "aps:" + routeDraft.apsCycle : routeDraft.destination)}</h2></div>
+            <button aria-label="Close transfer preview" onClick={() => setRouteDraft(null)} disabled={savingRoute} style={{ border: 0, background: "none", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+          </div>
+          <div style={{ background: "#F3F8FC", border: "1px solid #B9D8E8", borderRadius: 6, padding: "10px 12px", color: HUB_TEAL, fontSize: 12.5, lineHeight: 1.5, marginBottom: 15 }}>This is the complete record that will be transferred. Review and edit the title and summary first. The email body and attachments are not saved.</div>
+          <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Record title<input value={routeDraft.title} onChange={(event) => setRouteDraft({ ...routeDraft, title: event.target.value })} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, color: HUB_INK }} /></label>
+          <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Contribution / outcome summary<textarea value={routeDraft.summary} onChange={(event) => setRouteDraft({ ...routeDraft, summary: event.target.value })} rows={6} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, color: HUB_INK, resize: "vertical", lineHeight: 1.5 }} /></label>
+          {routeDraft.destination === "projects" && <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Destination project<select value={routeDraft.projectId} onChange={(event) => setRouteDraft({ ...routeDraft, projectId: event.target.value })} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, background: "#fff" }}><option value="">Choose a project…</option>{routeProjects.map(project => <option key={project.id} value={project.id}>{project.title}{project.projectNumber ? " · " + project.projectNumber : ""}</option>)}</select></label>}
+          <div style={{ border: "1px solid #EEF0F2", borderRadius: 6, marginBottom: 15 }}>{routePreviewFields(routeDraft).slice(2).map(([label, value]) => <div key={label} style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, padding: "8px 10px", borderBottom: label === "Deadline" ? 0 : "1px solid #EEF0F2", fontSize: 12.5 }}><strong style={{ color: HUB_MUTED }}>{label}</strong><span style={{ color: HUB_INK, overflowWrap: "anywhere" }}>{value}</span></div>)}</div>
+          {routeDraft.destination === "aps" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}>This will enter {routeDraft.apsCycle} as unapproved evidence for subsection review.</div>}
+          {routeDraft.destination === "archive" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}>This will enter Research Intelligence as a reviewable publication or patent record.</div>}
+          {routeDraft.destination === "projects" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}>This will enter the selected project as reviewable evidence.</div>}
+          {routeError && <div role="alert" style={{ background: "#FFF4E5", color: "#9A3412", borderRadius: 5, padding: "9px 11px", fontSize: 12.5, marginBottom: 12 }}>{routeError}</div>}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}><button onClick={() => setRouteDraft(null)} disabled={savingRoute} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "9px 13px", cursor: "pointer" }}>Cancel</button><button onClick={confirmRoute} disabled={savingRoute || !routeDraft.title.trim() || !routeDraft.summary.trim() || (routeDraft.destination === "projects" && !routeDraft.projectId)} style={{ border: 0, background: HUB_TEAL, color: "#fff", borderRadius: 5, padding: "9px 14px", fontWeight: 600, cursor: "pointer" }}>{savingRoute ? "Saving…" : "Confirm and save"}</button></div>
+        </div>
+      </div>}
     </div>
   );
 }
