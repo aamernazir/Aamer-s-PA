@@ -20,6 +20,16 @@ test("APS routing saves a reviewable contribution summary once", () => {
   assert.equal(applyMailboxRoute("aps", first.data, draft).duplicate, true);
 });
 
+test("technical committee certificates reach every plausible APS subsection pending approval", () => {
+  const certificate = createRouteDraft({ ...item, subject: "ICEIM2026 Technical Committee Certificate", summary: "Received a certificate for service on the conference technical committee." }, "aps", "APS27");
+  assert.deepEqual(certificate.apsSubsections, ["R6_CONF", "R6_RECOG", "S2_PROMOTE", "B4"]);
+  const original = { activeCycle: "APS27", cycles: { APS27: { status: "In Progress", evidenceInbox: [] } } };
+  const record = applyMailboxRoute("aps", original, certificate).record;
+  assert.deepEqual(record.subsections, certificate.apsSubsections);
+  assert.ok(Object.values(record.subsectionApprovals).every(relation => relation.approved === false));
+  assert.equal(record.approved, false);
+});
+
 test("archive routing creates a reviewable completed output and prevents duplicates", () => {
   const accepted = createRouteDraft({ ...item, subject: "Paper accepted for publication", summary: "The journal accepted the manuscript for publication." }, "archive");
   const first = applyMailboxRoute("archive", { outputs: [] }, accepted);

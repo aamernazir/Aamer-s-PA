@@ -53,7 +53,10 @@ function deadlineHints(text) {
 
 function messageSummary(subject, body, hints) {
   const boilerplate = /unsubscribe|manage (?:your )?preferences|view (?:this )?in (?:a )?browser|privacy policy|do not reply/i;
-  const sentences = cleanMessageText(body).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
+  // Gmail often returns the whole quoted thread. Summarize only the newest
+  // message above common reply/forward separators.
+  const newestMessage = String(body || "").split(/(?:-{2,}\s*Original Message\s*-{2,}|\bFrom:\s|\bOn\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,180})/i)[0];
+  const sentences = cleanMessageText(newestMessage).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
   const details = [...new Set([...(hints || []), ...sentences])].slice(0, 3).join(" ").slice(0, 700);
   return details || String(subject || "Email record").slice(0, 500);
 }
