@@ -70,7 +70,9 @@ test("force rescan refreshes messages in range without dropping results outside 
 
 test("failed details remain retryable and partial pagination never marks unseen IDs processed", async () => {
   const initial = await run(fixture({first:{messages:[{id:"a"},{id:"bad"}],nextPageToken:"next"},next:429}, {bad:500}));
-  assert.equal(initial.history[0].status, "partial");
+  assert.equal(initial.history[0].status, "interrupted");
+  assert.equal(initial.history[0].errorCode, "rate-limit");
+  assert.equal(initial.history[0].listFailures, 1);
   assert.equal(initial.history[0].failed, 1);
   assert.deepEqual(initial.processedMessageIds, ["a"]);
   const next = await run(fixture({first:{messages:[{id:"a"},{id:"bad"},{id:"new"}]}}), {previous:initial, options:{mode:"incremental"}});
@@ -83,7 +85,8 @@ test("expired authentication stops the scan and forced failures remove old skip 
   const initial = await run(fixture({first:{messages:[{id:"a"}]}}));
   const f=fixture({first:{messages:[{id:"a"},{id:"b"}]}},{a:401});
   const next=await run(f,{previous:initial,options:{force:true}});
-  assert.equal(next.history[0].status,"partial");
+  assert.equal(next.history[0].status,"interrupted");
+  assert.equal(next.history[0].errorCode,"authorization");
   assert.match(next.history[0].error,/expired/);
   assert.deepEqual(next.processedMessageIds,[]);
   assert.equal(next.items.length,1);
@@ -107,10 +110,10 @@ test("empty scans are recorded, history is bounded, and attachment text is exclu
   assert.deepEqual(messageMetadata(message("a","No action needed.")).deadlineHints,[]);
 });
 
-test("a repeated page token stops with partial history instead of looping", async () => {
+test("a repeated page token stops with interrupted history instead of looping", async () => {
   const f=fixture({first:{messages:[{id:"a"}],nextPageToken:"again"},again:{messages:[{id:"b"}],nextPageToken:"again"}});
   const next=await run(f);
-  assert.equal(next.history[0].status,"partial");
+  assert.equal(next.history[0].status,"interrupted");
   assert.deepEqual(next.processedMessageIds,["a","b"]);
   assert.equal(f.calls.length,4);
 });
@@ -119,4 +122,36 @@ test("incremental scans keep the initial baseline as time advances", () => {
   const range=scanRange({mode:"incremental"},{initialStartDate:"2024-06-01"},now);
   assert.equal(range.startDate,"2024-06-01");
   assert.equal(range.endDate,"2026-10-02");
+});
+
+test("progress includes Gmail's estimate and completed history includes duration", async () => {
+  const progress=[];
+  const f=fixture({first:{messages:[{id:"a"}],resultSizeEstimate:7}});
+  const next=await run(f,{clock:()=>new Date("2026-10-02T12:00:05Z"),onProgress:update=>progress.push(update)});
+  assert.equal(next.history[0].estimatedTotal,7);
+  assert.equal(next.history[0].found,1);
+  assert.equal(next.history[0].durationMs,5000);
+  assert.ok(progress.some(update=>update.stage==="finding"));
+  assert.ok(progress.some(update=>update.stage==="analyzing"));
+  assert.equal(progress.at(-1).stage,"complete");
+});
+
+test("listing failures identify their cause and do not masquerade as zero message failures", async () => {
+  const next=await run(fixture({first:403}));
+  const history=next.history[0];
+  assert.equal(history.status,"interrupted");
+  assert.equal(history.errorCode,"permission");
+  assert.equal(history.listFailures,1);
+  assert.equal(history.failed,0);
+  assert.match(history.error,/denied/);
+});
+
+test("user cancellation is recorded as cancelled and remains retryable", async () => {
+  const controller=new AbortController();
+  controller.abort();
+  const next=await run(fixture({first:{messages:[{id:"a"}]}}),{signal:controller.signal});
+  assert.equal(next.history[0].status,"cancelled");
+  assert.equal(next.history[0].errorCode,"cancelled");
+  assert.equal(next.history[0].listFailures,0);
+  assert.deepEqual(next.processedMessageIds,[]);
 });

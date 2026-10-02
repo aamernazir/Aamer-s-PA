@@ -41,11 +41,11 @@ with sync_playwright() as p:
  assert not calls, calls
  assert panel.get_by_label('Look back (months)').input_value()=='12'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- page.get_by_text('Scan saved: 1 analyzed, 0 skipped, 1 with deadlines, 0 failed.',exact=True).wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a']
  assert panel.get_by_label('Scan type').input_value()=='incremental'
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- page.get_by_text('Scan saved: 1 analyzed, 1 skipped, 1 with deadlines, 0 failed.',exact=True).wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 1 skipped · 1 with deadlines').wait_for()
  assert detail_ids==['a','b'],detail_ids
  assert page.get_by_text('Manuscript b',exact=True).count()==1
  panel.get_by_label('Scan type').select_option('manual')
@@ -53,12 +53,12 @@ with sync_playwright() as p:
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-01-01')
  before=len(calls)
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- page.get_by_role('status').filter(has_text='Choose a valid start').wait_for()
+ page.get_by_role('alert').filter(has_text='Choose a valid start').wait_for()
  assert len(calls)==before
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-10-02')
  panel.get_by_label('Force rescan').check()
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- page.get_by_text('Scan saved: 2 analyzed, 0 skipped, 2 with deadlines, 0 failed.',exact=True).wait_for()
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 skipped · 2 with deadlines').wait_for()
  assert detail_ids==['a','b','a','b'],detail_ids
  panel.get_by_text('Scan history (3)',exact=True).click()
  assert panel.get_by_role('row').count()==4

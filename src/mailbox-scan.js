@@ -84,7 +84,17 @@ function savedMetadata(item) {
   return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)) };
 }
 
-export async function scanMailbox({ accessToken, accountEmail, previous = {}, options = {}, fetchImpl = fetch, now = new Date(), onProgress = () => {} }) {
+function scanFailure(error, cancelled) {
+  if (cancelled) return { errorCode: "cancelled", error: "Cancelled by user. Run an incremental scan to continue." };
+  if (error?.requestTimedOut) return { errorCode: "timeout", error: "Gmail did not respond within 30 seconds. Check the connection and retry." };
+  if (error?.status === 401) return { errorCode: "authorization", error: "Gmail authorization expired. Reconnect Gmail and retry." };
+  if (error?.status === 403) return { errorCode: "permission", error: "Gmail denied this request. Reconnect Gmail and confirm read-only access." };
+  if (error?.status === 429) return { errorCode: "rate-limit", error: "Gmail temporarily rate-limited the scan. Wait a few minutes, then retry." };
+  if (error?.status >= 500) return { errorCode: "gmail-unavailable", error: "Gmail is temporarily unavailable. Retry the scan shortly." };
+  return { errorCode: "interrupted", error: "Gmail scan was interrupted. Retry to process the remaining messages." };
+}
+
+export async function scanMailbox({ accessToken, accountEmail, previous = {}, options = {}, fetchImpl = fetch, now = new Date(), clock = () => new Date(), signal, onProgress = () => {} }) {
   if (!accessToken || !accountEmail) throw new Error("Connect Gmail before scanning.");
   const account = accountEmail.toLowerCase();
   if (previous.accountEmail && previous.accountEmail.toLowerCase() !== account) throw new Error("Reconnect the Gmail account used for this mailbox: " + previous.accountEmail);
@@ -94,10 +104,14 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const known = new Set(previous.accountEmail ? previous.processedMessageIds || [] : []);
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
-  const history = { startedAt: now.toISOString(), mode, force: !!options.force, startDate: range.startDate, endDate: range.endDate, analyzed: 0, skipped: 0, deadlines: 0, failed: 0, status: "completed" };
+  const history = { startedAt: now.toISOString(), mode, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  const report = stage => onProgress({ ...history, stage });
   async function request(path) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    let timedOut = false;
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
     try {
       const response = await fetchImpl("https://gmail.googleapis.com/gmail/v1/users/me/" + path, { headers: { Authorization: "Bearer " + accessToken }, signal: controller.signal });
       if (!response.ok) {
@@ -106,20 +120,37 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
         throw error;
       }
       return await response.json();
-    } finally { clearTimeout(timeout); }
+    } catch (error) {
+      if (timedOut) error.requestTimedOut = true;
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+    }
   }
   let pageToken;
   const pages = new Set();
   try {
+    report("finding");
     do {
+      if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
       const params = new URLSearchParams({ q: range.query, maxResults: "100" });
       if (pageToken) params.set("pageToken", pageToken);
-      const page = await request("messages?" + params);
+      let page;
+      try { page = await request("messages?" + params); }
+      catch (error) { error.listFailure = true; throw error; }
+      if (Number.isFinite(page.resultSizeEstimate)) history.estimatedTotal = Math.max(history.estimatedTotal || 0, page.resultSizeEstimate);
       for (const message of page.messages || []) {
         if (!message.id || seen.has(message.id)) continue;
         seen.add(message.id);
-        if (!options.force && known.has(message.id)) { history.skipped++; continue; }
+        history.found++;
+        if (!options.force && known.has(message.id)) {
+          history.skipped++;
+          report("analyzing");
+          continue;
+        }
         try {
+          report("analyzing");
           const data = await request("messages/" + encodeURIComponent(message.id) + "?format=full");
           if (data.id !== message.id) throw new Error("Gmail returned an unexpected message ID.");
           const item = messageMetadata(data);
@@ -128,23 +159,31 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
           history.analyzed++;
           if (item.deadlineHints.length) history.deadlines++;
         } catch (error) {
+          if (error.name === "AbortError" || error.requestTimedOut) throw error;
           history.failed++;
           // Forced refresh failures must remain retryable on the next incremental scan.
           known.delete(message.id);
           if ([401, 403, 429].includes(error.status)) throw error;
         }
-        onProgress({ ...history });
+        report("analyzing");
       }
       pageToken = page.nextPageToken;
       if (pageToken && pages.has(pageToken)) throw new Error("Gmail repeated a page token. Retry the scan.");
       if (pageToken) pages.add(pageToken);
     } while (pageToken);
-    if (history.failed) history.status = "partial";
+    if (history.failed) {
+      history.status = "partial";
+      history.errorCode = "message-failures";
+      history.error = `${history.failed} message${history.failed === 1 ? "" : "s"} could not be analyzed. Run an incremental scan to retry.`;
+    }
   } catch (error) {
-    history.status = "partial";
-    history.error = error.status === 401 ? "Gmail authorization expired. Reconnect Gmail and retry." : "Gmail scan interrupted. Retry to process remaining messages.";
+    history.status = signal?.aborted ? "cancelled" : "interrupted";
+    if (error.listFailure && !signal?.aborted) history.listFailures++;
+    Object.assign(history, scanFailure(error, signal?.aborted));
   }
-  history.finishedAt = new Date().toISOString();
+  history.finishedAt = clock().toISOString();
+  history.durationMs = Math.max(0, Date.parse(history.finishedAt) - Date.parse(history.startedAt));
+  report(history.status === "completed" ? "complete" : history.status);
   return {
     version: 2, accountEmail: account,
     initialStartDate: mode === "initial" ? range.startDate : previous.initialStartDate,
