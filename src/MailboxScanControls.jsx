@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { cloudStorage } from "./cloud-storage.js";
-import { MAILBOX_SCAN_STORAGE_KEY, scanMailbox, scanRange } from "./mailbox-scan.js";
+import { FOCUSED_SCAN_SCOPE, MAILBOX_SCAN_STORAGE_KEY, scanMailbox, scanRange } from "./mailbox-scan.js";
 
 let scanInProgress = false;
 const field = { padding: "8px 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: "white", color: "#1F2937" };
@@ -23,6 +23,7 @@ function statusLabel(status) {
 export default function MailboxScanControls({ onSaved, storage = cloudStorage }) {
   const [saved, setSaved] = useState(null);
   const [mode, setMode] = useState("initial");
+  const [scope, setScope] = useState(FOCUSED_SCAN_SCOPE);
   const [months, setMonths] = useState(12);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -43,6 +44,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       const value = result?.value ? JSON.parse(result.value) : {};
       setSaved(value);
       setMode(value.initialStartDate ? "incremental" : "initial");
+      setScope(value.scanScope || FOCUSED_SCAN_SCOPE);
     }).catch(error => { if (active) setMessage(error.message || "Scan history could not be loaded. Refresh Mailbox to retry."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; mounted.current = false; };
@@ -58,13 +60,13 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
 
   async function scan() {
     if (scanInProgress || busy) return;
-    try { scanRange({ mode, months, startDate, endDate }, saved || {}); }
+    try { scanRange({ mode, scope, months, startDate, endDate }, saved || {}); }
     catch (error) { setMessage(error.message); return; }
     scanInProgress = true;
     setBusy(true);
     setMessage("");
     const startedAt = new Date().toISOString();
-    setProgress({ stage: "connecting", startedAt, found: 0, analyzed: 0, skipped: 0, deadlines: 0, failed: 0 });
+    setProgress({ stage: "connecting", startedAt, found: 0, analyzed: 0, excluded: 0, skipped: 0, deadlines: 0, failed: 0 });
     setElapsedMs(0);
     abortRef.current = new AbortController();
     const uid = storage.getStatus().user?.uid;
@@ -77,7 +79,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       const previous = result?.value ? JSON.parse(result.value) : {};
       const next = await scanMailbox({
         accessToken: storage.getGmailAccessToken(), accountEmail, previous,
-        options: { mode, months, startDate, endDate, force },
+        options: { mode, scope, months, startDate, endDate, force },
         signal: abortRef.current.signal,
         onProgress: update => { if (mounted.current) setProgress(update); },
       });
@@ -127,11 +129,14 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
 
   return <section aria-label="Mailbox scan controls" style={{ background: "#fff", border: "1px solid #D9E1EA", borderRadius: 7, padding: 16, marginBottom: 18 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 10px" }}>Scan Gmail</h2>
-    <p style={{ fontSize: 13, color: "#64748B" }}>Scans run only when you press Scan Gmail and include only Gmail’s Primary category. Promotions, Social, Updates, and Forums are excluded. Incremental scans skip saved message IDs and analyze new replies separately, even in existing threads.</p>
+    <p style={{ fontSize: 13, color: "#64748B" }}>Scans run only when you press Scan Gmail and include only Gmail’s Primary category. Focused academic scan also removes obvious newsletters and messages without a credible academic action, outcome, contribution, or deadline. Incremental scans skip saved message IDs and analyze new replies separately, even in existing threads.</p>
     {saved?.accountEmail && <p style={{ fontSize: 12 }}>Mailbox account: {saved.accountEmail}</p>}
     <fieldset disabled={busy || loading || saved === null} style={{ border: 0, margin: 0, padding: 0, display: "flex", alignItems: "end", flexWrap: "wrap", gap: 12 }}>
       <label>Scan type<br /><select style={field} value={mode} onChange={e => setMode(e.target.value)}>
         <option value="initial">Initial scan</option><option value="incremental">Incremental scan</option><option value="manual">Manual date range</option>
+      </select></label>
+      <label>Mailbox scope<br /><select style={field} value={scope} onChange={e => setScope(e.target.value)}>
+        <option value="focused">Focused academic (recommended)</option><option value="all-primary">All Primary mail</option>
       </select></label>
       {mode === "initial" && <label>Look back (months)<br /><input style={{ ...field, width: 100 }} type="number" min="1" max="120" value={months} onChange={e => setMonths(e.target.value)} /></label>}
       {mode === "manual" && <><label>Start date (UTC)<br /><input style={field} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label><label>End date (UTC, inclusive)<br /><input style={field} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label></>}
@@ -140,10 +145,11 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
     </fieldset>
     {busy && <button onClick={() => abortRef.current?.abort()} style={{ ...field, marginTop: 10, color: "#9A3412", cursor: "pointer" }}>Cancel scan</button>}
     {mode === "incremental" && <p style={{ fontSize: 12, color: "#64748B" }}>Checks {saved?.initialStartDate || "the last 12 months"} through today. Use a manual range to check older mail. No background or scheduled scans.</p>}
+    {scope === FOCUSED_SCAN_SCOPE && <p style={{ fontSize: 12, color: "#64748B" }}>Focused mode automatically excludes obvious noise before it reaches your review list. Excluded messages are remembered by ID and do not increase the Ignored count.</p>}
     <p style={{ fontSize: 12, color: "#64748B" }}>Message bodies are analyzed temporarily. Only IDs, sender, subject, date, deadline hints and scan counts are saved; bodies and attachments are not stored. Dates use UTC.</p>
     {shownRun && <div role="status" aria-live="polite" style={{ marginTop: 14, padding: 12, borderRadius: 6, border: `1px solid ${shownRun.status === "completed" ? "#9CC9AA" : shownRun.error ? "#E6C77A" : "#B9D8E8"}`, background: shownRun.status === "completed" ? "#EFF8F1" : shownRun.error ? "#FFF8E8" : "#F3F8FC", fontSize: 13 }}>
       <div style={{ fontWeight: 700, marginBottom: 6 }}>{busy ? `${stageText}…` : stageText}</div>
-      <div>{processed}{total ? ` of approximately ${total}` : ""} processed · {shownRun.analyzed} analyzed · {shownRun.skipped} skipped · {shownRun.deadlines} with deadlines · {shownRun.failed} message failures</div>
+      <div>{processed}{total ? ` of approximately ${total}` : ""} processed · {shownRun.analyzed} analyzed · {shownRun.excluded || 0} auto-excluded · {shownRun.skipped} skipped · {shownRun.deadlines} with deadlines · {shownRun.failed} message failures</div>
       <div style={{ marginTop: 4 }}>Elapsed: {formatDuration(busy ? elapsedMs : shownRun.durationMs)} · {busy ? `Estimated remaining: ${etaMs ? formatDuration(etaMs) : "Estimating…"}` : `Finished: ${shownRun.finishedAt ? shownRun.finishedAt.replace("T", " ").slice(0, 19) + " UTC" : "—"}`}</div>
       {shownRun.error && <div style={{ marginTop: 6, color: "#9A3412" }}>{shownRun.error}</div>}
       {canReconnect && <button onClick={reconnect} disabled={busy} style={{ ...field, marginTop: 8, cursor: "pointer" }}>Reconnect Gmail</button>}
@@ -153,9 +159,9 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       <summary>Scan history ({saved?.history?.length || 0})</summary>
       <p style={{ fontSize: 12 }}>Latest 50 scans. Estimated totals come from Gmail and may change while pages load.</p>
       {!saved?.history?.length ? <p>No scans recorded yet.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", textAlign: "left", fontSize: 12, borderSpacing: "10px" }}>
-        <thead><tr>{["Started (UTC)", "Range", "Type", "Status", "Duration", "Found", "Analyzed", "Skipped", "Deadlines", "Failures", "Reason"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
+        <thead><tr>{["Started (UTC)", "Range", "Scope", "Type", "Status", "Duration", "Found", "Analyzed", "Auto-excluded", "Skipped", "Deadlines", "Failures", "Reason"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{saved.history.map((run, index) => <tr key={run.startedAt + index}>
-          <td>{run.startedAt.replace("T", " ").slice(0, 19)}</td><td>{run.startDate} – {run.endDate}</td><td>{run.mode}{run.force ? " (forced)" : ""}</td><td>{statusLabel(run.status)}</td><td>{formatDuration(run.durationMs)}</td><td>{run.found ?? "—"}</td><td>{run.analyzed}</td><td>{run.skipped}</td><td>{run.deadlines}</td><td>{(run.failed || 0) + (run.listFailures || 0)}</td><td>{run.error || (run.status === "partial" ? "Recorded before detailed failure reporting; retry the scan." : "—")}</td>
+          <td>{run.startedAt.replace("T", " ").slice(0, 19)}</td><td>{run.startDate} – {run.endDate}</td><td>{run.scope === "all-primary" ? "All Primary" : "Focused"}</td><td>{run.mode}{run.force ? " (forced)" : ""}</td><td>{statusLabel(run.status)}</td><td>{formatDuration(run.durationMs)}</td><td>{run.found ?? "—"}</td><td>{run.analyzed}</td><td>{run.excluded || 0}</td><td>{run.skipped}</td><td>{run.deadlines}</td><td>{(run.failed || 0) + (run.listFailures || 0)}</td><td>{run.error || (run.status === "partial" ? "Recorded before detailed failure reporting; retry the scan." : "—")}</td>
         </tr>)}</tbody>
       </table></div>}
     </details>
