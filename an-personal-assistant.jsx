@@ -1,6 +1,6 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
-import { mailboxCategory, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
-import { applyMailboxRoute, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
+import { mailboxCategory, mailboxDeadlineHints, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
+import { APS_SUBSECTION_LABELS, applyMailboxRoute, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -8830,7 +8830,7 @@ function MailboxModule({ onOpenModule }) {
     const saved = archive[mailboxItemId(item)] || item;
     const reviewStatus = saved.reviewStatus || "pending";
     const active = reviewStatus !== "ignored";
-    const matchesFilter = (filter === "all" && active) || (filter === "review" && reviewStatus === "pending") || (filter === "kept" && reviewStatus === "kept") || (filter === "ignored" && reviewStatus === "ignored") || (filter === "priority" && active && saved.priority) || (filter === "deadlines" && active && (item.deadlineHints || []).length);
+    const matchesFilter = (filter === "all" && active) || (filter === "review" && reviewStatus === "pending") || (filter === "kept" && reviewStatus === "kept") || (filter === "ignored" && reviewStatus === "ignored") || (filter === "priority" && active && saved.priority) || (filter === "deadlines" && active && mailboxDeadlineHints(item).length);
     const matchesSearch = !query || mailboxText(item).toLowerCase().includes(query);
     return matchesFilter && matchesSearch;
   });
@@ -8840,7 +8840,7 @@ function MailboxModule({ onOpenModule }) {
   const reviewCount = items.filter(item => statusFor(item) === "pending").length;
   const keptCount = items.filter(item => statusFor(item) === "kept").length;
   const ignoredCount = items.filter(item => statusFor(item) === "ignored").length;
-  const deadlineCount = activeItems.filter((item) => (item.deadlineHints || []).length).length;
+  const deadlineCount = activeItems.filter((item) => mailboxDeadlineHints(item).length).length;
 
   return (
     <div style={{ background: HUB_PAPER, minHeight: "calc(100vh - 48px)", padding: "28px 24px 70px" }}>
@@ -8890,6 +8890,8 @@ function MailboxModule({ onOpenModule }) {
             const approved = saved.approvedRoutes || [];
             const reviewStatus = saved.reviewStatus || "pending";
             const references = saved.projectReferences || mailboxProjectReferences(item);
+            const emailSummary = (item.summary && item.summary !== item.subject ? item.summary : "") || item.snippet || "No email summary is available yet. Use Force rescan to create one from the newest email text.";
+            const deadlineHints = mailboxDeadlineHints(item);
             return <article key={id} className="an-card" style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 8, padding: "16px 17px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
@@ -8899,8 +8901,8 @@ function MailboxModule({ onOpenModule }) {
                 </div>
                 <button onClick={() => togglePriority(item)} title="Toggle priority" style={{ border: "none", background: saved.priority ? "#FFF1D6" : "#F6F8FB", color: saved.priority ? HUB_AMBER : HUB_MUTED, borderRadius: 5, padding: "7px 9px", cursor: "pointer", flexShrink: 0 }}>{saved.priority ? "★" : "☆"}</button>
               </div>
-              {item.snippet && <p style={{ fontSize: 13, lineHeight: 1.55, color: "#465160", margin: "11px 0 9px" }}>{item.snippet}</p>}
-              {(item.deadlineHints || []).length > 0 && <div style={{ background: "#FFF8E8", border: "1px solid #E6C77A", color: "#6B5015", borderRadius: 5, padding: "8px 10px", fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}><strong>Deadline hints:</strong> {item.deadlineHints.join(" · ")}</div>}
+              <div style={{ background: "#F3F8FC", border: "1px solid #B9D8E8", color: "#334155", borderRadius: 5, padding: "9px 11px", fontSize: 12.5, lineHeight: 1.5, margin: "11px 0 9px" }}><strong style={{ color: HUB_TEAL }}>Email summary:</strong> {emailSummary}</div>
+              {deadlineHints.length > 0 && <div style={{ background: "#FFF8E8", border: "1px solid #E6C77A", color: "#6B5015", borderRadius: 5, padding: "7px 10px", fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}><strong>Detected deadline:</strong> {deadlineHints.join(" · ")}</div>}
               {references.length > 0 && <div style={{ fontSize: 12, color: HUB_TEAL, marginBottom: 10 }}>Project references: <span className="an-mono">{references.join(", ")}</span></div>}
               <div style={{ borderTop: "1px solid #EEF0F2", paddingTop: 11 }}>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: suggestions.length ? 12 : 4 }}>
@@ -8928,7 +8930,7 @@ function MailboxModule({ onOpenModule }) {
           <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Contribution / outcome summary<textarea value={routeDraft.summary} onChange={(event) => setRouteDraft({ ...routeDraft, summary: event.target.value })} rows={6} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, color: HUB_INK, resize: "vertical", lineHeight: 1.5 }} /></label>
           {routeDraft.destination === "projects" && <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Destination project<select value={routeDraft.projectId} onChange={(event) => setRouteDraft({ ...routeDraft, projectId: event.target.value })} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, background: "#fff" }}><option value="">Choose a project…</option>{routeProjects.map(project => <option key={project.id} value={project.id}>{project.title}{project.projectNumber ? " · " + project.projectNumber : ""}</option>)}</select></label>}
           <div style={{ border: "1px solid #EEF0F2", borderRadius: 6, marginBottom: 15 }}>{routePreviewFields(routeDraft).slice(2).map(([label, value]) => <div key={label} style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, padding: "8px 10px", borderBottom: label === "Deadline" ? 0 : "1px solid #EEF0F2", fontSize: 12.5 }}><strong style={{ color: HUB_MUTED }}>{label}</strong><span style={{ color: HUB_INK, overflowWrap: "anywhere" }}>{value}</span></div>)}</div>
-          {routeDraft.destination === "aps" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}>This will enter {routeDraft.apsCycle} as unapproved evidence for subsection review.</div>}
+          {routeDraft.destination === "aps" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}><div style={{ marginBottom: 6 }}>This will enter {routeDraft.apsCycle} as unapproved evidence under every plausible subsection below. Each remains pending until you approve it separately.</div><div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{(routeDraft.apsSubsections || []).length ? routeDraft.apsSubsections.map(code => <span key={code} title={APS_SUBSECTION_LABELS[code]} style={{ background: "#FFF8E8", color: "#6B5015", borderRadius: 10, padding: "3px 8px" }}>{APS_SUBSECTION_LABELS[code] || code}</span>) : <span>No subsection was inferred; it will remain in the APS evidence inbox for manual tagging.</span>}</div></div>}
           {routeDraft.destination === "archive" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}>This will enter Research Intelligence as a reviewable publication or patent record.</div>}
           {routeDraft.destination === "projects" && <div style={{ fontSize: 12, color: HUB_MUTED, marginBottom: 13 }}>This will enter the selected project as reviewable evidence.</div>}
           {routeError && <div role="alert" style={{ background: "#FFF4E5", color: "#9A3412", borderRadius: 5, padding: "9px 11px", fontSize: 12.5, marginBottom: 12 }}>{routeError}</div>}

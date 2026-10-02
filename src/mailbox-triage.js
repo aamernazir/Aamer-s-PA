@@ -3,7 +3,15 @@ export function mailboxItemId(item) {
 }
 
 export function mailboxText(item) {
-  return [item?.subject, item?.from, item?.summary, ...(item?.deadlineHints || [])].filter(Boolean).join(" ");
+  return [item?.subject, item?.from, item?.summary, ...mailboxDeadlineHints(item)].filter(Boolean).join(" ");
+}
+
+export function mailboxDeadlineHints(item) {
+  return (item?.deadlineHints || []).filter(hint => {
+    const value = String(hint || "");
+    return value.length <= 240 && !/(?:utm_[a-z]+|mc_(?:cid|eid)|UNIQID)/i.test(value)
+      && /deadline|due date|respond by|response by|review due|revision due|submit(?:ted|sion)? by|return[^.]{0,50}\bby\b/i.test(value);
+  });
 }
 
 export function mailboxProjectReferences(item) {
@@ -26,15 +34,16 @@ export function mailboxSuggestions(item) {
   const completedResearch = /\b(?:paper|article|manuscript|publication|journal|patent)\b/.test(text)
     && /\b(?:accepted|published|publication confirmation|patent granted|final decision[^.]{0,30}accept)\b/.test(text);
   const completedActivity = /\b(?:certificate (?:awarded|issued)|award(?:ed)?|course completed|workshop completed|service completed)\b/.test(text);
+  const completedAcademicRecord = /\bcertificate\b/.test(text) && /\b(?:conference|committee|review|workshop|award|contribution|service)\b/.test(text);
 
   if (references.length || /project|grant|funding|work package|milestone/.test(text)) {
     suggestions.push({ id: "projects", label: "Module 01 · Project Dashboard", reason: references.length ? "Project reference detected: " + references.join(", ") : "Project or grant activity detected." });
   }
-  if (completedActivity) {
+  if (completedActivity || completedAcademicRecord) {
     suggestions.push({ id: "aps", label: "Module 03 · APS", reason: "A completed or awarded academic activity may be suitable as APS evidence." });
   }
-  if (completedResearch) {
-    suggestions.push({ id: "archive", label: "Module 04 · Research Intelligence", reason: "A completed publication or granted research outcome was detected." });
+  if (completedResearch || completedAcademicRecord) {
+    suggestions.push({ id: "archive", label: "Module 04 · Research Intelligence", reason: completedAcademicRecord ? "A completed certificate or academic-service record was detected." : "A completed publication or granted research outcome was detected." });
   }
   return suggestions;
 }
