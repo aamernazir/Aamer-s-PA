@@ -505,23 +505,21 @@ function App() {
 
   useEffect(() => {
     if (!loaded || !projects) return;
-    const timeout = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(projects));
-          setError("");
-          // keep shared copies in sync for any project marked shared
-          for (const p of projects) {
-            if (p.shared) {
-              try { await window.storage.set(SHARED_PREFIX + p.id, JSON.stringify(p), true); } catch (e) { /* non-fatal */ }
-            }
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(projects));
+        setError("");
+        // keep shared copies in sync for any project marked shared
+        for (const p of projects) {
+          if (p.shared) {
+            try { await window.storage.set(SHARED_PREFIX + p.id, JSON.stringify(p), true); } catch (e) { /* non-fatal */ }
           }
-        } catch (e) {
-          setError("Could not save. Your changes may not persist — try again in a moment.");
         }
-      })();
-    }, 600);
-    return () => clearTimeout(timeout);
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
   }, [projects, loaded]);
 
   useEffect(() => {
@@ -2791,17 +2789,15 @@ function App() {
 
   useEffect(() => {
     if (!loaded || !opportunities) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(opportunities));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Your changes may not persist — try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(opportunities));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
   }, [opportunities, loaded]);
 
   if (!opportunities) return null;
@@ -3779,17 +3775,15 @@ function App() {
 
   useEffect(() => {
     if (!loaded || !data) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(data));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Your changes may not persist — try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
   }, [data, loaded]);
 
   if (!data) return null;
@@ -4483,17 +4477,15 @@ function TrendsTab() {
 
   useEffect(() => {
     if (!loaded || !data) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(SkillsAndTrendsStorageKey, JSON.stringify(data));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(SkillsAndTrendsStorageKey, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Try again in a moment.");
+      }
+    })();
   }, [data, loaded]);
 
   if (!data) return null;
@@ -5436,17 +5428,15 @@ function App() {
 
   useEffect(() => {
     if (!loaded || !data) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(data));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Your changes may not persist — try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
   }, [data, loaded]);
 
   if (!data) return null;
@@ -6698,17 +6688,15 @@ function App() {
 
   useEffect(() => {
     if (!loaded || !data) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(data));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Your changes may not persist — try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
   }, [data, loaded]);
 
   if (!data) return null;
@@ -7304,17 +7292,15 @@ function SkillDevelopmentTab() {
 
   useEffect(() => {
     if (!loaded || !data) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(data));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Try again in a moment.");
+      }
+    })();
   }, [data, loaded]);
 
   if (!data) return null;
@@ -7537,17 +7523,15 @@ function App() {
 
   useEffect(() => {
     if (!loaded || !data) return;
-    const t = setTimeout(() => {
-      (async () => {
-        try {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(data));
-          setError("");
-        } catch (e) {
-          setError("Could not save. Try again in a moment.");
-        }
-      })();
-    }, 600);
-    return () => clearTimeout(t);
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Try again in a moment.");
+      }
+    })();
   }, [data, loaded]);
 
   if (!data) return null;

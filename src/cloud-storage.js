@@ -1,4 +1,6 @@
-import { migrateLocalData } from "./migrate-local-data.js";
+import { createSyncStorage } from "./sync-storage.js";
+import { createFirestoreRemote } from "./firestore-sync.js";
+import { migrateLocalData, isApplicationKey } from "./migrate-local-data.js";
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider,
@@ -7,16 +9,7 @@ import {
   signInWithPopup,
   signOut,
 } from "firebase/auth";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
 // Firebase web configuration is safe to include in a browser app. Access to
 // the data is controlled by Firebase Authentication and Firestore Rules.
@@ -54,6 +47,8 @@ gmailProvider.addScope("https://www.googleapis.com/auth/gmail.readonly");
 gmailProvider.setCustomParameters({ prompt: "select_account" });
 
 let currentUser = null;
+let pageAccountUid = null;
+let accountStorage = null;
 let gmailAccessToken = null;
 let gmailAccountEmail = null;
 let authSettled = false;
@@ -63,7 +58,7 @@ const listeners = new Set();
 let lastError = null;
 
 function notify() {
-  const status = { user: currentUser, error: lastError };
+  const status = cloudStorage.getStatus();
   listeners.forEach((listener) => listener(status));
 }
 
@@ -73,7 +68,18 @@ function setError(error) {
 }
 
 onAuthStateChanged(auth, (user) => {
+  // A full document reload also cancels old module callbacks and network work.
+  // Never let an old account's mounted modules save under a new account.
+  if (pageAccountUid && user && pageAccountUid !== user.uid) {
+    accountStorage?.close();
+    accountStorage = null;
+    currentUser = null;
+    window.location.reload();
+    return;
+  }
   if (user && !isAllowedAccount(user)) {
+    accountStorage?.close();
+    accountStorage = null;
     currentUser = null;
     lastError = new Error("This Google account is not authorized for AN Personal Assistant.");
     if (!authSettled) {
@@ -84,7 +90,18 @@ onAuthStateChanged(auth, (user) => {
     signOut(auth).catch(() => {});
     return;
   }
+  if (currentUser?.uid !== user?.uid) {
+    accountStorage?.close();
+    accountStorage = user ? createSyncStorage({
+      uid: user.uid,
+      local: localStorage,
+      remote: createFirestoreRemote(db, user.uid, () => currentUser?.uid === user.uid),
+      online: () => navigator.onLine,
+      onChange: notify,
+    }) : null;
+  }
   currentUser = user || null;
+  if (user) pageAccountUid = user.uid;
   if (!user) {
     gmailAccessToken = null;
     gmailAccountEmail = null;
@@ -95,14 +112,9 @@ onAuthStateChanged(auth, (user) => {
   }
   if (currentUser) lastError = null;
   notify();
+  void accountStorage?.flush();
 });
 
-function collectionFor(user, shared) {
-  return shared ? collection(db, "shared_state") : collection(db, "users", user.uid, "state");
-}
-function docFor(user, key, shared) {
-  return doc(collectionFor(user, shared), key);
-}
 async function requireUser() {
   await authReady;
   if (!currentUser) throw new Error("Connect Google to enable cloud sync.");
@@ -136,10 +148,10 @@ export const localStorageAdapter = {
 export const cloudStorage = {
   async waitForAuth() { return authReady; },
   isSignedIn() { return !!currentUser; },
-  getStatus() { return { user: currentUser, error: lastError }; },
+  getStatus() { return { user: currentUser, error: lastError, sync: accountStorage?.getStatus() }; },
   subscribe(listener) {
     listeners.add(listener);
-    listener({ user: currentUser, error: lastError });
+    listener(this.getStatus());
     return () => listeners.delete(listener);
   },
   async signIn() {
@@ -171,29 +183,46 @@ export const cloudStorage = {
     await signOut(gmailAuth);
   },
   async get(key, shared = false) {
-    const user = await requireUser();
-    const snapshot = await getDoc(docFor(user, key, shared));
-    if (!snapshot.exists()) return null;
-    const data = snapshot.data();
-    return typeof data.value === "string" ? { value: data.value } : null;
+    await requireUser();
+    return accountStorage.get(key, shared);
   },
   async set(key, value, shared = false) {
-    const user = await requireUser();
-    await setDoc(docFor(user, key, shared), { value, updatedAt: serverTimestamp(), ownerUid: user.uid });
-    return { value };
+    await requireUser();
+    return accountStorage.set(key, value, shared);
   },
   async delete(key, shared = false) {
-    const user = await requireUser();
-    await deleteDoc(docFor(user, key, shared));
-    return true;
+    await requireUser();
+    return accountStorage.delete(key, shared);
   },
   async list(prefix = "", shared = false) {
-    const user = await requireUser();
-    const snapshot = await getDocs(collectionFor(user, shared));
-    return { keys: snapshot.docs.map((item) => item.id).filter((key) => key.startsWith(prefix)) };
+    await requireUser();
+    return accountStorage.list(prefix, shared);
   },
+  async retrySync() { await requireUser(); await accountStorage.flush(); },
+  async resolveConflict(key, shared, choice) {
+    await requireUser();
+    await accountStorage.resolve(key, shared, choice);
+  },
+  exportBackup() {
+    if (!accountStorage) throw new Error("Sign in before exporting your account backup.");
+    return accountStorage.exportBackup();
+  },
+  async hasLegacyData() {
+    const user = await requireUser();
+    const owner = localStorage.getItem("an-pa:legacy-owner");
+    if (owner && owner !== user.uid) return false;
+    const { keys } = await localStorageAdapter.list("");
+    return keys.some(isApplicationKey);
+  },
+  // Old browser records have no owner. Only import after the user explicitly
+  // confirms ownership; never silently assign them to whoever next signs in.
   async migrateLocalData() {
-    await migrateLocalData(localStorageAdapter, this);
+    const user = await requireUser();
+    const owner = localStorage.getItem("an-pa:legacy-owner");
+    if (owner && owner !== user.uid) throw new Error("Legacy browser data belongs to another account.");
+    localStorage.setItem("an-pa:legacy-owner", user.uid);
+    const target = accountStorage;
+    await migrateLocalData(localStorageAdapter, target);
   },
   reportError(error) { setError(error); },
 };
@@ -201,3 +230,18 @@ export const cloudStorage = {
 export function isFirebasePermissionError(error) {
   return error?.code === "permission-denied" || /permission/i.test(error?.message || "");
 }
+
+// Retry durable pending writes on reconnect and periodically while the page is open.
+window.addEventListener("online", () => { void accountStorage?.flush(); notify(); });
+window.addEventListener("offline", notify);
+window.addEventListener("storage", event => {
+  if (event.key?.startsWith("an-pa:account:")) notify();
+});
+setInterval(() => { void accountStorage?.flush(); }, 30000);
+window.addEventListener("beforeunload", event => {
+  const status = accountStorage?.getStatus();
+  if (status?.pending || status?.blocked || status?.errors.length) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
