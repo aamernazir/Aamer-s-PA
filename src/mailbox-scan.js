@@ -119,16 +119,35 @@ export function messageMetadata(data) {
   };
 }
 
-// Focused scans require a credible academic action, outcome, contribution or deadline.
+const deadlineMonths = { jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3, may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11 };
+
+export function parsedDeadlineDates(item) {
+  const text = (item?.deadlineHints || []).join(" ");
+  const results = [];
+  const add = (year, month, day) => {
+    const value = new Date(Date.UTC(Number(year), Number(month), Number(day), 23, 59, 59, 999));
+    if (value.getUTCFullYear() === Number(year) && value.getUTCMonth() === Number(month) && value.getUTCDate() === Number(day)) results.push(value);
+  };
+  for (const match of text.matchAll(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/g)) add(match[1], Number(match[2]) - 1, match[3]);
+  for (const match of text.matchAll(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,|\s)\s*(20\d{2})\b/gi)) add(match[3], deadlineMonths[match[1].toLowerCase()], match[2]);
+  for (const match of text.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b/gi)) add(match[3], deadlineMonths[match[2].toLowerCase()], match[1]);
+  return [...new Map(results.map(date => [date.toISOString(), date])).values()];
+}
+
+// Focused scans require a current academic action, outcome, contribution or deadline.
 // This runs after Gmail's query because broad keywords alone still match newsletters.
-export function isFocusedMailboxMessage(item) {
+export function isFocusedMailboxMessage(item, now = new Date()) {
   const subject = String(item?.subject || "");
   const summary = String(item?.summary || "");
   const sender = String(item?.from || "");
   const combined = `${subject} ${summary} ${sender}`;
-  const noisy = /\b(?:newsletter|digest|roundup|unsubscribe|promotion|marketing|special offer|sale|advertisement|daily briefing|weekly update)\b/i.test(combined);
+  const noisy = /\b(?:newsletter|digest|roundup|unsubscribe|promotion|marketing|special offer|sale|advertisement|daily briefing|weekly update|press release|product update|sponsored content|mailing list)\b/i.test(combined);
+  const completedEvidence = /\b(?:certificate|award(?:ed)?|recognition|accepted for publication|paper (?:accepted|published)|has been published|patent granted|course completed|workshop completed)\b/i.test(combined);
   const strongSubject = /\b(?:manuscript|revision|reviewer|peer review|editorial decision|certificate|award|recognition|technical committee|conference committee|grant|proposal|funding|research project|patent|accepted for publication|paper (?:accepted|published)|publication decision|thesis|teaching assignment|deadline|due date)\b/i.test(subject);
   const credibleAction = /\b(?:submit(?:ted|sion)? by|respond by|response by|review due|revision due|invited to review|review invitation|action required|certificate of|served as|appointed to|accepted for publication|has been published|project milestone)\b/i.test(combined);
+  const dates = parsedDeadlineDates(item);
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (dates.length && dates.every(date => date.getTime() < today) && !completedEvidence) return false;
   if (noisy && !strongSubject && !credibleAction) return false;
   return strongSubject || credibleAction || (item?.deadlineHints || []).length > 0;
 }
@@ -158,7 +177,15 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
   const scope = range.scope;
-  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, cleaned: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  if (scope === FOCUSED_SCAN_SCOPE) {
+    for (const [id, item] of items) {
+      if (!isFocusedMailboxMessage(item, now)) {
+        items.delete(id);
+        history.cleaned++;
+      }
+    }
+  }
   const report = stage => onProgress({ ...history, stage });
   async function request(path) {
     const controller = new AbortController();
@@ -210,7 +237,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
           const item = messageMetadata(data);
           known.add(item.id);
           history.analyzed++;
-          if (scope === FOCUSED_SCAN_SCOPE && !isFocusedMailboxMessage(item)) {
+          if (scope === FOCUSED_SCAN_SCOPE && !isFocusedMailboxMessage(item, now)) {
             items.delete(item.id);
             history.excluded++;
           } else {

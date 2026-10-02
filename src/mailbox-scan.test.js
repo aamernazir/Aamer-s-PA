@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFocusedMailboxMessage, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
+import { isFocusedMailboxMessage, parsedDeadlineDates, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
 
 const now = new Date("2026-10-02T12:00:00Z");
 const message = (id, text = "Please respond by November 15, 2026.") => ({ id, threadId: "same-thread", internalDate: "1790899200000", snippet: "do not persist this snippet", payload: { headers: [{ name: "Subject", value: "Review invitation" }, { name: "From", value: "editor@example.test" }], mimeType: "text/plain", body: { data: Buffer.from(text).toString("base64url") }, parts: [{ filename: "private.txt", mimeType: "text/plain", body: { data: Buffer.from("private attachment deadline tomorrow").toString("base64url") } }] } });
@@ -97,6 +97,24 @@ test("focused scan automatically excludes noise and remembers its message ID", a
 test("focused relevance accepts academic evidence and rejects ordinary messages", () => {
   assert.equal(isFocusedMailboxMessage({subject:"Manuscript revision reminder",summary:"Please submit by Friday.",deadlineHints:[]}), true);
   assert.equal(isFocusedMailboxMessage({subject:"Lunch tomorrow",summary:"Would noon work for you?",deadlineHints:[]}), false);
+});
+
+test("focused relevance removes expired deadlines but preserves completed evidence", () => {
+  const expired = {subject:"Re: Chapters",summary:"The submission deadline was extended.",deadlineHints:["You can submit by September 20th, 2026", "deadline until 20 September 2026"]};
+  assert.deepEqual(parsedDeadlineDates(expired).map(date => date.toISOString().slice(0, 10)), ["2026-09-20"]);
+  assert.equal(isFocusedMailboxMessage(expired, now), false);
+  assert.equal(isFocusedMailboxMessage({...expired,deadlineHints:["Submit by October 5, 2026"]}, now), true);
+  assert.equal(isFocusedMailboxMessage({...expired,subject:"Technical committee certificate"}, now), true);
+});
+
+test("a focused scan cleans previously saved expired results without refetching them", async () => {
+  const expired = {id:"expired",threadId:"t",subject:"Re: Chapters",from:"author@example.test",receivedAt:"2026-08-30T00:00:00Z",summary:"The submission deadline was extended.",deadlineHints:["Submit by September 20, 2026"]};
+  const previous = {accountEmail:"owner@example.test",initialStartDate:"2025-10-02",processedMessageIds:["expired"],items:[expired],history:[]};
+  const state = await run(fixture({first:{messages:[{id:"expired"}]}}), {previous,options:{mode:"incremental"}});
+  assert.deepEqual(state.items, []);
+  assert.equal(state.history[0].cleaned, 1);
+  assert.equal(state.history[0].skipped, 1);
+  assert.equal(state.processedMessageIds[0], "expired");
 });
 
 test("failed details remain retryable and partial pagination never marks unseen IDs processed", async () => {
