@@ -25,12 +25,12 @@ test("default scan covers twelve calendar months and manual dates include the en
   const initial = scanRange({}, {}, now);
   assert.equal(initial.startDate, "2025-10-02");
   assert.equal(initial.endDate, "2026-10-02");
-  assert.match(initial.query, /^category:primary /);
+  assert.match(initial.query, /-in:spam -in:trash /);
   assert.match(initial.query, /manuscript/);
   const manual = scanRange({ mode: "manual", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
   assert.match(manual.query, new RegExp(`after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}$`));
   const broad = scanRange({ mode: "manual", scope: "all-primary", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
-  assert.equal(broad.query, `category:primary after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
+  assert.equal(broad.query, `-in:spam -in:trash after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}`);
   assert.equal(scanRange({months: 1}, {}, new Date("2026-03-31T00:00Z")).startDate, "2026-02-28");
   for (const options of [{ months: 0 }, { months: 1.2 }, { mode: "bad" }, { mode: "manual", startDate: "2026-02-30", endDate: "2026-03-01" }, { mode: "manual", startDate: "2026-10-01", endDate: "2026-01-01" }]) assert.throws(() => scanRange(options, {}, now));
 });
