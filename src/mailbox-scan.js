@@ -148,7 +148,7 @@ function messageSummary(subject, body, hints) {
   // message above common reply/forward separators.
   const newestMessage = newestMessageText(body);
   const sentences = cleanMessageText(newestMessage).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
-  const details = [...new Set([...(hints || []), ...sentences])].slice(0, 3).join(" ").slice(0, 700);
+  const details = [...new Set([...(hints || []), ...sentences])].slice(0, 5).join(" ").slice(0, 700);
   return details || String(subject || "Email record").slice(0, 500);
 }
 
@@ -171,7 +171,7 @@ export function scanRange({ mode = "initial", scope = FOCUSED_SCAN_SCOPE, months
   const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
   if (!valid(startDate) || !valid(endDate) || startDate > endDate) throw new Error("Choose a valid start and end date, with start on or before end.");
   const focus = scope === FOCUSED_SCAN_SCOPE ? ` ${FOCUSED_GMAIL_TERMS}` : "";
-  return { startDate, endDate, scope, query: `category:primary${focus} after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
+  return { startDate, endDate, scope, query: `-in:spam -in:trash${focus} after:${Date.parse(startDate) / 1000 - 1} before:${Date.parse(endDate) / 1000 + 86400}` };
 }
 
 // Explicit projection: raw payloads, bodies, attachments and tokens never enter saved state.
