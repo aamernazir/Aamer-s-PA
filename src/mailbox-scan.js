@@ -1,7 +1,5 @@
 export const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
-export const FOCUSED_SCAN_SCOPE = "focused";
-
-const FOCUSED_GMAIL_TERMS = '{manuscript revision reviewer editorial journal certificate award recognition "technical committee" conference symposium grant proposal funding project patent accepted published publication deadline "due date" "respond by" "submit by" teaching thesis workshop}';
+export const FOCUSED_SCAN_SCOPE = "focused";const FOCUSED_GMAIL_TERMS = '{review "invitation to review" manuscript revision reviewer editorial journal certificate award recognition "technical committee" conference symposium grant proposal funding project patent accepted published publication deadline "due date" "respond by" "submit by" teaching thesis workshop}';
 
 export function scanOptionsForPeriod(period, { startDate, endDate } = {}, now = new Date()) {
   if (period === "new") return { mode: "incremental" };
