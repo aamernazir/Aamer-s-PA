@@ -40,17 +40,21 @@ function htmlToPlainText(value) {
 }
 
 function gmailBody(payload) {
-  const parts = [];
+  const plain = [];
+  const html = [];
   function visit(part) {
     if (!part || part.filename || part.body?.attachmentId) return;
     const type = part.mimeType || "";
     if (part.body?.data && (type === "text/plain" || type === "text/html")) {
-      parts.push(type === "text/html" ? htmlToPlainText(decodeGmailText(part.body.data)) : decodeGmailText(part.body.data));
+      const value = type === "text/html" ? htmlToPlainText(decodeGmailText(part.body.data)) : decodeGmailText(part.body.data);
+      (type === "text/plain" ? plain : html).push(value);
     }
     (part.parts || []).forEach(visit);
   }
   visit(payload);
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+  // multipart/alternative commonly repeats the same email as plain text and HTML.
+  // Analyze one preferred representation rather than concatenating duplicates.
+  return (plain.find(Boolean) || html.find(Boolean) || "").replace(/\s+/g, " ").trim();
 }
 
 function cleanMessageText(text) {
@@ -72,11 +76,15 @@ function deadlineHints(text) {
   return hints.slice(0, 3);
 }
 
+function newestMessageText(body) {
+  return String(body || "").split(/(?:-{2,}\s*(?:Original Message|Forwarded message)\s*-{2,}|\bFrom:\s|\bOn\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,180}\bwrote:)/i)[0];
+}
+
 function messageSummary(subject, body, hints) {
   const boilerplate = /unsubscribe|manage (?:your )?preferences|view (?:this )?in (?:a )?browser|privacy policy|do not reply/i;
   // Gmail often returns the whole quoted thread. Summarize only the newest
   // message above common reply/forward separators.
-  const newestMessage = String(body || "").split(/(?:-{2,}\s*Original Message\s*-{2,}|\bFrom:\s|\bOn\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,180})/i)[0];
+  const newestMessage = newestMessageText(body);
   const sentences = cleanMessageText(newestMessage).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
   const details = [...new Set([...(hints || []), ...sentences])].slice(0, 3).join(" ").slice(0, 700);
   return details || String(subject || "Email record").slice(0, 500);
@@ -108,14 +116,15 @@ export function scanRange({ mode = "initial", scope = FOCUSED_SCAN_SCOPE, months
 export function messageMetadata(data) {
   const headers = Object.fromEntries((data.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
   const body = gmailBody(data.payload) || data.snippet || "";
-  const hints = deadlineHints(body).map(hint => hint.slice(0, 200));
+  const newestBody = newestMessageText(body);
+  const hints = deadlineHints(newestBody).map(hint => hint.slice(0, 200));
   return {
     id: String(data.id), threadId: String(data.threadId || ""),
     subject: String(headers.subject || "").slice(0, 500),
     from: String(headers.from || "").slice(0, 300),
     receivedAt: data.internalDate ? new Date(Number(data.internalDate)).toISOString() : String(headers.date || "").slice(0, 100),
     deadlineHints: hints,
-    summary: messageSummary(headers.subject, body, hints),
+    summary: messageSummary(headers.subject, newestBody, hints),
   };
 }
 

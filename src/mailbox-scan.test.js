@@ -181,6 +181,15 @@ test("tracking parameters and unrelated dates do not become deadline hints", () 
   assert.ok(messageMetadata(revision).summary.length <= 700);
 });
 
+test("quoted deadlines do not contaminate a newer certificate message", () => {
+  const certificate = message("certificate", "Thank you for your contribution as a Technical Committee Member. Please find your Certificate of Appreciation attached. On Mon, Jun 29, 2026, Reviewer wrote: You could complete the review and return the review form by July 3, 2026.");
+  certificate.payload.headers[0].value = "ICEIM2026 Technical Committee Certificate";
+  const metadata = messageMetadata(certificate);
+  assert.deepEqual(metadata.deadlineHints, []);
+  assert.match(metadata.summary, /Technical Committee Member/);
+  assert.doesNotMatch(metadata.summary, /July 3/);
+});
+
 test("a repeated page token stops with interrupted history instead of looping", async () => {
   const f=fixture({first:{messages:[{id:"a"}],nextPageToken:"again"},again:{messages:[{id:"b"}],nextPageToken:"again"}});
   const next=await run(f);

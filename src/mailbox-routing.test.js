@@ -21,13 +21,27 @@ test("APS routing saves a reviewable contribution summary once", () => {
 });
 
 test("technical committee certificates reach every plausible APS subsection pending approval", () => {
-  const certificate = createRouteDraft({ ...item, subject: "ICEIM2026 Technical Committee Certificate", summary: "Received a certificate for service on the conference technical committee." }, "aps", "APS27");
+  const certificate = createRouteDraft({ ...item, subject: "ICEIM2026 Technical Committee Certificate", summary: "Received a certificate for service on the conference technical committee.", deadlineHints: ["Return the old review by July 3, 2026"] }, "aps", "APS27");
   assert.deepEqual(certificate.apsSubsections, ["R6_CONF", "R6_RECOG", "S2_PROMOTE", "B4"]);
+  assert.match(certificate.summary, /Served as a Technical Committee Member for ICEIM 2026/);
+  assert.equal(certificate.deadline, "");
   const original = { activeCycle: "APS27", cycles: { APS27: { status: "In Progress", evidenceInbox: [] } } };
   const record = applyMailboxRoute("aps", original, certificate).record;
   assert.deepEqual(record.subsections, certificate.apsSubsections);
   assert.ok(Object.values(record.subsectionApprovals).every(relation => relation.approved === false));
   assert.equal(record.approved, false);
+});
+
+test("rerouting corrects an existing pending APS record without creating a duplicate", () => {
+  const draft = createRouteDraft({ ...item, id:"certificate-1", subject:"ICEIM2026 Technical Committee Certificate", summary:"Certificate of Appreciation for technical committee service." }, "aps", "APS27");
+  const stale = {id:"mailbox-certificate-1",sourceMailboxMessageId:"certificate-1",summary:"Return review by July 3",contributionSummary:"Return review by July 3",approved:false,addedAt:"2026-10-01T00:00:00Z"};
+  const original = {activeCycle:"APS27",cycles:{APS27:{status:"In Progress",evidenceInbox:[stale]}}};
+  const result = applyMailboxRoute("aps", original, draft);
+  assert.equal(result.duplicate, true);
+  assert.equal(result.updated, true);
+  assert.equal(result.data.cycles.APS27.evidenceInbox.length, 1);
+  assert.match(result.record.contributionSummary, /Certificate of Appreciation/);
+  assert.equal(result.record.deadline, "");
 });
 
 test("archive routing creates a reviewable completed output and prevents duplicates", () => {

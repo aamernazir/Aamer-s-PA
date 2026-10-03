@@ -14,10 +14,24 @@ function sourceDate(item) {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
+function completedEvidenceSummary(item) {
+  const text = `${item?.subject || ""} ${item?.summary || ""}`;
+  const technicalCommittee = /technical committee/i.test(text);
+  const certificate = /certificate(?: of appreciation)?/i.test(text);
+  if (technicalCommittee && certificate) {
+    const event = text.match(/\b([A-Z][A-Z0-9-]{2,})\s*(20\d{2})\b/) || text.match(/\b([A-Z][A-Z0-9-]{2,}\s+20\d{2})\b/);
+    const eventName = event ? (event[2] ? `${event[1]} ${event[2]}` : event[1]) : "the conference";
+    return `Served as a Technical Committee Member for ${eventName} and received a Certificate of Appreciation recognizing valuable support, expertise, and contribution to the success of the conference.`;
+  }
+  if (/\baward(?:ed)?\b/i.test(text)) return String(item?.summary || item?.subject || "Award or formal recognition received.").slice(0, 1200);
+  return "";
+}
+
 export function createRouteDraft(item, destination, apsCycle = "APS27") {
   const date = sourceDate(item);
-  const deadline = mailboxDeadlineHints(item).join(" · ");
-  const summary = String(item?.summary || deadline || item?.subject || "Email record").slice(0, 1200);
+  const evidenceSummary = completedEvidenceSummary(item);
+  const deadline = evidenceSummary ? "" : mailboxDeadlineHints(item).join(" · ");
+  const summary = String(evidenceSummary || item?.summary || deadline || item?.subject || "Email record").slice(0, 1200);
   const draft = {
     messageId: String(item?.id || ""), destination, apsCycle,
     title: String(item?.subject || "Untitled email record").slice(0, 500),
@@ -75,7 +89,6 @@ export function applyMailboxRoute(destination, current, draft) {
     if (!data?.cycles?.[cycleKey]) throw new Error(`APS cycle ${cycleKey} was not found.`);
     if (data.cycles[cycleKey].status === "Submitted") throw new Error(`APS cycle ${cycleKey} is submitted and cannot be changed.`);
     const inbox = data.cycles[cycleKey].evidenceInbox || [];
-    if (inbox.some(entry => entry.sourceMailboxMessageId === draft.messageId)) return { data, duplicate: true };
     const subsections = Array.isArray(draft.apsSubsections) ? draft.apsSubsections : suggestApsSubsections(draft);
     const record = {
       id: `mailbox-${draft.messageId}`, fileName: `Mailbox: ${draft.title.trim()}`,
@@ -84,6 +97,13 @@ export function applyMailboxRoute(destination, current, draft) {
       approved: false, sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source,
       sourceDate: draft.sourceDate, deadline: draft.deadline, addedAt,
     };
+    const duplicateIndex = inbox.findIndex(entry => entry.sourceMailboxMessageId === draft.messageId);
+    if (duplicateIndex >= 0) {
+      if (inbox[duplicateIndex].approved) return { data, duplicate: true, updated: false };
+      const updatedRecord = { ...inbox[duplicateIndex], ...record, id: inbox[duplicateIndex].id, addedAt: inbox[duplicateIndex].addedAt || addedAt };
+      const updatedInbox = inbox.map((entry, index) => index === duplicateIndex ? updatedRecord : entry);
+      return { data: { ...data, cycles: { ...data.cycles, [cycleKey]: { ...data.cycles[cycleKey], evidenceInbox: updatedInbox } } }, record: updatedRecord, duplicate: true, updated: true };
+    }
     return { data: { ...data, cycles: { ...data.cycles, [cycleKey]: { ...data.cycles[cycleKey], evidenceInbox: [record, ...inbox] } } }, record, duplicate: false };
   }
   if (destination === "projects") {
