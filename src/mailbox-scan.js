@@ -40,17 +40,21 @@ function htmlToPlainText(value) {
 }
 
 function gmailBody(payload) {
-  const parts = [];
+  const plain = [];
+  const html = [];
   function visit(part) {
     if (!part || part.filename || part.body?.attachmentId) return;
     const type = part.mimeType || "";
     if (part.body?.data && (type === "text/plain" || type === "text/html")) {
-      parts.push(type === "text/html" ? htmlToPlainText(decodeGmailText(part.body.data)) : decodeGmailText(part.body.data));
+      const value = type === "text/html" ? htmlToPlainText(decodeGmailText(part.body.data)) : decodeGmailText(part.body.data);
+      (type === "text/plain" ? plain : html).push(value);
     }
     (part.parts || []).forEach(visit);
   }
   visit(payload);
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+  // multipart/alternative commonly repeats the same email as plain text and HTML.
+  // Analyze one preferred representation rather than concatenating duplicates.
+  return (plain.find(Boolean) || html.find(Boolean) || "").replace(/\s+/g, " ").trim();
 }
 
 function cleanMessageText(text) {
@@ -72,11 +76,47 @@ function deadlineHints(text) {
   return hints.slice(0, 3);
 }
 
+function newestMessageText(body) {
+  return String(body || "").split(/(?:-{2,}\s*(?:Original Message|Forwarded message)\s*-{2,}|\bFrom:\s|\bOn\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,180}\bwrote:)/i)[0];
+}
+
+function pdfAttachments(payload) {
+  const attachments = [];
+  function visit(part) {
+    if (!part) return;
+    const filename = String(part.filename || "");
+    if (part.body?.attachmentId && (part.mimeType === "application/pdf" || /\.pdf$/i.test(filename))) {
+      attachments.push({ attachmentId: String(part.body.attachmentId), filename: filename.slice(0, 200) || "certificate.pdf", size: Number(part.body.size) || 0, mimeType: "application/pdf" });
+    }
+    (part.parts || []).forEach(visit);
+  }
+  visit(payload);
+  return attachments.slice(0, 3);
+}
+
+function decodeGmailBytes(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const binary = globalThis.atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+export function deriveContributionSummary(subject, emailText, attachmentText = "") {
+  const text = cleanMessageText(`${subject || ""} ${emailText || ""} ${attachmentText || ""}`);
+  const committee = text.match(/\b(Technical Committee Member|Organizing Committee Member|Scientific Committee Member|Program Committee Member|Session Chair)\b/i)?.[1];
+  const eventMatch = text.match(/\b([A-Z][A-Z0-9-]{2,})\s*(20\d{2})\b/);
+  const event = eventMatch ? `${eventMatch[1]} ${eventMatch[2]}` : "";
+  if (committee && /certificate|appreciation|recognition/i.test(text)) {
+    return `Served as a ${committee.replace(/\b\w/g, value => value.toUpperCase())}${event ? ` for ${event}` : ""} and received a Certificate of Appreciation recognizing valuable support, expertise, and contribution${event ? " to the event" : ""}.`;
+  }
+  const evidenceSentence = text.split(/(?<=[.!?])\s+/).find(sentence => /\b(?:awarded|received|certificate|recognition|appreciation)\b/i.test(sentence) && /\b(?:contribution|service|committee|review|chair|award|achievement)\b/i.test(sentence));
+  return evidenceSentence ? evidenceSentence.trim().slice(0, 700) : "";
+}
+
 function messageSummary(subject, body, hints) {
   const boilerplate = /unsubscribe|manage (?:your )?preferences|view (?:this )?in (?:a )?browser|privacy policy|do not reply/i;
   // Gmail often returns the whole quoted thread. Summarize only the newest
   // message above common reply/forward separators.
-  const newestMessage = String(body || "").split(/(?:-{2,}\s*Original Message\s*-{2,}|\bFrom:\s|\bOn\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]{0,180})/i)[0];
+  const newestMessage = newestMessageText(body);
   const sentences = cleanMessageText(newestMessage).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
   const details = [...new Set([...(hints || []), ...sentences])].slice(0, 3).join(" ").slice(0, 700);
   return details || String(subject || "Email record").slice(0, 500);
@@ -105,17 +145,22 @@ export function scanRange({ mode = "initial", scope = FOCUSED_SCAN_SCOPE, months
 }
 
 // Explicit projection: raw payloads, bodies, attachments and tokens never enter saved state.
-export function messageMetadata(data) {
+export function messageMetadata(data, attachmentEvidence = []) {
   const headers = Object.fromEntries((data.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
   const body = gmailBody(data.payload) || data.snippet || "";
-  const hints = deadlineHints(body).map(hint => hint.slice(0, 200));
+  const newestBody = newestMessageText(body);
+  const hints = deadlineHints(newestBody).map(hint => hint.slice(0, 200));
+  const attachmentText = attachmentEvidence.map(attachment => attachment.text || "").join(" ");
+  const contributionSummary = deriveContributionSummary(headers.subject, newestBody, attachmentText);
   return {
     id: String(data.id), threadId: String(data.threadId || ""),
     subject: String(headers.subject || "").slice(0, 500),
     from: String(headers.from || "").slice(0, 300),
     receivedAt: data.internalDate ? new Date(Number(data.internalDate)).toISOString() : String(headers.date || "").slice(0, 100),
     deadlineHints: hints,
-    summary: messageSummary(headers.subject, body, hints),
+    summary: messageSummary(headers.subject, newestBody, hints),
+    contributionSummary,
+    attachments: attachmentEvidence.map(attachment => ({ filename: attachment.filename, mimeType: "application/pdf", readStatus: attachment.readStatus })),
   };
 }
 
@@ -172,7 +217,7 @@ export function isFocusedMailboxMessage(item, now = new Date()) {
 }
 
 function savedMetadata(item) {
-  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)), summary: String(item.summary || item.subject || "").slice(0, 700) };
+  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)), summary: String(item.summary || item.subject || "").slice(0, 700), contributionSummary: String(item.contributionSummary || "").slice(0, 700), attachments: (item.attachments || []).slice(0, 3).map(attachment => ({ filename: String(attachment.filename || "certificate.pdf").slice(0, 200), mimeType: "application/pdf", readStatus: String(attachment.readStatus || "unreadable").slice(0, 30) })) };
 }
 
 function scanFailure(error, cancelled) {
@@ -185,7 +230,7 @@ function scanFailure(error, cancelled) {
   return { errorCode: "interrupted", error: "Gmail scan was interrupted. Retry to process the remaining messages." };
 }
 
-export async function scanMailbox({ accessToken, accountEmail, previous = {}, options = {}, fetchImpl = fetch, now = new Date(), clock = () => new Date(), signal, onProgress = () => {} }) {
+export async function scanMailbox({ accessToken, accountEmail, previous = {}, options = {}, fetchImpl = fetch, extractPdfTextImpl, now = new Date(), clock = () => new Date(), signal, onProgress = () => {} }) {
   if (!accessToken || !accountEmail) throw new Error("Connect Gmail before scanning.");
   const account = accountEmail.toLowerCase();
   if (previous.accountEmail && previous.accountEmail.toLowerCase() !== account) throw new Error("Reconnect the Gmail account used for this mailbox: " + previous.accountEmail);
@@ -253,7 +298,26 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
           report("analyzing");
           const data = await request("messages/" + encodeURIComponent(message.id) + "?format=full");
           if (data.id !== message.id) throw new Error("Gmail returned an unexpected message ID.");
-          const item = messageMetadata(data);
+          const preliminaryItem = messageMetadata(data);
+          const attachmentEvidence = [];
+          const inspectEvidence = /\b(?:certificate|award|recognition|appreciation|technical committee|organizing committee|session chair|contribution)\b/i.test(`${preliminaryItem.subject} ${preliminaryItem.summary}`);
+          for (const attachment of inspectEvidence ? pdfAttachments(data.payload) : []) {
+            if (attachment.size > 10 * 1024 * 1024) {
+              attachmentEvidence.push({ ...attachment, readStatus: "too-large", text: "" });
+              continue;
+            }
+            try {
+              const response = await request(`messages/${encodeURIComponent(message.id)}/attachments/${encodeURIComponent(attachment.attachmentId)}`);
+              const bytes = decodeGmailBytes(response.data);
+              const extractor = extractPdfTextImpl || (await import("./pdf-text.js")).extractPdfText;
+              const text = await extractor(bytes);
+              attachmentEvidence.push({ ...attachment, readStatus: text ? "read" : "image-only", text });
+            } catch (error) {
+              if (error.name === "AbortError" || error.requestTimedOut || [401, 403, 429].includes(error.status)) throw error;
+              attachmentEvidence.push({ ...attachment, readStatus: "unreadable", text: "" });
+            }
+          }
+          const item = attachmentEvidence.length ? messageMetadata(data, attachmentEvidence) : preliminaryItem;
           known.add(item.id);
           history.analyzed++;
           if (scope === FOCUSED_SCAN_SCOPE && !isFocusedMailboxMessage(item, now)) {
