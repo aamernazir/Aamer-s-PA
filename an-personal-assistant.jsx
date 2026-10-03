@@ -8870,12 +8870,12 @@ function MailboxModule({ onOpenModule }) {
     const saved = archive[mailboxItemId(item)] || item;
     const reviewStatus = saved.reviewStatus || "pending";
     const active = reviewStatus !== "ignored";
-    const matchesFilter = (filter === "all" && active) || (filter === "review" && reviewStatus === "pending") || (filter === "kept" && reviewStatus === "kept") || (filter === "ignored" && reviewStatus === "ignored") || (filter === "priority" && active && saved.priority) || (filter === "deadlines" && active && mailboxDeadlineHints(item).length);
+    const matchesFilter = (filter === "all" && reviewStatus === "pending") || (filter === "review" && reviewStatus === "pending") || (filter === "kept" && reviewStatus === "kept") || (filter === "ignored" && reviewStatus === "ignored") || (filter === "priority" && reviewStatus === "pending" && saved.priority) || (filter === "deadlines" && reviewStatus === "pending" && mailboxDeadlineHints(item).length);
     const matchesSearch = !query || mailboxText(item).toLowerCase().includes(query);
     return matchesFilter && matchesSearch;
   });
   const statusFor = item => archive[mailboxItemId(item)]?.reviewStatus || "pending";
-  const activeItems = items.filter(item => statusFor(item) !== "ignored");
+  const activeItems = items.filter(item => statusFor(item) === "pending");
   const priorityCount = activeItems.filter((item) => archive[mailboxItemId(item)]?.priority).length;
   const reviewCount = items.filter(item => statusFor(item) === "pending").length;
   const keptCount = items.filter(item => statusFor(item) === "kept").length;
@@ -8906,7 +8906,7 @@ function MailboxModule({ onOpenModule }) {
         <MailboxScanControls onSaved={loadMailbox} />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginBottom: 18 }}>
-          {[{ id: "all", label: "Active messages", count: activeItems.length }, { id: "review", label: "Needs review", count: reviewCount }, { id: "kept", label: "Kept", count: keptCount }, { id: "deadlines", label: "Has deadline", count: deadlineCount }, { id: "priority", label: "Priority", count: priorityCount }, { id: "ignored", label: "Ignored", count: ignoredCount }].map((card) => (
+          {[{ id: "all", label: "Review queue", count: reviewCount }, { id: "kept", label: "Kept", count: keptCount }, { id: "deadlines", label: "Has deadline", count: deadlineCount }, { id: "priority", label: "Priority", count: priorityCount }, { id: "ignored", label: "Ignored", count: ignoredCount }].map((card) => (
             <button key={card.id} onClick={() => setFilter(card.id)} style={{ textAlign: "left", background: filter === card.id ? HUB_INK : "#fff", color: filter === card.id ? "#fff" : HUB_INK, border: "1px solid " + (filter === card.id ? HUB_INK : HUB_LINE), borderRadius: 7, padding: "12px 14px", cursor: "pointer" }}>
               <div style={{ fontSize: 11, opacity: 0.72, marginBottom: 5 }}>{card.label}</div><div style={{ fontSize: 23, fontWeight: 700 }}>{card.count}</div>
             </button>
