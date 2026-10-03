@@ -47,7 +47,7 @@ export default function SyncStatus({ status, onReload }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const buttonStyle = { padding: "6px 10px", border: "1px solid #94A3B8", borderRadius: 4, background: "white", cursor: "pointer" };
-  return <section aria-label="Data save status" style={{ padding: "10px 18px", background: hasProblem ? "#FFF4E5" : "#EFF8F1", color: "#334155", fontFamily: "Arial, sans-serif", fontSize: 13 }}>
+  return <section aria-label="Data save status" style={{ padding: "10px 18px", background: hasProblem ? "#FFF4E5" : "#EFF8F1", color: "#334155", fontFamily: "Arial, sans-serif", fontSize: 13, ...(sync.conflicts.length ? { position: "sticky", top: 0, zIndex: 101, borderBottom: "2px solid #D97706", boxShadow: "0 2px 10px rgba(15, 23, 42, .14)" } : {}) }}>
     <div role="status" aria-live="polite">{label}</div>
     {(message || sync.errors.length > 0) && <div role="alert" style={{ marginTop: 6 }}>{message || sync.errors.join(" ")}</div>}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
@@ -56,7 +56,7 @@ export default function SyncStatus({ status, onReload }) {
       <button style={buttonStyle} disabled={busy || sync.offline} onClick={onReload}>Reload data</button>
     </div>
     {sync.conflicts.map(({ key, shared }) => <div key={JSON.stringify([key, shared])} style={{ marginTop: 10 }}>
-      <p><strong>{MODULE_NAMES[key] || "Shared project"}</strong> changed in the cloud. Choose the complete version to keep; the previous browser copy is backed up locally before replacement.</p>
+      <p><strong>{MODULE_NAMES[key] || "Shared project"}</strong> changed in the cloud. Editing is paused to prevent either version being overwritten. Choose the complete version to keep; the previous browser copy is backed up locally before replacement.</p>
       <button style={buttonStyle} disabled={busy || sync.offline} onClick={() => run(async () => { await cloudStorage.resolveConflict(key, shared, "cloud"); onReload(); })}>Use latest cloud version</button>{" "}
       <button style={buttonStyle} disabled={busy || sync.offline} onClick={() => run(async () => { await cloudStorage.resolveConflict(key, shared, "local"); onReload(); })}>Keep this browser’s version</button>
     </div>)}
