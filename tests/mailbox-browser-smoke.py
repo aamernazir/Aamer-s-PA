@@ -59,6 +59,8 @@ with sync_playwright() as p:
  dialog.get_by_label('Contribution / outcome summary').fill('The journal accepted the completed paper for publication; retain this as a reviewable research output.')
  dialog.get_by_role('button',name='Confirm and save',exact=True).click()
  page.get_by_text('Transferred to Research Intelligence as a reviewable record.',exact=True).wait_for()
+ article_b.get_by_role('button',name='Re-read this email on next scan',exact=True).click()
+ page.get_by_text('Queued “Paper accepted for publication” for one deliberate re-read.',exact=False).wait_for()
  archive=page.evaluate('JSON.parse(window.testRecords["am2r-publication-archive-v1"])')
  assert archive['outputs'][0]['summary'].startswith('The journal accepted')
  assert archive['outputs'][0]['needsReview'] is True
@@ -80,14 +82,13 @@ with sync_playwright() as p:
  page.get_by_role('alert').filter(has_text='Choose a valid start').wait_for()
  assert len(calls)==before
  panel.get_by_label('End date (UTC, inclusive)').fill('2026-10-02')
- panel.get_by_label('Force rescan').check()
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()
- panel.get_by_role('status').filter(has_text='Completed').filter(has_text='2 analyzed · 0 auto-excluded · 0 older conversation messages hidden · 0 skipped · 1 with deadlines').wait_for()
- assert detail_ids==['a','b','a','b'],detail_ids
+ panel.get_by_role('status').filter(has_text='Completed').filter(has_text='1 analyzed · 0 auto-excluded · 0 older conversation messages hidden · 1 skipped · 0 with deadlines').wait_for()
+ assert detail_ids==['a','b','b'],detail_ids
  panel.get_by_text('Scan history (3)',exact=True).click()
  assert panel.get_by_role('row').count()==4
  state=page.evaluate('JSON.parse(window.testRecords["an2r-gmail-deadlines-v1"])')
- assert len(state['items'])==2
+ assert len(state['items'])==1 and state['items'][0]['id']=='b'
  assert 'payload' not in json.dumps(state) and '<p>' not in json.dumps(state) and 'test-token' not in json.dumps(state)
  page.evaluate('window.failSave=true')
  panel.get_by_role('button',name='Scan Gmail',exact=True).click()

@@ -27,7 +27,6 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
   const [scope, setScope] = useState(FOCUSED_SCAN_SCOPE);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -83,7 +82,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       const previous = result?.value ? JSON.parse(result.value) : {};
       const next = await scanMailbox({
         accessToken: storage.getGmailAccessToken(), accountEmail, previous,
-        options: { ...periodOptions, period, scope, force },
+        options: { ...periodOptions, period, scope },
         signal: abortRef.current.signal,
         onProgress: update => { if (mounted.current) setProgress(update); },
       });
@@ -142,7 +141,6 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
         <option value="focused">Focused academic (recommended)</option><option value="all-primary">All Primary mail</option>
       </select></label>
       {period === "custom" && <><label>Start date (UTC)<br /><input style={field} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label><label>End date (UTC, inclusive)<br /><input style={field} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label></>}
-      <label style={{ paddingBottom: 8 }}><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} /> Force rescan of saved messages in this range</label>
       <button onClick={scan} style={{ ...field, background: "#1F5C8B", color: "#fff", cursor: "pointer" }}>{busy ? "Scanning…" : "Scan Gmail"}</button>
     </fieldset>
     {busy && <button onClick={() => abortRef.current?.abort()} style={{ ...field, marginTop: 10, color: "#9A3412", cursor: "pointer" }}>Cancel scan</button>}
@@ -163,7 +161,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       {!saved?.history?.length ? <p>No scans recorded yet.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", textAlign: "left", fontSize: 12, borderSpacing: "10px" }}>
         <thead><tr>{["Started (UTC)", "Range", "Scope", "Type", "Status", "Duration", "Found", "Analyzed", "Auto-excluded", "Older hidden", "Skipped", "Deadlines", "Failures", "Reason"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{saved.history.map((run, index) => <tr key={run.startedAt + index}>
-          <td>{run.startedAt.replace("T", " ").slice(0, 19)}</td><td>{run.startDate} – {run.endDate}</td><td>{run.scope === "all-primary" ? "All Primary" : "Focused"}</td><td>{periods.find(option => option.id === run.period)?.label || run.mode}{run.force ? " (forced)" : ""}</td><td>{statusLabel(run.status)}</td><td>{formatDuration(run.durationMs)}</td><td>{run.found ?? "—"}</td><td>{run.analyzed}</td><td>{(run.excluded || 0) + (run.cleaned || 0)}</td><td>{run.superseded || 0}</td><td>{run.skipped}</td><td>{run.deadlines}</td><td>{(run.failed || 0) + (run.listFailures || 0)}</td><td>{run.error || (run.status === "partial" ? "Recorded before detailed failure reporting; retry the scan." : "—")}</td>
+          <td>{run.startedAt.replace("T", " ").slice(0, 19)}</td><td>{run.startDate} – {run.endDate}</td><td>{run.scope === "all-primary" ? "All Primary" : "Focused"}</td><td>{periods.find(option => option.id === run.period)?.label || run.mode}</td><td>{statusLabel(run.status)}</td><td>{formatDuration(run.durationMs)}</td><td>{run.found ?? "—"}</td><td>{run.analyzed}</td><td>{(run.excluded || 0) + (run.cleaned || 0)}</td><td>{run.superseded || 0}</td><td>{run.skipped}</td><td>{run.deadlines}</td><td>{(run.failed || 0) + (run.listFailures || 0)}</td><td>{run.error || (run.status === "partial" ? "Recorded before detailed failure reporting; retry the scan." : "—")}</td>
         </tr>)}</tbody>
       </table></div>}
     </details>

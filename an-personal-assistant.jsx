@@ -8714,6 +8714,7 @@ function MailboxModule({ onOpenModule }) {
   const [routeProjects, setRouteProjects] = useState([]);
   const [savingRoute, setSavingRoute] = useState(false);
   const [routeError, setRouteError] = useState("");
+  const [rereadIds, setRereadIds] = useState(new Set());
   const [confirmClearIgnored, setConfirmClearIgnored] = useState(false);
   const [clearingIgnored, setClearingIgnored] = useState(false);
 
@@ -8827,6 +8828,20 @@ function MailboxModule({ onOpenModule }) {
     }
   }
 
+  async function queueMessageReread(item) {
+    const id = mailboxItemId(item);
+    try {
+      const result = await window.storage.get(MAILBOX_SCAN_STORAGE_KEY);
+      const scan = result?.value ? JSON.parse(result.value) : {};
+      const processedMessageIds = (scan.processedMessageIds || []).filter(messageId => String(messageId) !== id);
+      await window.storage.set(MAILBOX_SCAN_STORAGE_KEY, JSON.stringify({ ...scan, processedMessageIds }));
+      setRereadIds(current => new Set([...current, id]));
+      setMessage(`Queued “${item.subject || "this email"}” for one deliberate re-read. Run a scan period that includes ${mailboxDate(item.receivedAt)}; every other completed message will remain skipped.`);
+    } catch (error) {
+      setMessage(error?.message || "This email could not be queued for re-reading.");
+    }
+  }
+
   async function clearIgnoredRecords() {
     const ignoredIds = new Set(Object.entries(archive).filter(([, record]) => record.reviewStatus === "ignored").map(([id]) => id));
     if (!ignoredIds.size || clearingIgnored) return;
@@ -8923,7 +8938,7 @@ function MailboxModule({ onOpenModule }) {
             const approved = saved.approvedRoutes || [];
             const reviewStatus = saved.reviewStatus || "pending";
             const references = saved.projectReferences || mailboxProjectReferences(item);
-            const emailSummary = (item.summary && item.summary !== item.subject ? item.summary : "") || item.snippet || "No email summary is available yet. Use Force rescan to create one from the newest email text.";
+            const emailSummary = (item.summary && item.summary !== item.subject ? item.summary : "") || item.snippet || "No email summary is available yet. Use Re-read this email, then scan a period containing its date.";
             const deadlineHints = mailboxDeadlineHints(item);
             return <article key={id} className="an-card" style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 8, padding: "16px 17px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
@@ -8945,6 +8960,7 @@ function MailboxModule({ onOpenModule }) {
                   {reviewStatus !== "ignored" && <button onClick={() => setReviewStatus(item, "ignored")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #D2D6DC", background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><X size={13} /> Ignore</button>}
                   {reviewStatus === "ignored" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>Restore to review</button>}
                   {reviewStatus === "kept" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Return to review</button>}
+                  <button onClick={() => queueMessageReread(item)} disabled={rereadIds.has(id)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: rereadIds.has(id) ? "default" : "pointer" }}>{rereadIds.has(id) ? "Queued for re-read" : "Re-read this email on next scan"}</button>
                 </div>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
                 {suggestions.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{suggestions.map((route) => { const routeKey = route.id === "aps" ? "aps:" + apsCycle : route.id; const isApproved = approved.includes(routeKey); return <button key={route.id} onClick={() => openRoutePreview(item, route.id)} title={isApproved ? `Review or update the saved ${mailboxRouteLabel(routeKey)} record` : route.reason} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (isApproved ? "#9CC9AA" : HUB_LINE), background: isApproved ? "#EFF8F1" : "#fff", color: isApproved ? HUB_GREEN : HUB_TEAL, borderRadius: 5, padding: "7px 9px", fontSize: 12, cursor: "pointer" }}>{isApproved ? <Check size={13} /> : <Target size={13} />}{isApproved ? `Review/update ${mailboxRouteLabel(routeKey)}` : `Review transfer to ${mailboxRouteLabel(routeKey)}`}</button>; })}</div> : <div style={{ fontSize: 12, color: HUB_MUTED }}>No archive destination recommended. Keep this message in Mailbox while it is active, then ignore it when it is no longer needed.</div>}

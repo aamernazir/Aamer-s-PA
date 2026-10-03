@@ -241,7 +241,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
   const scope = range.scope;
-  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, force: !!options.force, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, cleaned: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, cleaned: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
   if (scope === FOCUSED_SCAN_SCOPE) {
     for (const [id, item] of items) {
       if (!isFocusedMailboxMessage(item, now)) {
@@ -289,7 +289,9 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
         if (!message.id || seen.has(message.id)) continue;
         seen.add(message.id);
         history.found++;
-        if (!options.force && known.has(message.id)) {
+        // Successfully processed Gmail message IDs are immutable checkpoints.
+        // Date-range and legacy force options must never bypass them.
+        if (known.has(message.id)) {
           history.skipped++;
           report("analyzing");
           continue;
@@ -330,7 +332,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
         } catch (error) {
           if (error.name === "AbortError" || error.requestTimedOut) throw error;
           history.failed++;
-          // Forced refresh failures must remain retryable on the next incremental scan.
+          // Failed messages remain retryable on the next scan.
           known.delete(message.id);
           if ([401, 403, 429].includes(error.status)) throw error;
         }

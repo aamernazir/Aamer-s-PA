@@ -83,15 +83,15 @@ test("incremental reload skips saved IDs but analyzes a new reply and preserves 
   assert.equal(next.initialStartDate, "2025-10-02");
 });
 
-test("force rescan in broad mode refreshes messages in range without dropping results outside it", async () => {
+test("completed IDs cannot be rescanned by date changes or legacy force options", async () => {
   const old = message("old"); old.threadId = "older-unrelated-thread";
   const initial = await run(fixture({first:{messages:[{id:"a"},{id:"old"}]}}, {old}));
   const next = await run(fixture({first:{messages:[{id:"a"}]}}, {a:message("a", "Nothing actionable here.")}), { previous: initial, options:{mode:"manual",scope:"all-primary",startDate:"2026-01-01",endDate:"2026-01-02",force:true} });
-  assert.equal(next.history[0].analyzed, 1);
-  assert.equal(next.history[0].skipped, 0);
+  assert.equal(next.history[0].analyzed, 0);
+  assert.equal(next.history[0].skipped, 1);
   assert.equal(next.history[0].deadlines, 0);
   assert.equal(next.items.length, 2);
-  assert.deepEqual(next.items.find(i=>i.id==="a").deadlineHints, []);
+  assert.notDeepEqual(next.items.find(i=>i.id==="a").deadlineHints, []);
   assert.equal(next.initialStartDate, initial.initialStartDate);
 });
 
@@ -143,10 +143,10 @@ test("failed details remain retryable and partial pagination never marks unseen 
   assert.equal(next.history[0].status, "completed");
 });
 
-test("expired authentication stops the scan and forced failures remove old skip markers", async () => {
+test("expired authentication stops a retryable unprocessed message", async () => {
   const initial = await run(fixture({first:{messages:[{id:"a"}]}}));
   const f=fixture({first:{messages:[{id:"a"},{id:"b"}]}},{a:401});
-  const next=await run(f,{previous:initial,options:{force:true}});
+  const next=await run(f,{previous:{...initial,processedMessageIds:[]},options:{}});
   assert.equal(next.history[0].status,"interrupted");
   assert.equal(next.history[0].errorCode,"authorization");
   assert.match(next.history[0].error,/expired/);
