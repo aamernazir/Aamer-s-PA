@@ -44,6 +44,12 @@ test("rerouting corrects an existing pending APS record without creating a dupli
   assert.equal(result.record.deadline, "");
 });
 
+test("APS uses the evidence-derived contribution and blocks unreadable generic certificates", () => {
+  const derived = createRouteDraft({ ...item, contributionSummary:"Served as Session Chair for AM 2026 and received formal recognition." }, "aps", "APS27");
+  assert.equal(derived.summary, "Served as Session Chair for AM 2026 and received formal recognition.");
+  assert.throws(() => createRouteDraft({id:"unreadable",subject:"Certificate",summary:"Certificate",deadlineHints:[]}, "aps", "APS27"), /could not be read confidently/);
+});
+
 test("archive routing creates a reviewable completed output and prevents duplicates", () => {
   const accepted = createRouteDraft({ ...item, subject: "Paper accepted for publication", summary: "The journal accepted the manuscript for publication." }, "archive");
   const first = applyMailboxRoute("archive", { outputs: [] }, accepted);

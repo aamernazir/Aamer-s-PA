@@ -15,6 +15,7 @@ function sourceDate(item) {
 }
 
 function completedEvidenceSummary(item) {
+  if (item?.contributionSummary) return String(item.contributionSummary).slice(0, 1200);
   const text = `${item?.subject || ""} ${item?.summary || ""}`;
   const technicalCommittee = /technical committee/i.test(text);
   const certificate = /certificate(?: of appreciation)?/i.test(text);
@@ -30,6 +31,8 @@ function completedEvidenceSummary(item) {
 export function createRouteDraft(item, destination, apsCycle = "APS27") {
   const date = sourceDate(item);
   const evidenceSummary = completedEvidenceSummary(item);
+  const completedEvidence = /certificate|award|recognition/i.test(`${item?.subject || ""} ${item?.summary || ""}`);
+  if (destination === "aps" && completedEvidence && !evidenceSummary && (!item?.summary || item.summary === item.subject)) throw new Error("This evidence could not be read confidently. Force rescan to inspect the newest email and PDF certificate before routing to APS.");
   const deadline = evidenceSummary ? "" : mailboxDeadlineHints(item).join(" · ");
   const summary = String(evidenceSummary || item?.summary || deadline || item?.subject || "Email record").slice(0, 1200);
   const draft = {

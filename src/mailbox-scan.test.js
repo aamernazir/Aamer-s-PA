@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFocusedMailboxMessage, latestConversationItems, parsedDeadlineDates, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
+import { deriveContributionSummary, isFocusedMailboxMessage, latestConversationItems, parsedDeadlineDates, scanMailbox, scanOptionsForPeriod, scanRange, messageMetadata } from "./mailbox-scan.js";
 
 const now = new Date("2026-10-02T12:00:00Z");
 const message = (id, text = "Please respond by November 15, 2026.") => ({ id, threadId: "same-thread", internalDate: "1790899200000", snippet: "do not persist this snippet", payload: { headers: [{ name: "Subject", value: "Review invitation" }, { name: "From", value: "editor@example.test" }], mimeType: "text/plain", body: { data: Buffer.from(text).toString("base64url") }, parts: [{ filename: "private.txt", mimeType: "text/plain", body: { data: Buffer.from("private attachment deadline tomorrow").toString("base64url") } }] } });
@@ -188,6 +188,21 @@ test("quoted deadlines do not contaminate a newer certificate message", () => {
   assert.deepEqual(metadata.deadlineHints, []);
   assert.match(metadata.summary, /Technical Committee Member/);
   assert.doesNotMatch(metadata.summary, /July 3/);
+});
+
+test("certificate PDF text produces a factual contribution without storing attachment contents", async () => {
+  assert.match(deriveContributionSummary("Certificate", "Thank you.", "Certificate of Appreciation for Aamer Nazir, Technical Committee Member of ICEIM 2026."), /Technical Committee Member.*ICEIM 2026/);
+  const withPdf = message("pdf", "Please find your certificate attached.");
+  withPdf.payload.headers[0].value = "ICEIM2026 Technical Committee Certificate";
+  withPdf.payload.parts.push({filename:"ICEIM-certificate.pdf",mimeType:"application/pdf",body:{attachmentId:"attachment-1",size:2048}});
+  const f = fixture({first:{messages:[{id:"pdf"}]}}, {pdf:withPdf});
+  const originalFetch = f.fetchImpl;
+  f.fetchImpl = async input => String(input).includes("/attachments/") ? {ok:true,json:async()=>({data:Buffer.from("fake-pdf").toString("base64url")})} : originalFetch(input);
+  const state = await run(f, {extractPdfTextImpl:async()=>"Certificate of Appreciation. Technical Committee Member of ICEIM 2026 for valuable contribution."});
+  assert.match(state.items[0].contributionSummary, /Technical Committee Member.*ICEIM 2026/);
+  assert.deepEqual(state.items[0].attachments, [{filename:"ICEIM-certificate.pdf",mimeType:"application/pdf",readStatus:"read"}]);
+  assert.ok(!JSON.stringify(state).includes("valuable contribution"));
+  assert.ok(!JSON.stringify(state).includes("fake-pdf"));
 });
 
 test("a repeated page token stops with interrupted history instead of looping", async () => {
