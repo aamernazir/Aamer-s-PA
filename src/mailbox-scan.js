@@ -100,8 +100,38 @@ function decodeGmailBytes(value) {
   return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
 
+function certificateText(value) {
+  return cleanMessageText(value).replace(/\s+/g, " ").trim();
+}
+
+function conferencePresentationContribution(attachmentText) {
+  const source = certificateText(attachmentText);
+  if (!source) return "";
+  const contribution = source.match(/\b(?:the\s+)?following\s+contribution\s*:?\s*(.+?)\s+as\s+(?:an?\s+)?(oral|poster)\s+presentation\b/i);
+  if (!contribution) return "";
+
+  const title = contribution[1].replace(/\s+/g, " ").replace(/[.;:,]+$/, "").trim();
+  if (title.length < 8 || title.length > 360) return "";
+
+  const presentationType = contribution[2].toLowerCase();
+  const article = presentationType === "oral" ? "an" : "a";
+  const eventCode = source.match(/\b[A-Z]{2,}-\d{1,3}\b/)?.[0] || "";
+  const eventName = source.match(/\b(?:the\s+)?([A-Z][A-Z0-9\s-]{8,}?\b(?:international|annual|world|global)\s+conference)\b/i)?.[1];
+  const event = eventCode ? `${eventCode} International Conference` : eventName ? eventName.replace(/\s+/g, " ").trim() : "";
+  const dates = source.match(/\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}\s*(?:[-–—]|to)\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+)?\d{1,2},?\s*20\d{2}\b/i)?.[0];
+  const location = source.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2},\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2},\s*[A-Z][a-z]+)\b/)?.[1];
+  const context = [event ? `at ${event}` : "", location ? `in ${location}` : "", dates ? dates.replace(/\s+/g, " ") : ""].filter(Boolean).join(" ");
+  return `Delivered ${article} ${presentationType} presentation titled “${title}”${context ? ` ${context}` : ""}.`;
+}
+
 export function deriveContributionSummary(subject, emailText, attachmentText = "") {
-  const text = cleanMessageText(`${subject || ""} ${emailText || ""} ${attachmentText || ""}`);
+  const documentText = certificateText(attachmentText);
+  const conferenceContribution = conferencePresentationContribution(documentText);
+  if (conferenceContribution) return conferenceContribution;
+
+  // A readable attached certificate is the evidence authority. Never let an
+  // email signature or footer replace it with a weaker statement.
+  const text = cleanMessageText(documentText ? `${subject || ""} ${documentText}` : `${subject || ""} ${emailText || ""}`);
   const committee = text.match(/\b(Technical Committee Member|Organizing Committee Member|Scientific Committee Member|Program Committee Member|Session Chair)\b/i)?.[1];
   const eventMatch = text.match(/\b([A-Z][A-Z0-9-]{2,})\s*(20\d{2})\b/);
   const event = eventMatch ? `${eventMatch[1]} ${eventMatch[2]}` : "";
