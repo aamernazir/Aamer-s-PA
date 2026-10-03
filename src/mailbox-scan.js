@@ -216,6 +216,23 @@ function conversationKey(item) {
   return `fallback:${sender.trim().toLowerCase()}|${subject.toLowerCase()}`;
 }
 
+function isStaleReviewInvitation(item, now) {
+  const text = `${item?.subject || ""} ${item?.summary || ""}`;
+  const isInvitation = /\b(?:invited to review|review invitation|invitation to review|peer review invitation|reviewer invitation|accept(?: or)? decline|willing to review)\b/i.test(text);
+  if (!isInvitation) return false;
+
+  // A dated invitation remains relevant until its deadline. Where a journal
+  // does not state one, keep it for a reasonable decision window only.
+  const dates = parsedDeadlineDates(item);
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (dates.some(date => date.getTime() >= today)) return false;
+  if (dates.length) return true;
+
+  const received = Date.parse(item?.receivedAt || "");
+  const ageMs = now.getTime() - received;
+  return Number.isFinite(received) && ageMs > 45 * 24 * 60 * 60 * 1000;
+}
+
 export function latestConversationItems(source) {
   const latest = new Map();
   for (const item of source || []) {
@@ -242,6 +259,7 @@ export function isFocusedMailboxMessage(item, now = new Date()) {
   const dates = parsedDeadlineDates(item);
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   if (dates.length && dates.every(date => date.getTime() < today) && !completedEvidence) return false;
+  if (!completedEvidence && isStaleReviewInvitation(item, now)) return false;
   if (noisy && !strongSubject && !credibleAction) return false;
   return strongSubject || credibleAction || (item?.deadlineHints || []).length > 0;
 }
