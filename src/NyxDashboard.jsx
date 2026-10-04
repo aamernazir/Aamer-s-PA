@@ -552,7 +552,7 @@ export default function NyxDashboard({ onOpenModule, modules }) {
 
   const sections = useMemo(() => makeSections(raw, period), [raw, period]);
   const outputs = raw.archive?.outputs || [];
-  const currentYearOutputs = outputs.filter((item) => Number(item?.year) === 2026).length;
+  const currentYearJournalOutputs = outputs.filter((item) => item?.type === "Journal Paper" && Number(item?.year) === 2026).length;
   const apsCycle = raw.aps?.activeCycle || "APS27";
   const apsInbox = raw.aps?.cycles?.[apsCycle]?.evidenceInbox?.length || raw.aps?.evidenceInbox?.length || 0;
   const dataWarnings = [
@@ -593,7 +593,7 @@ export default function NyxDashboard({ onOpenModule, modules }) {
         </nav>
 
         <section className="nyx-kpi-grid" aria-label="Career snapshot">
-          <div className="nyx-kpi nyx-kpi-primary"><span>Journal articles</span><strong>64</strong><small>{currentYearOutputs ? `${currentYearOutputs} live outputs dated 2026` : "6 listed for 2026 in CV"}</small></div>
+          <div className="nyx-kpi nyx-kpi-primary"><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived journal articles dated 2026` : "6 listed for 2026 in CV"}</small></div>
           <div className="nyx-kpi"><span>Approved awards</span><strong>17</strong><small>{raw.projects?.length ? `${raw.projects.length} represented in Project Dashboard` : "CV baseline pending live reconciliation"}</small></div>
           <div className="nyx-kpi"><span>Research supervision</span><strong>38+</strong><small>Postdoc, PhD, master's and undergraduate</small></div>
           <div className="nyx-kpi"><span>Peer reviews</span><strong>160+</strong><small>Across 14 listed journals</small></div>
