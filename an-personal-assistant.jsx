@@ -1,5 +1,6 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
+import { collectActiveWorkload } from "./src/project-workload.js";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
@@ -376,32 +377,6 @@ function collectEvidenceGaps(projects) {
     });
   });
   return out;
-}
-
-function collectWorkload(projects) {
-  const map = {};
-  const bump = (name, field) => {
-    if (!name || !name.trim()) return;
-    if (!map[name]) map[name] = { objectives: 0, workPackages: 0, projects: new Set() };
-    map[name][field] += 1;
-  };
-  projects.forEach((p) => {
-    (p.objectives || []).forEach((o) => {
-      if (o.lead) { bump(o.lead, "objectives"); map[o.lead].projects.add(p.title); }
-    });
-    (p.workPackages || []).forEach((wp) => {
-      if (wp.execLead) { bump(wp.execLead, "workPackages"); map[wp.execLead].projects.add(p.title); }
-    });
-  });
-  return Object.entries(map)
-    .map(([name, v]) => ({
-      name,
-      objectives: v.objectives,
-      workPackages: v.workPackages,
-      projectCount: v.projects.size,
-      loadScore: v.objectives + v.workPackages,
-    }))
-    .sort((a, b) => b.loadScore - a.loadScore);
 }
 
 function workloadStatus(workload, member) {
@@ -869,7 +844,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
   const [portfolioTab, setPortfolioTab] = useState("attention");
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
-  const workload = collectWorkload(projects);
+  const workload = collectActiveWorkload(projects);
   const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
 
   return (
@@ -943,6 +918,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
+                  <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 9 }}>Active projects only — completed, closed, archived, or cancelled projects are excluded.</div>
                   {workload.map((w, i) => {
                     const status = workloadStatus(workload, w);
                     return (
