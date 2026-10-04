@@ -20,6 +20,10 @@ test("APS routing saves a reviewable contribution summary once", () => {
   assert.equal(applyMailboxRoute("aps", first.data, draft).duplicate, true);
 });
 
+test("a 2025 email cannot be saved as APS27 evidence", () => {
+  assert.throws(() => createRouteDraft({ ...item, receivedAt: "2025-10-02T10:00:00Z" }, "aps", "APS27"), /outside the APS27 contribution period/);
+});
+
 test("technical committee certificates reach every plausible APS subsection pending approval", () => {
   const certificate = createRouteDraft({ ...item, subject: "ICEIM2026 Technical Committee Certificate", summary: "Received a certificate for service on the conference technical committee.", deadlineHints: ["Return the old review by July 3, 2026"] }, "aps", "APS27");
   assert.deepEqual(certificate.apsSubsections, ["R6_CONF", "R6_RECOG", "S2_PROMOTE", "B4"]);

@@ -9,6 +9,16 @@ export const APS_SUBSECTION_LABELS = {
   B4: "B4 — Active engagement",
 };
 
+// APS27 is time-bounded. The individual criteria have shorter windows inside
+// this envelope; a 2025 email cannot be sent to APS27.
+export const APS_CYCLE_DATE_BOUNDS = { APS27: { start: "2026-01-01", end: "2027-08-31" } };
+export function apsCycleDateEligibility(item, cycle = "APS27") {
+  const date = sourceDate(item), bounds = APS_CYCLE_DATE_BOUNDS[cycle];
+  if (!bounds) return { eligible: true, date, reason: "" };
+  const eligible = !!date && date >= bounds.start && date <= bounds.end;
+  return { eligible, date, reason: eligible ? "" : `${date || "Undated"} is outside the ${cycle} contribution period (${bounds.start} to ${bounds.end}). Keep it in Mailbox or route it to the long-term Archive instead.` };
+}
+
 function sourceDate(item) {
   const parsed = new Date(item?.receivedAt || "");
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
@@ -33,6 +43,8 @@ export function createRouteDraft(item, destination, apsCycle = "APS27") {
   const evidenceSummary = completedEvidenceSummary(item);
   const completedEvidence = /certificate|award|recognition/i.test(`${item?.subject || ""} ${item?.summary || ""}`);
   if (destination === "aps" && completedEvidence && !evidenceSummary && (!item?.summary || item.summary === item.subject)) throw new Error("This evidence could not be read confidently. Force rescan to inspect the newest email and PDF certificate before routing to APS.");
+  const eligibility = apsCycleDateEligibility(item, apsCycle);
+  if (destination === "aps" && !eligibility.eligible) throw new Error(eligibility.reason);
   const deadline = evidenceSummary ? "" : mailboxDeadlineHints(item).join(" · ");
   const summary = String(evidenceSummary || item?.summary || deadline || item?.subject || "Email record").slice(0, 1200);
   const draft = {
@@ -87,6 +99,8 @@ export function applyMailboxRoute(destination, current, draft) {
     return { data: { ...data, outputs: [record, ...outputs] }, record, duplicate: false };
   }
   if (destination === "aps") {
+    const eligibility = apsCycleDateEligibility({ receivedAt: draft.sourceDate }, draft.apsCycle);
+    if (!eligibility.eligible) throw new Error(eligibility.reason);
     const data = current;
     const cycleKey = draft.apsCycle;
     if (!data?.cycles?.[cycleKey]) throw new Error(`APS cycle ${cycleKey} was not found.`);

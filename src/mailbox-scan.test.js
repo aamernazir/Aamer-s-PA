@@ -25,8 +25,9 @@ test("default scan covers twelve calendar months and manual dates include the en
   const initial = scanRange({}, {}, now);
   assert.equal(initial.startDate, "2025-10-02");
   assert.equal(initial.endDate, "2026-10-02");
-  assert.match(initial.query, /-in:spam -in:trash /);
+  assert.match(initial.query, /^-in:spam -in:trash /);
   assert.match(initial.query, /manuscript/);
+  assert.match(initial.query, /\breview\b/);
   const manual = scanRange({ mode: "manual", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
   assert.match(manual.query, new RegExp(`after:${Date.parse("2026-01-01") / 1000 - 1} before:${Date.parse("2026-01-02") / 1000}$`));
   const broad = scanRange({ mode: "manual", scope: "all-primary", startDate: "2026-01-01", endDate: "2026-01-01" }, {}, now);
@@ -120,6 +121,13 @@ test("focused relevance removes expired deadlines but preserves completed eviden
   assert.equal(isFocusedMailboxMessage({...expired,subject:"Technical committee certificate"}, now), true);
 });
 
+test("focused relevance removes obsolete review invitations even when the journal omitted a deadline", () => {
+  const oldInvitation = {subject:"Invitation to review a manuscript", summary:"Would you be willing to review this manuscript?", receivedAt:"2026-07-01T00:00:00Z", deadlineHints:[]};
+  const recentInvitation = {...oldInvitation, receivedAt:"2026-09-20T00:00:00Z"};
+  assert.equal(isFocusedMailboxMessage(oldInvitation, now), false);
+  assert.equal(isFocusedMailboxMessage(recentInvitation, now), true);
+});
+
 test("a focused scan cleans previously saved expired results without refetching them", async () => {
   const expired = {id:"expired",threadId:"t",subject:"Re: Chapters",from:"author@example.test",receivedAt:"2026-08-30T00:00:00Z",summary:"The submission deadline was extended.",deadlineHints:["Submit by September 20, 2026"]};
   const previous = {accountEmail:"owner@example.test",initialStartDate:"2025-10-02",processedMessageIds:["expired"],items:[expired],history:[]};
@@ -181,6 +189,15 @@ test("tracking parameters and unrelated dates do not become deadline hints", () 
   assert.ok(messageMetadata(revision).summary.length <= 700);
 });
 
+test("review invitation summary retains manuscript identity and purpose", () => {
+  const review = message("review", "Manuscript Number: ADDMA-D-26-03364 Five simple tools for stochastic triply periodic minimal surface-based lattice creation Dear Mr Nazir, I would like to invite you to review the above referenced manuscript, as I believe it falls within your expertise and interests. Please review the guidelines carefully.");
+  review.payload.headers[0].value = "Invitation to review for Additive Manufacturing";
+  const metadata = messageMetadata(review);
+  assert.match(metadata.summary, /ADDMA-D-26-03364/);
+  assert.match(metadata.summary, /Five simple tools for stochastic triply periodic minimal surface-based lattice creation/);
+  assert.match(metadata.summary, /invite you to review/i);
+});
+
 test("quoted deadlines do not contaminate a newer certificate message", () => {
   const certificate = message("certificate", "Thank you for your contribution as a Technical Committee Member. Please find your Certificate of Appreciation attached. On Mon, Jun 29, 2026, Reviewer wrote: You could complete the review and return the review form by July 3, 2026.");
   certificate.payload.headers[0].value = "ICEIM2026 Technical Committee Certificate";
@@ -203,6 +220,12 @@ test("certificate PDF text produces a factual contribution without storing attac
   assert.deepEqual(state.items[0].attachments, [{filename:"ICEIM-certificate.pdf",mimeType:"application/pdf",readStatus:"read"}]);
   assert.ok(!JSON.stringify(state).includes("valuable contribution"));
   assert.ok(!JSON.stringify(state).includes("fake-pdf"));
+});
+
+test("conference certificate keeps the complete presentation contribution", () => {
+  const certificate = "PPS-41 International Conference. Paestum, Salerno, Italy. MAY 31-JUNE 4, 2026. This is to certify the following contribution: Beyond One-Directional Protection: Multi-Material Mechanical Metamaterials for Adaptive Force Routing as an oral presentation.";
+  const summary = deriveContributionSummary("PPS-41 certificate", "Please find attached.", certificate);
+  assert.equal(summary, "Delivered an oral presentation titled “Beyond One-Directional Protection: Multi-Material Mechanical Metamaterials for Adaptive Force Routing” at PPS-41 International Conference in Paestum, Salerno, Italy MAY 31-JUNE 4, 2026.");
 });
 
 test("a repeated page token stops with interrupted history instead of looping", async () => {

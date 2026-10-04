@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mailboxCategory, mailboxDeadlineHints, mailboxSuggestions } from "./mailbox-triage.js";
+import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxSuggestions, matchesMailboxIgnoreRule } from "./mailbox-triage.js";
 
 test("revision reminders remain in Mailbox without an archive suggestion", () => {
   const item = { subject: "Manuscript revision reminder", deadlineHints: ["Deadline for the revised manuscript is 5 October 2026"] };
@@ -23,4 +23,10 @@ test("completed academic evidence goes to APS while active projects remain actio
 test("legacy tracking fragments are not displayed as deadlines", () => {
   assert.deepEqual(mailboxDeadlineHints({ deadlineHints: ["engagement&utm_term=x&mc_cid=abc deadline newsletter"] }), []);
   assert.deepEqual(mailboxDeadlineHints({ deadlineHints: ["The revision deadline is 5 October 2026"] }), ["The revision deadline is 5 October 2026"]);
+});
+
+test("explicit ignore creates a narrow preference for similar future mail", () => {
+  const rule = mailboxIgnoreRule({ from: "Alerts <alerts@example.test>", subject: "Weekly editorial digest for materials research" });
+  assert.ok(matchesMailboxIgnoreRule({ from: "alerts@example.test", subject: "Materials research weekly editorial digest" }, [rule]));
+  assert.equal(matchesMailboxIgnoreRule({ from: "alerts@example.test", subject: "Editorial decision for your manuscript" }, [rule]), null);
 });

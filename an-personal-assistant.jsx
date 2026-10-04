@@ -1,6 +1,6 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
-import { mailboxCategory, mailboxDeadlineHints, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
-import { APS_SUBSECTION_LABELS, applyMailboxRoute, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
+import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
+import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -8822,6 +8822,17 @@ function MailboxModule({ onOpenModule }) {
   async function setReviewStatus(item, reviewStatus) {
     try {
       await saveRecord(item, { reviewStatus, approvedRoutes: reviewStatus === "ignored" ? [] : undefined, replaceRoutes: reviewStatus === "ignored" });
+      if (reviewStatus === "ignored") {
+        const result = await window.storage.get(MAILBOX_SCAN_STORAGE_KEY);
+        const scan = result?.value ? JSON.parse(result.value) : {};
+        const rule = mailboxIgnoreRule(item);
+        if (rule) {
+          const rules = scan.learnedIgnoreRules || [];
+          const prior = rules.find(entry => entry.id === rule.id);
+          const learnedIgnoreRules = prior ? rules.map(entry => entry.id === rule.id ? { ...entry, count: (entry.count || 1) + 1, updatedAt: rule.updatedAt } : entry) : [...rules, rule];
+          await window.storage.set(MAILBOX_SCAN_STORAGE_KEY, JSON.stringify({ ...scan, learnedIgnoreRules }));
+        }
+      }
       setMessage(reviewStatus === "kept" ? "Kept in Mailbox." : reviewStatus === "ignored" ? "Ignored. You can restore it from the Ignored view." : "Returned to the review queue.");
     } catch (error) {
       setMessage(error?.message || "The review decision could not be saved.");
@@ -8934,7 +8945,8 @@ function MailboxModule({ onOpenModule }) {
           {visibleItems.map((item) => {
             const id = mailboxItemId(item);
             const saved = archive[id] || {};
-            const suggestions = mailboxSuggestions(item);
+            const apsEligibility = apsCycleDateEligibility(item, apsCycle);
+            const suggestions = mailboxSuggestions(item).filter(route => route.id !== "aps" || apsEligibility.eligible);
             const approved = saved.approvedRoutes || [];
             const reviewStatus = saved.reviewStatus || "pending";
             const references = saved.projectReferences || mailboxProjectReferences(item);

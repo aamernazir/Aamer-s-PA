@@ -1,5 +1,12 @@
+import { matchesMailboxIgnoreRule } from "./mailbox-triage.js";
+
 export const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
-export const FOCUSED_SCAN_SCOPE = "focused";const FOCUSED_GMAIL_TERMS = '{review "invitation to review" manuscript revision reviewer editorial journal certificate award recognition "technical committee" conference symposium grant proposal funding project patent accepted published publication deadline "due date" "respond by" "submit by" teaching thesis workshop}';
+export const FOCUSED_SCAN_SCOPE = "focused";
+
+// Use the relevant words themselves rather than relying on Gmail stemming.
+// Editorial invitations commonly say "invitation to review" and are not
+// always classified by Gmail as Primary mail.
+const FOCUSED_GMAIL_TERMS = '{review "invitation to review" manuscript revision reviewer editorial journal certificate award recognition "technical committee" conference symposium grant proposal funding project patent accepted published publication deadline "due date" "respond by" "submit by" teaching thesis workshop}';
 
 export function scanOptionsForPeriod(period, { startDate, endDate } = {}, now = new Date()) {
   if (period === "new") return { mode: "incremental" };
@@ -146,6 +153,20 @@ function messageSummary(subject, body, hints) {
   // message above common reply/forward separators.
   const newestMessage = newestMessageText(body);
   const sentences = cleanMessageText(newestMessage).split(/(?<=[.!?])\s+/).map(value => value.trim()).filter(value => value.length >= 20 && !boilerplate.test(value));
+  const normalized = cleanMessageText(newestMessage).replace(/\s+/g, " ").trim();
+  const reviewInvitation = /\b(?:invitation to review|invited to review|would like to invite you to review|willing to review)\b/i.test(`${subject || ""} ${normalized}`);
+  if (reviewInvitation) {
+    const manuscriptNumber = normalized.match(/\bmanuscript\s+number\s*:?\s*([A-Z0-9][A-Z0-9-]{3,})\b/i)?.[1] || "";
+    const title = normalized.match(/\bmanuscript\s+number\s*:?\s*[A-Z0-9][A-Z0-9-]{3,}\s+(.+?)(?=\s+Dear\b|\s+I would like\b|\s+Please review\b|\s+The abstract\b|$)/i)?.[1]?.trim();
+    const invitationSentence = sentences.find(sentence => /\b(?:invite you to review|invitation to review|willing to review|review the (?:above|referenced) manuscript)\b/i.test(sentence));
+    const reviewDetails = [
+      title ? `Editorial review invitation for “${title.replace(/[.;,]+$/, "")}”` : "Editorial review invitation",
+      manuscriptNumber ? `(manuscript ${manuscriptNumber})` : "",
+      invitationSentence || "The editor is asking whether you can review the manuscript.",
+      ...(hints || []).slice(0, 2),
+    ].filter(Boolean);
+    return [...new Set(reviewDetails)].join(" ").slice(0, 700);
+  }
   const details = [...new Set([...(hints || []), ...sentences])].slice(0, 5).join(" ").slice(0, 700);
   return details || String(subject || "Email record").slice(0, 500);
 }
@@ -219,7 +240,7 @@ function isStaleReviewInvitation(item, now) {
   const isInvitation = /\b(?:invited to review|review invitation|invitation to review|peer review invitation|reviewer invitation|accept(?: or)? decline|willing to review)\b/i.test(text);
   if (!isInvitation) return false;
 
-  // A dated invitation remains relevant until its deadline. Where a journal
+  // A dated invitation remains relevant until its deadline.  Where a journal
   // does not state one, keep it for a reasonable decision window only.
   const dates = parsedDeadlineDates(item);
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -287,7 +308,8 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
   const scope = range.scope;
-  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, cleaned: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
+  const learnedIgnoreRules = previous.learnedIgnoreRules || [];
+  const history = { startedAt: now.toISOString(), mode, period: options.period || null, scope, startDate: range.startDate, endDate: range.endDate, found: 0, estimatedTotal: null, analyzed: 0, excluded: 0, learnedIgnored: 0, cleaned: 0, skipped: 0, deadlines: 0, failed: 0, listFailures: 0, status: "completed" };
   if (scope === FOCUSED_SCAN_SCOPE) {
     for (const [id, item] of items) {
       if (!isFocusedMailboxMessage(item, now)) {
@@ -368,7 +390,10 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
           const item = attachmentEvidence.length ? messageMetadata(data, attachmentEvidence) : preliminaryItem;
           known.add(item.id);
           history.analyzed++;
-          if (scope === FOCUSED_SCAN_SCOPE && !isFocusedMailboxMessage(item, now)) {
+          if (matchesMailboxIgnoreRule(item, learnedIgnoreRules)) {
+            items.delete(item.id);
+            history.learnedIgnored++;
+          } else if (scope === FOCUSED_SCAN_SCOPE && !isFocusedMailboxMessage(item, now)) {
             items.delete(item.id);
             history.excluded++;
           } else {
@@ -407,7 +432,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
     version: 2, accountEmail: account,
     initialStartDate: mode === "initial" || (!previous.initialStartDate && options.period === "year") ? range.startDate : previous.initialStartDate,
     scanScope: scope,
-    updatedAt: history.finishedAt, processedMessageIds: [...known], items: latestItems,
+    updatedAt: history.finishedAt, processedMessageIds: [...known], learnedIgnoreRules, items: latestItems,
     history: [history, ...(previous.history || [])].slice(0, 50),
   };
 }

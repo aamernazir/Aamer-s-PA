@@ -47,3 +47,23 @@ export function mailboxSuggestions(item) {
   }
   return suggestions;
 }
+
+// Local preferences only: no email body is used and a future message must
+// have the same sender plus two meaningful subject words to be suppressed.
+const IGNORE_WORDS = new Set(["about", "after", "again", "and", "are", "from", "have", "into", "mail", "message", "please", "that", "the", "this", "with", "your"]);
+function senderAddress(value) {
+  const match = String(value || "").match(/<([^>]+)>|\b([\w.+-]+@[\w.-]+)\b/);
+  return (match?.[1] || match?.[2] || String(value || "")).trim().toLowerCase();
+}
+function subjectKeywords(value) {
+  return [...new Set(String(value || "").toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) || [])].filter(word => !IGNORE_WORDS.has(word)).slice(0, 8);
+}
+export function mailboxIgnoreRule(item) {
+  const sender = senderAddress(item?.from), keywords = subjectKeywords(item?.subject);
+  if (!sender || keywords.length < 2) return null;
+  return { id: `${sender}|${keywords.slice(0, 4).sort().join("-")}`, sender, keywords: keywords.slice(0, 4), count: 1, updatedAt: new Date().toISOString() };
+}
+export function matchesMailboxIgnoreRule(item, rules = []) {
+  const sender = senderAddress(item?.from), words = new Set(subjectKeywords(item?.subject));
+  return (rules || []).find(rule => rule?.sender === sender && (rule.keywords || []).filter(word => words.has(word)).length >= 2) || null;
+}
