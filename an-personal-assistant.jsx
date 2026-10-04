@@ -1,4 +1,5 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
+import NyxDashboard from "./src/NyxDashboard.jsx";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
@@ -9010,7 +9011,7 @@ function ModuleFrame({ onBack, children }) {
       <div style={{ position: "sticky", top: 0, zIndex: 40, background: HUB_PAPER, borderBottom: "1px solid " + HUB_LINE, padding: "10px 24px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
           <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: HUB_MUTED, fontSize: 13, cursor: "pointer", padding: 0 }}>
-            <ChevronLeft size={16} /> AN Personal Assistant
+            <ChevronLeft size={16} /> Nyx Home
           </button>
         </div>
       </div>
@@ -9038,7 +9039,7 @@ export default function App() {
     return <ModuleFrame onBack={() => setActiveModule(null)}><MailboxModule onOpenModule={setActiveModule} /></ModuleFrame>;
   }
 
-  return <AssistantHub onOpenModule={setActiveModule} />;
+  return <NyxDashboard onOpenModule={setActiveModule} modules={HUB_MODULES} />;
 }
 
 function AssistantHub({ onOpenModule }) {

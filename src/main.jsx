@@ -95,8 +95,8 @@ function AccessGate() {
     return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#F7F8FA", color: "#1F2937", fontFamily: "Inter, Arial, sans-serif" }}>
       <section style={{ width: "min(100%, 460px)", background: "#fff", border: "1px solid #D9E1EA", borderRadius: 12, padding: 28, boxShadow: "0 12px 35px rgba(15, 23, 42, .08)", textAlign: "center" }}>
         <div style={{ fontSize: 42, marginBottom: 10 }}>🔒</div>
-        <h1 style={{ margin: "0 0 8px", fontFamily: "Georgia, serif", fontSize: 28 }}>AN Personal Assistant</h1>
-        <p style={{ margin: "0 0 20px", lineHeight: 1.55, color: "#64748B" }}>This private assistant is available only to approved Google accounts.</p>
+        <h1 style={{ margin: "0 0 8px", fontFamily: "Georgia, serif", fontSize: 28 }}>Nyx</h1>
+        <p style={{ margin: "0 0 20px", lineHeight: 1.55, color: "#64748B" }}>Aamer's private personal assistant is available only to approved Google accounts.</p>
         {message && <div style={{ marginBottom: 16, padding: "10px 12px", borderRadius: 8, background: "#FFF4E5", color: "#9A3412", fontSize: 13 }}>{message}</div>}
         <button onClick={connect} disabled={busy} style={{ border: 0, background: "#1F5C8B", color: "#fff", borderRadius: 7, padding: "11px 18px", fontWeight: 600, cursor: busy ? "default" : "pointer" }}>{busy ? "Connecting..." : "Sign in with Google"}</button>
         <p style={{ margin: "18px 0 0", fontSize: 12, color: "#94A3B8" }}>Use your approved account: aamernazir.an@gmail.com</p>
