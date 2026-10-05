@@ -68,6 +68,7 @@ function AccessGate() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [showAccountTools, setShowAccountTools] = useState(false);
 
   useEffect(() => {
     const unsubscribe = cloudStorage.subscribe(setStatus);
@@ -106,8 +107,17 @@ function AccessGate() {
 
   function reloadData() { window.location.reload(); }
   return <React.Fragment key={status.user.uid}>
-    <CloudSyncBanner />
-    <SyncStatus status={status} onReload={reloadData} />
+    <button
+      onClick={() => setShowAccountTools((visible) => !visible)}
+      aria-label="Open account and sync tools"
+      title="Account and sync tools"
+      style={{ position: "fixed", right: 14, bottom: 14, zIndex: 140, width: 34, height: 34, border: "1px solid #B8CDE0", borderRadius: "50%", background: status.sync?.errors?.length || status.sync?.blocked ? "#FFF4E5" : "#E7F3FB", color: "#1F5C8B", fontSize: 17, cursor: "pointer", boxShadow: "0 3px 12px rgba(15, 42, 70, .18)" }}
+    >☁</button>
+    {showAccountTools && <div style={{ position: "fixed", right: 14, bottom: 56, zIndex: 139, width: "min(620px, calc(100vw - 28px))", maxHeight: "calc(100vh - 72px)", overflowY: "auto", borderRadius: 8, boxShadow: "0 10px 32px rgba(15, 42, 70, .22)" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", background: "#fff", borderBottom: "1px solid #D9E1EA" }}><button onClick={() => setShowAccountTools(false)} style={{ border: 0, background: "none", color: "#5B6472", cursor: "pointer" }}>Close</button></div>
+      <CloudSyncBanner />
+      <SyncStatus status={status} onReload={reloadData} />
+    </div>}
     {status.sync?.blocked
       ? <p role="alert" style={{ padding: 24 }}>This module could not load safely. Reconnect, then choose Reload data. Existing cloud records have not been replaced with sample data.</p>
       : <App key={status.user.uid} />}

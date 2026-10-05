@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectActiveWorkload, hasProjectNumber, projectFundingClass, projectIsActiveForWorkload } from "./project-workload.js";
+import { collectActiveWorkload, hasProjectNumber, projectFundingClass, projectIsActiveForWorkload, workloadRole } from "./project-workload.js";
 
 function project({ id, status, objectiveLead, workPackageLead, done }) {
   return {
@@ -19,7 +19,7 @@ test("team workload excludes projects whose work packages are fully completed", 
     project({ id: "completed-only", objectiveLead: "Kashif", workPackageLead: "Kashif", done: true }),
   ]);
 
-  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, loadScore: 2 }]);
+  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, role: "Role not recorded", roleKey: "unclassified", roleWeight: 1, rawLoadScore: 2, loadScore: 2 }]);
 });
 
 test("explicitly completed or archived projects never contribute workload", () => {
@@ -36,7 +36,7 @@ test("explicitly completed or archived projects never contribute workload", () =
 test("not-started projects remain active workload", () => {
   const notStarted = { id: "new", title: "New project", objectives: [{ lead: "Aamer" }], workPackages: [] };
   assert.equal(projectIsActiveForWorkload(notStarted), true);
-  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, loadScore: 1 }]);
+  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, role: "Role not recorded", roleKey: "unclassified", roleWeight: 1, rawLoadScore: 1, loadScore: 1 }]);
 });
 
 test("only an entered official project number classifies a project as funded", () => {
@@ -47,4 +47,20 @@ test("only an entered official project number classifies a project as funded", (
   assert.equal(projectFundingClass(numbered), "funded");
   assert.equal(hasProjectNumber(proposalOnly), false);
   assert.equal(projectFundingClass(proposalOnly), "not-funded");
+});
+
+test("role weights rank postdocs above PhD, MS, and UG workload", () => {
+  assert.equal(workloadRole("Postdoc").weight, 4);
+  assert.equal(workloadRole("PhD Student").weight, 3);
+  assert.equal(workloadRole("MS Student").weight, 2);
+  assert.equal(workloadRole("UG Student").weight, 1);
+
+  const projects = [
+    { id: "postdoc", team: [{ name: "Postdoc A", role: "Postdoc" }], objectives: [{ lead: "Postdoc A" }], workPackages: [] },
+    { id: "phd", team: [{ name: "PhD A", role: "PhD Student" }], objectives: [{ lead: "PhD A" }], workPackages: [] },
+    { id: "ms", team: [{ name: "MS A", role: "MS Student" }], objectives: [{ lead: "MS A" }], workPackages: [] },
+    { id: "ug", team: [{ name: "UG A", role: "UG Student" }], objectives: [{ lead: "UG A" }], workPackages: [] },
+  ];
+  const workload = collectActiveWorkload(projects);
+  assert.deepEqual(workload.map((member) => [member.name, member.role, member.loadScore]), [["Postdoc A", "Postdoc", 4], ["PhD A", "PhD", 3], ["MS A", "MS", 2], ["UG A", "UG", 1]]);
 });
