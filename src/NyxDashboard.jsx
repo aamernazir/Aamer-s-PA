@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Award,
+  Boxes,
   BookOpen,
   Briefcase,
   ChevronDown,
   ChevronRight,
   CircleDot,
   ClipboardList,
+  FileText,
   FolderKanban,
   GraduationCap,
   HeartHandshake,
@@ -14,6 +16,7 @@ import {
   Lightbulb,
   MapPinned,
   Medal,
+  Package,
   RefreshCw,
   Sparkles,
   Target,
@@ -23,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { projectIsActiveForWorkload } from "./project-workload.js";
+import worldMap from "./assets/nyx-world-map.jpg";
 import "./nyx-dashboard.css";
 
 const BLUE = "#195B89";
@@ -355,11 +359,11 @@ function CombinedBarChart({ activePeriod }) {
 function AffiliationFootprint({ outputs, period }) {
   const countries = affiliationCountries(outputs, period);
   return <article className="nyx-panel nyx-footprint-panel">
-    <header><div><span>RESEARCH INTELLIGENCE</span><h2>Co-author affiliation footprint</h2></div><div className="nyx-source-chip"><MapPinned size={12} />Co-author affiliations</div></header>
-    {countries.length ? <div className="nyx-footprint-list" aria-label="Co-author affiliations by country">
-      {countries.slice(0, 7).map((item) => <div className="nyx-footprint-country" key={item.country}><span>{item.country}</span><div><i style={{ width: `${Math.max(12, Math.min(100, item.outputs * 18))}%` }} /><strong>{item.outputs}</strong></div></div>)}
-      <p><MapPinned size={13} />{plural(countries.length, "country")} represented in Research Intelligence for {selectedLabel(period)}.</p>
-    </div> : <div className="nyx-footprint-empty"><MapPinned size={21} /><div><strong>No co-author affiliation data yet</strong><p>Add or confirm author-affiliation countries in Research Intelligence. Nyx will then build this footprint from the records—not from fixed locations.</p></div></div>}
+    <header><div><h2>Co-author affiliation footprint</h2><div className="nyx-source-chip"><Boxes size={11} />Research Intelligence · co-author affiliations</div></div></header>
+    <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map showing co-author affiliation footprint">
+      {countries.length ? <div className="nyx-map-data-note"><MapPinned size={16} /><strong>{plural(countries.length, "country")}</strong><span>with confirmed co-author affiliations</span></div> : <div className="nyx-map-data-note"><MapPinned size={16} /><strong>Awaiting affiliation records</strong><span>Nyx will plot countries after Research Intelligence confirms them.</span></div>}
+    </div>
+    <footer><i /><span>Active publication co-authors · affiliations extracted from Research Intelligence</span></footer>
   </article>;
 }
 
@@ -414,15 +418,16 @@ function attentionFromRaw(raw, activeProjects, dataWarnings) {
 }
 
 function CareerMap({ sections, selectedId, period, onSelect, onImprove }) {
+  const sourceName = (moduleId) => ({ projects: "Project Dashboard", aps: "APS", archive: "Research Intelligence", mailbox: "Mailbox", strategic: "Strategic Positioning" }[moduleId] || "Unassigned — module decision");
   return <aside className="nyx-career-map" aria-label="Career map">
-    <header className="nyx-map-header"><span>CV CAREER MAP</span><h2>Every section, in order</h2><p>Summary excluded · Education placed later</p></header>
+    <header className="nyx-map-header"><h2>Career map</h2><p>Your academic profile and CV sections.</p></header>
     <div className="nyx-map-list">{sections.map((section) => {
       const active = section.id === selectedId;
       const warningCount = section.rows.filter((row) => row.tone === "warn").length;
       const Icon = section.icon;
       return <section className={`nyx-map-section ${active ? "is-active" : ""}`} key={section.id}>
-        <div className="nyx-map-section-head"><button className="nyx-map-section-button" onClick={() => onSelect(section.id)} aria-expanded={active}><CircleDot size={13} className={warningCount ? "is-warning" : ""} /><span><small>{section.rank}</small>{section.title}</span>{active ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button><button className="nyx-map-improve" onClick={() => onImprove(section)} title={`Improve ${section.title}`} aria-label={`Improve ${section.title}`}><Sparkles size={12} /></button></div>
-        {active && <div className="nyx-map-details"><div className="nyx-map-lead"><Icon size={14} /><span>{section.lead}</span></div>{section.rows.map((row) => <div className="nyx-map-row" key={row.label}><span>{row.label}</span><strong>{row.selected}</strong><StatusPill tone={row.tone}>{row.status}</StatusPill></div>)}<p className="nyx-map-period">Showing {selectedLabel(period)} data beside the career record.</p></div>}
+        <div className="nyx-map-section-head"><button className="nyx-map-section-button" onClick={() => onSelect(section.id)} aria-expanded={active}><CircleDot size={13} className={warningCount ? "is-warning" : ""} /><span><strong>{section.title}</strong><small>{section.lead}</small></span><b className={`nyx-map-source nyx-map-source-${section.moduleId || "unassigned"}`}><Icon size={13} />{sourceName(section.moduleId)}</b>{active ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button></div>
+        {active && <div className="nyx-map-details">{section.rows.map((row) => <div className="nyx-map-row" key={row.label}><span>{row.label}</span><strong>{row.selected}</strong><StatusPill tone={row.tone}>{row.status}</StatusPill></div>)}<div className="nyx-map-actions"><button onClick={() => onImprove(section)}><Sparkles size={13} /> Improve</button><span>Showing {selectedLabel(period)}</span></div></div>}
       </section>;
     })}</div>
   </aside>;
@@ -463,19 +468,21 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const products = activeProducts(activeProjects);
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
   function openModule(moduleId) { setActiveNav(moduleId); onOpenModule(moduleId); }
+  const displayDate = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date());
 
   return <main className="nyx-page"><div className="nyx-workspace">
     <aside className="nyx-left-rail" aria-label="Operational modules">
-      <button className="nyx-side-brand" onClick={() => { setActiveNav("home"); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Nyx dashboard home"><span>N</span><small>PA</small></button><div className="nyx-side-label">OPERATIONS</div>
+      <button className="nyx-side-brand" onClick={() => { setActiveNav("home"); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Nyx dashboard home"><span>N</span><small>PA</small></button><div className="nyx-brand-name">Nyx</div><div className="nyx-brand-subtitle">Aamer's<br />Personal Assistant</div><div className="nyx-side-label">OPERATIONAL MODULES</div>
       <nav className="nyx-side-nav">{navModules.map((module) => { const Icon = module.icon; const isActive = activeNav === module.id; return <button key={module.id} className={`nyx-side-nav-item ${isActive ? "is-active" : ""}`} onClick={() => module.id === "home" ? (setActiveNav("home"), window.scrollTo({ top: 0, behavior: "smooth" })) : openModule(module.id)} title={module.name} aria-current={isActive ? "page" : undefined}><Icon size={18} /><span>{module.name}</span>{module.id !== "home" && <small>{loading ? "…" : moduleLiveSummary(module, raw)}</small>}</button>; })}</nav>
-      <div className="nyx-side-footer"><span className={loading ? "is-loading" : ""} />{loading ? "Syncing" : "Cloud synced"}</div>
+      <div className="nyx-side-user"><span>AN</span><div><strong>Prof. Aamer Nazir</strong><small>aamernazir.an@gmail.com</small></div></div><button className="nyx-settings-button"><Wrench size={17} />Settings</button>
     </aside>
     <section className="nyx-main-column">
-      <header className="nyx-topbar"><div><div className="nyx-overline">AAMER'S PERSONAL ASSISTANT · CAREER INTELLIGENCE</div><h1>Nyx</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
-      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived in 2026` : "CV baseline · 6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${stableProjects} on track · ${attentionCount} need attention` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi"><span>Project leads</span><strong>{projectLeads.length}</strong><small>{projectLeads.length ? `${projectLeads.slice(0, 2).join(" · ")}${projectLeads.length > 2 ? " …" : ""}` : "Student and postdoc leads from active projects"}</small></article><article className="nyx-kpi nyx-kpi-alert"><span>Products & TRL</span><strong>{products.length}</strong><small>{products.length ? `${products.filter((product) => product.trl).length} with a recorded TRL` : "No live product records yet"}</small></article></section>
-      <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><span>NEEDS ATTENTION TODAY</span><h2>Small briefing, clear next move</h2></div><span className="nyx-attention-count">{attentionItems.length}</span></header><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
+      <header className="nyx-topbar"><div><h1>Welcome back, Aamer.</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><strong>{displayDate}</strong><div><span className={loading ? "is-loading" : "nyx-live-dot"} />{loading ? "Updating data" : `Data updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
+      <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
+      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived (2026)` : "6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${stableProjects} active · ${attentionCount} attention` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Users size={29} /><span>Project leads</span><strong>{projectLeads.length}</strong><small>Students & postdocs only</small></article><article className="nyx-kpi nyx-kpi-alert"><Package size={28} /><span>Products & TRL</span><strong>{products.length}</strong><small>{products.length ? `${products.filter((product) => product.trl).length} with recorded TRL` : "No product records yet"}</small></article></section>
+      <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><h2>Needs attention today <span className="nyx-attention-count">{attentionItems.length}</span></h2></div><button onClick={() => attentionItems[0] && openModule(attentionItems[0].moduleId)}>View all <ChevronRight size={16} /></button></header><div className="nyx-attention-heading"><span>Item</span><span>Type</span><span>Module</span><span>Due date</span><span>Status</span><span>Action</span></div><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item, index) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><strong>{item.label}</strong><small>{item.detail}</small><span>{item.moduleId === "aps" ? "APS" : item.moduleId === "projects" ? "Project Dashboard" : item.moduleId === "archive" ? "Research Intelligence" : "Mailbox"}</span><em>{index === 0 ? "Today" : "Upcoming"}</em><StatusPill tone={item.tone === "warn" ? "warn" : "info"}>{item.tone === "warn" ? "Action required" : "In progress"}</StatusPill><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
       <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal articles</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} /><footer><TrendingUp size={14} /><span>Five-year view only. Active-project workload is shown above and is not inferred from historical awards.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
-      <section className="nyx-context-panel"><div><span>CV STATUS</span><h2>{sections.find((section) => section.id === selectedMapSection)?.title || "Career record"}</h2><p>Use the Career Map to open a section and inspect every subsection. The compact dashboard keeps detailed source content accessible without repeating it in the centre.</p></div><button onClick={() => setSelectedSection(sections.find((section) => section.id === selectedMapSection))}><Sparkles size={14} /> Improve this area</button></section>
+      <section className="nyx-module-pathways"><header><h2>Module pathways</h2><span>Operational modules and the number of Career map sections they feed.</span></header><div>{modules.map((module) => { const Icon = module.icon; const count = sections.filter((section) => section.moduleId === module.id).length; return <button key={module.id} className={`nyx-pathway nyx-pathway-${module.id}`} onClick={() => openModule(module.id)}><Icon size={19} /><span>{module.name}</span><small>{count} {count === 1 ? "section" : "sections"}</small></button>; })}</div></section>
       <footer className="nyx-page-footer"><span>NYX · AAMER'S PERSONAL ASSISTANT</span><span>{loading ? "Reading live records…" : `Updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`} · CV baseline: October 2026</span></footer>
     </section>
     <CareerMap sections={sections} selectedId={selectedMapSection} period={period} onSelect={setSelectedMapSection} onImprove={setSelectedSection} />
