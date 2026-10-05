@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectActiveWorkload, projectIsActiveForWorkload } from "./project-workload.js";
+import { collectActiveWorkload, hasProjectNumber, projectFundingClass, projectIsActiveForWorkload } from "./project-workload.js";
 
 function project({ id, status, objectiveLead, workPackageLead, done }) {
   return {
@@ -37,4 +37,14 @@ test("not-started projects remain active workload", () => {
   const notStarted = { id: "new", title: "New project", objectives: [{ lead: "Aamer" }], workPackages: [] };
   assert.equal(projectIsActiveForWorkload(notStarted), true);
   assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, loadScore: 1 }]);
+});
+
+test("only an entered official project number classifies a project as funded", () => {
+  const numbered = { title: "Funded project", projectNumber: "SB211010", program: "Internal grant" };
+  const proposalOnly = { title: "Proposal", projectNumber: "", program: "Approved in principle", budgetTotal: 500000 };
+
+  assert.equal(hasProjectNumber(numbered), true);
+  assert.equal(projectFundingClass(numbered), "funded");
+  assert.equal(hasProjectNumber(proposalOnly), false);
+  assert.equal(projectFundingClass(proposalOnly), "not-funded");
 });

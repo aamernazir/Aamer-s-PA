@@ -4,6 +4,18 @@ function workPackageProgress(workPackage) {
   return Math.round((tasks.filter((task) => task?.done).length / tasks.length) * 100);
 }
 
+// Funding status is deliberately a data rule, rather than an inferred label.
+// An official project number is required before a record can feed the CV's
+// funding section or publication-acknowledgement links. A programme name,
+// budget, or proposal status alone is not enough.
+export function hasProjectNumber(project) {
+  return Boolean(String(project?.projectNumber || "").trim());
+}
+
+export function projectFundingClass(project) {
+  return hasProjectNumber(project) ? "funded" : "not-funded";
+}
+
 export function projectIsActiveForWorkload(project) {
   const explicitStatus = String(project?.status || "").trim().toLowerCase();
   if (["completed", "complete", "closed", "archived", "cancelled", "canceled"].includes(explicitStatus)) return false;

@@ -25,7 +25,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { projectIsActiveForWorkload } from "./project-workload.js";
+import { hasProjectNumber, projectIsActiveForWorkload } from "./project-workload.js";
 import worldMap from "./assets/nyx-world-map.jpg";
 import "./nyx-dashboard.css";
 
@@ -121,11 +121,34 @@ function activeProjectLeads(projects) {
   return [...leads];
 }
 
+const PRODUCT_TITLE_SIGNALS = [
+  { pattern: /smart\s+insole|diabetic\s+foot\s+risk/i, name: "Self-sensing 3D-printed smart insole", shortLabel: "Smart insole", category: "Biomedical device" },
+  { pattern: /femoral\s+stems?|hip\s+implant/i, name: "Functionally graded Ti-6Al-4V lattice femoral stem", shortLabel: "Hip implant", category: "Biomedical implant" },
+  { pattern: /three-track\s+robotic\s+crawler|liquid-in-pipe|pipeline\s+inspection/i, name: "Adaptive three-track robotic crawler", shortLabel: "Pipe crawler", category: "Inspection robot" },
+  { pattern: /long-life\s+industrial\s+components?/i, name: "Long-life industrial component demonstrators", shortLabel: "Industrial components", category: "Industrial component" },
+];
+
+function productEntriesForProject(project) {
+  const explicitProducts = Array.isArray(project?.products) ? project.products : project?.product || project?.trl ? [{ name: project.product || project.title, trl: project.trl }] : [];
+  if (explicitProducts.length) {
+    return explicitProducts.map((product) => ({
+      ...(typeof product === "string" ? { name: product } : product),
+      projectTitle: project.title,
+      source: "project record",
+    }));
+  }
+
+  const match = PRODUCT_TITLE_SIGNALS.find((signal) => signal.pattern.test(String(project?.title || "")));
+  return match ? [{ ...match, projectTitle: project.title, source: "project title", trl: null }] : [];
+}
+
 function activeProducts(projects) {
-  return projects.flatMap((project) => {
-    if (Array.isArray(project?.products)) return project.products.map((product) => ({ ...product, projectTitle: project.title }));
-    if (project?.product || project?.trl) return [{ name: project.product || project.title, trl: project.trl, projectTitle: project.title }];
-    return [];
+  const seen = new Set();
+  return projects.flatMap(productEntriesForProject).filter((product) => {
+    const key = `${product.projectTitle}|${product.name}`.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 
@@ -171,6 +194,9 @@ function projectNeedsAttention(project) {
 
 function makeSections(raw, period, activeProjects) {
   const projects = Array.isArray(raw.projects) ? raw.projects : [];
+  const fundedProjects = projects.filter(hasProjectNumber);
+  const activeFundedProjects = activeProjects.filter(hasProjectNumber);
+  const hasOperationalProjects = projects.length > 0;
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const storedSkills = Array.isArray(raw.skills?.skills) ? raw.skills.skills : [];
   const activeCycle = raw.aps?.cycles?.[raw.aps?.activeCycle] || raw.aps || null;
@@ -191,16 +217,16 @@ function makeSections(raw, period, activeProjects) {
   return [
     {
       id: "funding", rank: "01", title: "Research Grants and Funding", icon: FolderKanban, tone: "gold",
-      lead: projects.length ? `${activeProjects.length} active · ${projects.length} tracked` : "17 approved awards in CV", moduleId: "projects",
+      lead: hasOperationalProjects ? `${activeFundedProjects.length} active funded · ${fundedProjects.length} funded` : "17 approved awards in CV", moduleId: "projects",
       rows: [
-        { label: "Research grants", selected: projects.length ? plural(activeProjects.length, "active project") : (period === "2026" ? "5 active" : "—"), career: projects.length ? `${projects.length} tracked · 15 in CV` : "15 approved in CV", status: "Live", tone: "good" },
+        { label: "Research grants", selected: hasOperationalProjects ? plural(activeFundedProjects.length, "active funded project") : (period === "2026" ? "5 active" : "—"), career: hasOperationalProjects ? `${fundedProjects.length} funded record${fundedProjects.length === 1 ? "" : "s"} · 15 in CV` : "15 approved in CV", status: "Live", tone: "good" },
         { label: "Undergraduate research projects", selected: period === "career" ? 2 : "—", career: "2 approved", status: "Documented", tone: "info" },
         { label: "Academic grants", selected: period === "2026" ? 1 : period === "career" ? 1 : "—", career: "1 proposal listed", status: "Not awarded", tone: "quiet" },
         { label: "Principal-investigator leadership", selected: "Current portfolio", career: "Multiple institutions", status: "Established", tone: "good" },
         { label: "Project-linked outputs", selected: linkedOutputs || "—", career: "Auto-linked by grant code", status: linkedOutputs ? "Linked" : "Monitor", tone: linkedOutputs ? "good" : "warn" },
       ],
-      suggestions: ["Resolve the duplicated project code IN26080 before using automatic funding totals.", "Add award date, role, currency and completion status consistently to every project record.", "Use approved project records rather than manually written funding headlines in future CV updates."],
-      basis: "Only active projects feed workload indicators; historical approved awards remain in the CV record.",
+      suggestions: ["Resolve the duplicated project code IN26080 before using automatic funding totals.", "Add an official project number only after funding is awarded; a blank number keeps a project out of CV funding.", "Use funded project records rather than manually written funding headlines in future CV updates."],
+      basis: "Funding and CV figures use projects with an official project number. Active workload and products monitor both funded and not-funded projects.",
     },
     {
       id: "interests", rank: "02", title: "Research Interests", icon: Target, tone: "green", lead: "14 research themes", moduleId: "archive",
@@ -385,7 +411,9 @@ function ImprovementDrawer({ section, onClose, onOpenModule }) {
 function moduleLiveSummary(module, raw) {
   if (module.id === "projects") {
     const projects = Array.isArray(raw.projects) ? raw.projects : [];
-    return projects.length ? `${projects.filter(projectIsActiveForWorkload).length} active · ${projects.length} tracked` : "Ready for project records";
+    const active = projects.filter(projectIsActiveForWorkload);
+    const funded = active.filter(hasProjectNumber).length;
+    return projects.length ? `${active.length} active · ${funded} funded` : "Ready for project records";
   }
   if (module.id === "aps") {
     const cycle = raw.aps?.activeCycle || "Current cycle";
@@ -456,16 +484,17 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   useEffect(() => { loadDashboard(); }, []);
   const projects = Array.isArray(raw.projects) ? raw.projects : [];
   const activeProjects = useMemo(() => projects.filter(projectIsActiveForWorkload), [projects]);
+  const activeFundedProjects = useMemo(() => activeProjects.filter(hasProjectNumber), [activeProjects]);
+  const activeNotFundedProjects = useMemo(() => activeProjects.filter((project) => !hasProjectNumber(project)), [activeProjects]);
   const sections = useMemo(() => makeSections(raw, period, activeProjects), [raw, period, activeProjects]);
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const currentYearJournalOutputs = outputs.filter((item) => item?.type === "Journal Paper" && Number(item?.year) === 2026).length;
-  const dataWarnings = ["Funded-project headline (8) differs from 17 approved entries in the detailed CV.", "Project number IN26080 appears against two different KFUPM grants.", "Patent headline (10) differs from nine detailed patent records."];
+  const dataWarnings = ["Project number IN26080 appears against two different KFUPM grants.", "Patent headline (10) differs from nine detailed patent records."];
   const attentionItems = useMemo(() => attentionFromRaw(raw, activeProjects, dataWarnings), [raw, activeProjects]);
-  const attentionCount = activeProjects.filter(projectNeedsAttention).length;
-  const stableProjects = Math.max(0, activeProjects.length - attentionCount);
   const activeProgress = activeProjects.length ? Math.round(activeProjects.reduce((sum, project) => sum + projectProgress(project), 0) / activeProjects.length) : 0;
   const projectLeads = activeProjectLeads(activeProjects);
   const products = activeProducts(activeProjects);
+  const productLabel = products.slice(0, 3).map((product) => product.shortLabel || product.name).join(" · ");
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
   function openModule(moduleId) { setActiveNav(moduleId); onOpenModule(moduleId); }
   const displayDate = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date());
@@ -479,7 +508,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
     <section className="nyx-main-column">
       <header className="nyx-topbar"><div><h1>Welcome back, Aamer.</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><strong>{displayDate}</strong><div><span className={loading ? "is-loading" : "nyx-live-dot"} />{loading ? "Updating data" : `Data updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
       <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
-      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived (2026)` : "6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${stableProjects} active · ${attentionCount} attention` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Users size={29} /><span>Project leads</span><strong>{projectLeads.length}</strong><small>Students & postdocs only</small></article><article className="nyx-kpi nyx-kpi-alert"><Package size={28} /><span>Products & TRL</span><strong>{products.length}</strong><small>{products.length ? `${products.filter((product) => product.trl).length} with recorded TRL` : "No product records yet"}</small></article></section>
+      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived (2026)` : "6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${activeFundedProjects.length} funded · ${activeNotFundedProjects.length} not-funded` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Users size={29} /><span>Project leads</span><strong>{projectLeads.length}</strong><small>Students & postdocs only</small></article><article className="nyx-kpi nyx-kpi-alert"><Package size={28} /><span>Products & TRL</span><strong>{products.length}</strong><small title={products.map((product) => product.name).join("; ")}>{products.length ? `${productLabel}${products.length > 3 ? ` +${products.length - 3}` : ""} · ${products.filter((product) => product.trl).length} TRL` : "No active product candidates"}</small></article></section>
       <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><h2>Needs attention today <span className="nyx-attention-count">{attentionItems.length}</span></h2></div><button onClick={() => attentionItems[0] && openModule(attentionItems[0].moduleId)}>View all <ChevronRight size={16} /></button></header><div className="nyx-attention-heading"><span>Item</span><span>Type</span><span>Module</span><span>Due date</span><span>Status</span><span>Action</span></div><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item, index) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><strong>{item.label}</strong><small>{item.detail}</small><span>{item.moduleId === "aps" ? "APS" : item.moduleId === "projects" ? "Project Dashboard" : item.moduleId === "archive" ? "Research Intelligence" : "Mailbox"}</span><em>{index === 0 ? "Today" : "Upcoming"}</em><StatusPill tone={item.tone === "warn" ? "warn" : "info"}>{item.tone === "warn" ? "Action required" : "In progress"}</StatusPill><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
       <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal articles</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} /><footer><TrendingUp size={14} /><span>Five-year view only. Active-project workload is shown above and is not inferred from historical awards.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
       <section className="nyx-module-pathways"><header><h2>Module pathways</h2><span>Operational modules and the number of Career map sections they feed.</span></header><div>{modules.map((module) => { const Icon = module.icon; const count = sections.filter((section) => section.moduleId === module.id).length; return <button key={module.id} className={`nyx-pathway nyx-pathway-${module.id}`} onClick={() => openModule(module.id)}><Icon size={19} /><span>{module.name}</span><small>{count} {count === 1 ? "section" : "sections"}</small></button>; })}</div></section>

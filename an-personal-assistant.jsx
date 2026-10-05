@@ -1,6 +1,6 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
-import { collectActiveWorkload } from "./src/project-workload.js";
+import { collectActiveWorkload, hasProjectNumber } from "./src/project-workload.js";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
@@ -25,7 +25,7 @@ const HubGlobalStyle = () => (
 );
 
 const HUB_MODULES = [
-  { id: "projects", number: "01", name: "Project Dashboard", icon: FolderKanban, description: "Funded grants — work packages, budget, evidence, timeline." },
+  { id: "projects", number: "01", name: "Project Dashboard", icon: FolderKanban, description: "Funded and not-funded projects — work packages, budget, evidence, timeline." },
   { id: "strategic", number: "02", name: "Strategic Positioning", icon: TrendingUp, description: "Funding, competitive landscape, and field trends — all in one place." },
   { id: "aps", number: "03", name: "Annual Performance System (APS)", icon: BarChart3, description: "Self-performance evaluation — Teaching, Research, Societal Benefits, Behavior." },
   { id: "archive", number: "04", name: "Research Intelligence", icon: Sparkles, description: "Every paper and patent, citation tracking, peer benchmarking, growth advice, and skill development — the full picture of your research and how to grow it." },
@@ -809,8 +809,9 @@ function App() {
             <FormField label="Title">
               <input style={inputStyle} value={newDraft.title} onChange={(e) => setNewDraft({ ...newDraft, title: e.target.value })} placeholder="Project title" />
             </FormField>
-            <FormField label="Project number (as it appears in paper acknowledgments)">
+            <FormField label="Official project number (funded projects only)">
               <input style={inputStyle} value={newDraft.projectNumber} onChange={(e) => setNewDraft({ ...newDraft, projectNumber: e.target.value })} placeholder="e.g. SB211010, or the funder's grant reference code" />
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>Leave blank for a not-funded project. Only entered project numbers feed Nyx's CV funding figures and publication acknowledgement links.</div>
             </FormField>
             <FormField label="Program / funder">
               <input style={inputStyle} value={newDraft.program} onChange={(e) => setNewDraft({ ...newDraft, program: e.target.value })} placeholder="e.g. KFUPM Consortium, KACST, industry grant" />
@@ -846,6 +847,51 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
   const evidenceGaps = collectEvidenceGaps(projects);
   const workload = collectActiveWorkload(projects);
   const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
+  const fundedProjects = projects.filter(hasProjectNumber);
+  const notFundedProjects = projects.filter((project) => !hasProjectNumber(project));
+  const projectGroups = [
+    { id: "funded", label: "Funded projects", projects: fundedProjects, detail: "Official project number entered · feeds CV funding and project-linked publication evidence", color: GREEN, background: "#EFF5EF" },
+    { id: "not-funded", label: "Not-funded projects", projects: notFundedProjects, detail: "No project number entered · tracked operationally in Nyx, but excluded from CV funding", color: TEAL, background: "#E7EFF5" },
+  ];
+
+  function ProjectCard({ project: p }) {
+    const prog = projectProgress(p);
+    const funded = hasProjectNumber(p);
+    const riskCount = (p.workPackages || []).filter(wpIsAtRisk).length;
+    return (
+      <div className="pd-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "16px 18px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+          <div onClick={() => onOpen(p.id)} style={{ cursor: "pointer", flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 5 }}>
+              <span className="pd-mono" style={{ fontSize: 10, background: funded ? "#EFF5EF" : "#E7EFF5", color: funded ? GREEN : TEAL, padding: "2px 7px", borderRadius: 10, fontWeight: 700 }}>{funded ? "Funded" : "Not-funded"}</span>
+              <span style={{ fontSize: 10.5, color: MUTED }}>{funded ? `Project no. ${p.projectNumber}` : "No project number · excluded from CV funding"}</span>
+            </div>
+            <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
+            <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
+          </div>
+          <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }} aria-label={`Delete ${p.title}`}>
+            <Trash2 size={15} color="#9AA2AF" />
+          </button>
+        </div>
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1, height: 6, background: "#EAECF0", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${prog}%`, background: prog === 100 ? GREEN : TEAL }} />
+          </div>
+          <span style={{ fontSize: 12, color: MUTED, width: 70, textAlign: "right" }}>{prog}% · {(p.workPackages || []).length} WPs</span>
+        </div>
+        {riskCount > 0 && <div style={{ marginTop: 8, fontSize: 11.5, color: "#B3392C", fontWeight: 600 }}>{riskCount} work package{riskCount > 1 ? "s" : ""} overdue</div>}
+        {confirmDelete === p.id && (
+          <div style={{ marginTop: 12, background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 4, padding: "10px 12px", fontSize: 12.5, color: "#6B5015", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            Delete this project permanently?
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { onDelete(p.id); setConfirmDelete(null); }} style={{ background: "#B3392C", color: "#fff", border: "none", borderRadius: 3, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Delete</button>
+              <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid #C7CCD3", borderRadius: 3, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 24px 80px" }}>
@@ -964,49 +1010,26 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
 
       {projects.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: MUTED, fontSize: 14, border: "1px dashed #C7CCD3", borderRadius: 4 }}>
-          No projects yet. Add your first funded project.
+          No projects yet. Add a funded project (with its official project number) or a not-funded project (leave the number blank).
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(460px, 1fr))", gap: 12, alignItems: "start" }}>
-          {projects.map((p) => {
-          const prog = projectProgress(p);
-          return (
-            <div key={p.id} className="pd-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "16px 18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
-                <div onClick={() => onOpen(p.id)} style={{ cursor: "pointer", flex: 1, minWidth: 0 }}>
-                  <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
-                  <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
+        <div style={{ display: "grid", gap: 28 }}>
+          {projectGroups.map((group) => (
+            <section key={group.id}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: group.color }} />
+                  <h2 className="pd-display" style={{ color: INK, fontSize: 20, margin: 0 }}>{group.label} <span className="pd-mono" style={{ color: group.color, fontSize: 13 }}>({group.projects.length})</span></h2>
                 </div>
-                <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }}>
-                  <Trash2 size={15} color="#9AA2AF" />
-                </button>
+                <span style={{ fontSize: 11.5, color: MUTED }}>{group.detail}</span>
               </div>
-              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ flex: 1, height: 6, background: "#EAECF0", borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${prog}%`, background: prog === 100 ? GREEN : TEAL }} />
+              {group.projects.length ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(460px, 1fr))", gap: 12, alignItems: "start" }}>
+                  {group.projects.map((project) => <ProjectCard key={project.id} project={project} />)}
                 </div>
-                <span style={{ fontSize: 12, color: MUTED, width: 70, textAlign: "right" }}>{prog}% · {p.workPackages.length} WPs</span>
-              </div>
-              {(() => {
-                const riskCount = (p.workPackages || []).filter(wpIsAtRisk).length;
-                return riskCount > 0 ? (
-                  <div style={{ marginTop: 8, fontSize: 11.5, color: "#B3392C", fontWeight: 600 }}>
-                    {riskCount} work package{riskCount > 1 ? "s" : ""} overdue
-                  </div>
-                ) : null;
-              })()}
-              {confirmDelete === p.id && (
-                <div style={{ marginTop: 12, background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 4, padding: "10px 12px", fontSize: 12.5, color: "#6B5015", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  Delete this project permanently?
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => { onDelete(p.id); setConfirmDelete(null); }} style={{ background: "#B3392C", color: "#fff", border: "none", borderRadius: 3, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Delete</button>
-                    <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid #C7CCD3", borderRadius: 3, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-          })}
+              ) : <div style={{ background: group.background, border: `1px dashed ${group.color}`, color: MUTED, borderRadius: 5, padding: "14px 16px", fontSize: 12.5 }}>No {group.label.toLowerCase()} yet.</div>}
+            </section>
+          ))}
         </div>
       )}
     </div>
@@ -1718,8 +1741,9 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
           </div>
           <h1 className="pd-display" style={{ fontSize: 22, fontWeight: 700, color: INK, margin: "0 0 6px", lineHeight: 1.3 }}>{data.title}</h1>
           <div style={{ fontSize: 13, color: MUTED, marginBottom: 8 }}>{data.program}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 11, color: "#9AA2AF" }}>Project number:</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span className="pd-mono" style={{ fontSize: 10, background: hasProjectNumber(data) ? "#EFF5EF" : "#E7EFF5", color: hasProjectNumber(data) ? GREEN : TEAL, padding: "2px 7px", borderRadius: 10, fontWeight: 700 }}>{hasProjectNumber(data) ? "Funded" : "Not-funded"}</span>
+            <span style={{ fontSize: 11, color: "#9AA2AF" }}>Official project number:</span>
             <input
               value={data.projectNumber || ""}
               onChange={(e) => update((p) => ({ ...p, projectNumber: e.target.value }))}
@@ -1727,6 +1751,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
               placeholder="e.g. SB211010 — as it appears in paper acknowledgments"
               style={{ fontSize: 11.5, padding: "3px 7px", borderRadius: 3, border: "1px solid #C7CCD3", background: "#fff", color: INK, width: 260 }}
             />
+            <span style={{ width: "100%", fontSize: 10.5, color: MUTED }}>{hasProjectNumber(data) ? "This project feeds CV funding and can receive publication evidence by acknowledgement number." : "Leave blank until funding is awarded. This project remains in operations and product tracking, but is excluded from CV funding."}</span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -5176,6 +5201,34 @@ const GlobalStyle = () => (
     .aps-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
     .aps-spin { animation: aps-spin-anim 0.9s linear infinite; }
     @keyframes aps-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .aps-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr) 205px; gap: 14px; align-items: start; }
+    .aps-evidence-rail, .aps-section-rail { position: sticky; top: 16px; }
+    .aps-rail-card { background: #fff; border: 1px solid ${LINE}; border-radius: 6px; padding: 12px; box-shadow: 0 1px 2px rgba(20,30,45,0.05); }
+    .aps-rail-label { margin-bottom: 8px; color: #9AA2AF; font: 600 10px/1.25 'IBM Plex Mono', 'Courier New', monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .aps-rail-note { margin: 9px 1px 0; color: ${MUTED}; font-size: 11px; line-height: 1.45; }
+    .aps-rail-button { width: 100%; display: flex; align-items: center; gap: 7px; margin-bottom: 5px; padding: 9px 8px; border: 1px solid #C7CCD3; border-radius: 4px; color: ${INK}; background: #fff; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
+    .aps-rail-button:hover { background: #F7F8FA; }
+    .aps-rail-button.is-active { border-color: ${INK}; color: #fff; background: ${INK}; }
+    .aps-rail-button .aps-rail-count { margin-left: auto; min-width: 20px; padding: 2px 6px; border-radius: 9px; color: #fff; background: ${AMBER}; font: 700 10px/1 'IBM Plex Mono', 'Courier New', monospace; text-align: center; }
+    .aps-rail-button.is-active .aps-rail-count { color: #6B5015; background: #F7D88F; }
+    .aps-rail-button svg { flex: 0 0 auto; }
+    .aps-rail-separator { height: 1px; margin: 12px 0; background: #EAECF0; }
+    .aps-rail-subtitle { margin: -2px 0 10px; color: ${MUTED}; font-size: 10.5px; line-height: 1.4; }
+    .aps-content-panel { min-width: 0; }
+    @media (max-width: 980px) {
+      .aps-workspace { grid-template-columns: 1fr; }
+      .aps-evidence-rail, .aps-section-rail { position: static; }
+      .aps-evidence-rail { order: 1; }
+      .aps-content-panel { order: 2; }
+      .aps-section-rail { order: 3; }
+      .aps-rail-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+      .aps-rail-card > .aps-rail-label, .aps-rail-card > .aps-rail-note, .aps-rail-card > .aps-rail-subtitle { grid-column: 1 / -1; }
+      .aps-rail-card > .aps-rail-separator { grid-column: 1 / -1; margin: 5px 0; }
+      .aps-rail-button { margin: 0; }
+    }
+    @media (max-width: 520px) {
+      .aps-rail-card { grid-template-columns: 1fr; }
+    }
   `}</style>
 );
 
@@ -5709,6 +5762,9 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
     { id: "evaluation", label: "Evaluation Score", icon: BarChart3 },
     { id: "compare", label: "Year-over-Year", icon: TrendingUp },
   ];
+  const MAIN_SECTIONS = SECTIONS.filter((item) => ["general", "teaching", "research", "societal", "behavior"].includes(item.id));
+  const REVIEW_SECTIONS = SECTIONS.filter((item) => ["advisor", "evaluation", "compare"].includes(item.id));
+  const inboxPendingCount = pendingEvidenceCount(cycleData);
 
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
@@ -5785,19 +5841,19 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
 
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
-          {SECTIONS.map((s) => {
-            const Icon = s.icon;
-                        const pendingCount = s.id === "inbox" ? pendingEvidenceCount(cycleData) : 0;
-            return (
-              <button key={s.id} onClick={() => { setSection(s.id); setOpenId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: section === s.id ? INK : "#fff", color: section === s.id ? "#fff" : INK, border: "1px solid " + (section === s.id ? INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
-                <Icon size={13} /> {s.label}
-                {pendingCount > 0 && <span className="aps-mono" style={{ fontSize: 10, background: AMBER, color: "#fff", padding: "1px 6px", borderRadius: 8, fontWeight: 700 }}>{pendingCount}</span>}
+        <div className="aps-workspace">
+          <aside className="aps-evidence-rail" aria-label="Evidence workflow">
+            <div className="aps-rail-card">
+              <div className="aps-rail-label">Evidence workflow</div>
+              <button className={`aps-rail-button ${section === "inbox" ? "is-active" : ""}`} onClick={() => { setSection("inbox"); setOpenId(null); }}>
+                <Inbox size={15} /> Evidence Inbox
+                {inboxPendingCount > 0 && <span className="aps-rail-count">{inboxPendingCount}</span>}
               </button>
-            );
-          })}
-        </div>
+              <div className="aps-rail-note">Upload or write evidence above. Review and approve every linked subsection individually in the selected APS section.</div>
+            </div>
+          </aside>
 
+          <section className="aps-content-panel">
         {section === "advisor" && (() => {
           if (cycleData.status === "Submitted") {
             return (
@@ -6353,6 +6409,25 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
             </div>
           );
         })()}
+          </section>
+
+          <aside className="aps-section-rail" aria-label="APS sections">
+            <div className="aps-rail-card">
+              <div className="aps-rail-label">APS sections</div>
+              <div className="aps-rail-subtitle">Choose a section to review the evidence linked to its own subsections.</div>
+              {MAIN_SECTIONS.map((item) => {
+                const Icon = item.icon;
+                return <button key={item.id} className={`aps-rail-button ${section === item.id ? "is-active" : ""}`} onClick={() => { setSection(item.id); setOpenId(null); }}><Icon size={15} /> {item.label}</button>;
+              })}
+              <div className="aps-rail-separator" />
+              <div className="aps-rail-label">Review tools</div>
+              {REVIEW_SECTIONS.map((item) => {
+                const Icon = item.icon;
+                return <button key={item.id} className={`aps-rail-button ${section === item.id ? "is-active" : ""}`} onClick={() => { setSection(item.id); setOpenId(null); }}><Icon size={15} /> {item.label}</button>;
+              })}
+            </div>
+          </aside>
+        </div>
       </div>
 
       {extractError && (
