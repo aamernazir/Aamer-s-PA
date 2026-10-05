@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 156228)
-Total output lines: 9202
-
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
 import { collectActiveWorkload } from "./src/project-workload.js";
@@ -3246,7 +3243,3047 @@ function App() {
           })}
           </div>
         )}
-   …56228 tokens truncated…x solid " + LINE, borderRadius: 6, padding: "20px 22px" }}>
+      </div>
+
+      {/* Add/Edit modal */}
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowForm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h2 className="fp-display" style={{ fontSize: 19, fontWeight: 700, margin: 0, color: INK }}>{editingId ? "Edit opportunity" : "New opportunity"}</h2>
+              <button onClick={() => setShowForm(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <FormField label="Funder / agency" flex><input style={inputStyle} value={draft.funder} onChange={(e) => setDraft({ ...draft, funder: e.target.value })} placeholder="e.g. KACST, NSF, Horizon Europe" /></FormField>
+              <FormField label="Program / call name" flex><input style={inputStyle} value={draft.program} onChange={(e) => setDraft({ ...draft, program: e.target.value })} /></FormField>
+            </div>
+            <FormField label="Title / description"><input style={inputStyle} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Short label for this opportunity" /></FormField>
+            <div style={{ display: "flex", gap: 12 }}>
+              <FormField label="Deadline" flex><input type="date" style={inputStyle} value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} /></FormField>
+              <FormField label="Call opens" flex><input type="date" style={inputStyle} value={draft.opensDate} onChange={(e) => setDraft({ ...draft, opensDate: e.target.value })} /></FormField>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <FormField label="Amount range" flex><input style={inputStyle} value={draft.amountRange} onChange={(e) => setDraft({ ...draft, amountRange: e.target.value })} placeholder="e.g. up to SAR 600,000" /></FormField>
+              <FormField label="Status" flex>
+                <select style={inputStyle} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                  {STATUSES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </FormField>
+            </div>
+            <FormField label="Focus areas / themes"><input style={inputStyle} value={draft.focusAreas} onChange={(e) => setDraft({ ...draft, focusAreas: e.target.value })} placeholder="e.g. circular materials, additive manufacturing, sustainability" /></FormField>
+            <FormField label="Eligibility"><textarea style={{ ...inputStyle, minHeight: 50 }} value={draft.eligibility} onChange={(e) => setDraft({ ...draft, eligibility: e.target.value })} /></FormField>
+            <FormField label="Fit for our group"><textarea style={{ ...inputStyle, minHeight: 50 }} value={draft.fitNotes} onChange={(e) => setDraft({ ...draft, fitNotes: e.target.value })} placeholder="Why this is (or isn't) a good match for our research direction" /></FormField>
+            <FormField label="Notes"><textarea style={{ ...inputStyle, minHeight: 50 }} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></FormField>
+            <FormField label="Link to call (URL)"><input style={inputStyle} value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} placeholder="https://…" /></FormField>
+            <button onClick={save} style={{ width: "100%", background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 6 }}>
+              {editingId ? "Save changes" : "Add opportunity"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Material modal */}
+      {showMaterialForm && materialDraft && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 70 }} onClick={() => { setShowMaterialForm(false); setMaterialDraft(null); }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 className="fp-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{materialDraft.summary ? "Confirm material details" : "Add supporting material"}</h2>
+              <button onClick={() => { setShowMaterialForm(false); setMaterialDraft(null); }} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 16 }}>This informs the problem statement, novelty argument, and citable data when we draft the proposal — not just a filing cabinet.</div>
+            <FormField label="Title"><input style={inputStyle} value={materialDraft.title} onChange={(e) => setMaterialDraft({ ...materialDraft, title: e.target.value })} /></FormField>
+            <div style={{ display: "flex", gap: 12 }}>
+              <FormField label="Type" flex>
+                <select style={inputStyle} value={materialDraft.type} onChange={(e) => setMaterialDraft({ ...materialDraft, type: e.target.value })}>
+                  {MATERIAL_TYPES.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Source" flex><input style={inputStyle} value={materialDraft.source} onChange={(e) => setMaterialDraft({ ...materialDraft, source: e.target.value })} placeholder="e.g. journal, ChatGPT deep research, author" /></FormField>
+            </div>
+            <FormField label="Problem / need it identifies"><textarea style={{ ...inputStyle, minHeight: 44 }} value={materialDraft.problem} onChange={(e) => setMaterialDraft({ ...materialDraft, problem: e.target.value })} /></FormField>
+            <FormField label="Gap in current solutions"><textarea style={{ ...inputStyle, minHeight: 44 }} value={materialDraft.gap} onChange={(e) => setMaterialDraft({ ...materialDraft, gap: e.target.value })} /></FormField>
+            <FormField label="Innovation angle it suggests"><textarea style={{ ...inputStyle, minHeight: 44 }} value={materialDraft.innovationAngle} onChange={(e) => setMaterialDraft({ ...materialDraft, innovationAngle: e.target.value })} /></FormField>
+            <FormField label="Key citable data / stats"><textarea style={{ ...inputStyle, minHeight: 44 }} value={materialDraft.keyData} onChange={(e) => setMaterialDraft({ ...materialDraft, keyData: e.target.value })} /></FormField>
+            <FormField label="Summary"><textarea style={{ ...inputStyle, minHeight: 50 }} value={materialDraft.summary} onChange={(e) => setMaterialDraft({ ...materialDraft, summary: e.target.value })} /></FormField>
+            <button onClick={saveMaterial} style={{ width: "100%", background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 6 }}>Save material</button>
+          </div>
+        </div>
+      )}
+
+      {/* Request preview modal — used by both Deep search and Find opportunities */}
+      {requestModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 80 }} onClick={() => setRequestModal(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 600, maxHeight: "86vh", display: "flex", flexDirection: "column", padding: 24, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 className="fp-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{requestModal.title}</h2>
+              <button onClick={() => setRequestModal(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14 }}>Copy this and paste it to Claude in a chat message. If the copy button doesn't work on your device, tap inside the box below, select all, and copy manually.</div>
+            <textarea readOnly value={requestModal.text} onClick={(e) => e.target.select()} style={{ flex: 1, minHeight: 280, fontSize: 12.5, fontFamily: "monospace", padding: 12, borderRadius: 4, border: "1px solid #C7CCD3", background: "#fff", color: INK, resize: "vertical", marginBottom: 14 }} />
+            <button onClick={copyRequestModalText} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: copied ? GREEN : INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+              {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy to clipboard"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Export modal */}
+      {showExport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowExport(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 620, maxHeight: "86vh", display: "flex", flexDirection: "column", padding: 24, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 className="fp-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>Pipeline snapshot</h2>
+              <button onClick={() => setShowExport(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14 }}>Copy this and paste it to Claude in chat if you want a summary drafted, or to cross-check against your Research Ledger.</div>
+            <textarea readOnly value={buildSnapshot()} style={{ flex: 1, minHeight: 320, fontSize: 12, fontFamily: "monospace", padding: 12, borderRadius: 4, border: "1px solid #C7CCD3", background: "#fff", color: INK, resize: "vertical", marginBottom: 14 }} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={copySnapshot} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy to clipboard"}
+              </button>
+              <button onClick={downloadSnapshot} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", color: INK, border: "1px solid #C7CCD3", borderRadius: 3, padding: "11px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+                <Download size={16} /> Download .txt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+  return App;
+})();
+
+
+const CompetitiveLandscapeSub = (function() {
+const STORAGE_KEY = "am2r-competitive-landscape-v1";
+
+const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
+const RED = "#B3392C";
+
+const AWARD_LEVELS = ["Institutional", "National", "International"];
+const COMPETITOR_LEVELS = ["National (KSA)", "Regional (GCC)", "International"];
+const AWARD_STATUSES = ["Scouting", "Preparing", "Submitted", "Won", "Not Pursuing"];
+const AWARD_STATUS_COLOR = { Scouting: MUTED, Preparing: AMBER, Submitted: "#6B4FA0", Won: GREEN, "Not Pursuing": "#9AA2AF" };
+
+const emptyCompetitor = () => ({
+  id: Date.now().toString(),
+  name: "",
+  affiliation: "",
+  department: "",
+  country: "",
+  level: "National (KSA)",
+  focusOverlap: "",
+  recentWork: "",
+  relevance: "",
+  url: "",
+  notes: "",
+  lastUpdated: new Date().toISOString(),
+});
+
+const emptyAward = () => ({
+  id: Date.now().toString(),
+  name: "",
+  grantingBody: "",
+  level: "Institutional",
+  deadline: "",
+  eligibility: "",
+  requirements: "",
+  status: "Scouting",
+  url: "",
+  notes: "",
+  addedAt: new Date().toISOString(),
+});
+
+const SEED_AWARDS = [
+  {
+    id: "seed-award-president",
+    name: "President's Award",
+    grantingBody: "KFUPM — Deanship of Research Oversight and Coordination (DROC)",
+    level: "Institutional",
+    deadline: "",
+    eligibility: "KFUPM faculty; recognizes distinguished contribution to research at the university level.",
+    requirements: "Check guideline page for nomination process and required documentation.",
+    status: "Scouting",
+    url: "https://ri.kfupm.edu.sa/dr/awards/president's-awards",
+    notes: "One of seven annual awards DROC gives to distinguished faculty. Source: DROC Awards page.",
+    addedAt: new Date().toISOString(),
+  },
+  {
+    id: "seed-award-early-career",
+    name: "Early Career Research Award",
+    grantingBody: "KFUPM — Deanship of Research Oversight and Coordination (DROC)",
+    level: "Institutional",
+    deadline: "",
+    eligibility: "Likely capped by years since PhD or years at KFUPM — verify exact window on guideline page given Assistant Professor stage.",
+    requirements: "Check guideline page for nomination process and required documentation.",
+    status: "Scouting",
+    url: "https://ri.kfupm.edu.sa/dr/awards/early-career-research-award",
+    notes: "Strong potential fit given career stage — verify eligibility window directly. Source: DROC Awards page.",
+    addedAt: new Date().toISOString(),
+  },
+  {
+    id: "seed-award-applied-research",
+    name: "Applied Research Award",
+    grantingBody: "KFUPM — Deanship of Research Oversight and Coordination (DROC)",
+    level: "Institutional",
+    deadline: "",
+    eligibility: "KFUPM faculty; recognizes applied/translational research impact.",
+    requirements: "Check guideline page for nomination process and required documentation.",
+    status: "Scouting",
+    url: "https://ri.kfupm.edu.sa/dr/awards/applied-research-award",
+    notes: "Good fit for patent + industry-facing recycled-polymer work. Source: DROC Awards page.",
+    addedAt: new Date().toISOString(),
+  },
+  {
+    id: "seed-award-high-impact-paper",
+    name: "High Impact Paper Award",
+    grantingBody: "KFUPM — Deanship of Research Oversight and Coordination (DROC)",
+    level: "Institutional",
+    deadline: "",
+    eligibility: "KFUPM faculty with a qualifying high-impact publication — verify journal/citation threshold on guideline page.",
+    requirements: "Check guideline page for nomination process and required documentation.",
+    status: "Scouting",
+    url: "https://ri.kfupm.edu.sa/dr/awards/high-impact-paper-award",
+    notes: "Worth checking against current publication list each year a strong paper lands. Source: DROC Awards page.",
+    addedAt: new Date().toISOString(),
+  },
+  {
+    id: "seed-award-unesco-al-fozan",
+    name: "UNESCO-Al Fozan International Prize for the Promotion of Young Scientists",
+    grantingBody: "UNESCO, in partnership with the Al Fozan Foundation (Saudi Arabia)",
+    level: "International",
+    deadline: "2026-11-30",
+    eligibility: "Candidates must be under 40. Open to contributions in research in STEM (including emerging technologies), STEM education/dissemination, or international/regional cooperation in STEM. Saudi-founded but genuinely international/UNESCO-administered — awarded biennially, one laureate per UNESCO region (Africa, Arab States, Asia-Pacific, Europe/North America, Latin America/Caribbean).",
+    requirements: "Nomination-based — check unesco.org/en/prizes/al-fozan for the current call and nomination process.",
+    status: "Scouting",
+    url: "https://www.unesco.org/en/prizes/al-fozan",
+    notes: "Genuinely live and actionable — 2026 call open until November 30, 2026 (confirmed not yet passed as of this search). US $50,000 award, medal, and diploma. Strongest real match found across National/International tiers given career-stage fit (under-40) and open deadline.",
+    addedAt: new Date().toISOString(),
+  },
+  {
+    id: "seed-award-tms-mpmd",
+    name: "MPMD Early Career Leaders Professional Development Award",
+    grantingBody: "The Minerals, Metals & Materials Society (TMS) — Materials Processing & Manufacturing Division",
+    level: "International",
+    deadline: "",
+    eligibility: "Early-career TMS members (typically within ~10 years of terminal degree) demonstrating leadership potential in materials processing and manufacturing — additive manufacturing sits squarely in MPMD's scope.",
+    requirements: "Submit application packet to TMS Young Leaders Awards. Recipients announced in December. Requires active TMS membership.",
+    status: "Scouting",
+    url: "https://www.tms.org/portal/portal/Professional_Development/Honors___Awards/MPMD_Young_Leaders_Professional_Development.aspx",
+    notes: "Confirmed active — 2026 recipients already announced (award recurs annually). Recipients receive TMS membership + sponsored travel to the TMS Annual Meeting. Genuine international recognition in exactly your technical division (materials processing/manufacturing).",
+    addedAt: new Date().toISOString(),
+  },
+];
+
+const SEED_COMPETITORS = [
+  {
+    id: "seed-comp-davidson",
+    name: "Prof. (Davidson Research Group)",
+    affiliation: "Princeton University",
+    department: "Department of Chemical and Biological Engineering",
+    country: "United States",
+    level: "International",
+    focusOverlap: "Works at the intersection of polymer synthesis, additive manufacturing, and chemical recyclability of complex multimaterial structures — direct overlap with recycled-polymer + AM work.",
+    recentWork: "Developing chemically recyclable polymer systems and polymer nanocomposites specifically designed for depolymerization after use, leveraging AM's ability to control local composition and structure.",
+    relevance: "Approaches recyclability from a materials-design-first angle (designing polymers to be recyclable by construction) rather than processing already-recycled feedstock — a complementary but distinct strategy worth citing/positioning against in proposals.",
+    url: "https://davidson.princeton.edu/research",
+    notes: "Found via web search — verify current group lead name and recent publications directly on the lab site before citing.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-ornl-saito",
+    name: "Dr. Tomonori Saito",
+    affiliation: "Oak Ridge National Laboratory (ORNL)",
+    department: "Chemical Sciences Division",
+    country: "United States",
+    level: "International",
+    focusOverlap: "Closed-loop additive manufacturing using upcycled plastic — directly overlapping with recycled-polymer AM component work.",
+    recentWork: "Demonstrated a closed-loop strategy upcycling waste plastic into a stronger, solvent-resistant material for AM, 3D-printing intricate geometric structures (beetle-wing-inspired) to showcase mechanical performance.",
+    relevance: "A national lab (not university) competing/publishing in the same specific niche — geometry-enabled recycled-polymer components — with strong DOE funding backing. Important to track their publication trajectory.",
+    url: "https://www.ornl.gov/news/closed-loop-additive-manufacturing-fueled-upcycled-plastic",
+    notes: "Found via web search — locate Saito's Google Scholar/ORNL staff page directly for a stable long-term link.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-fraunhofer-ifam",
+    name: "Fraunhofer IFAM (with Hochschule Bremen)",
+    affiliation: "Fraunhofer Institute for Manufacturing Technology and Advanced Materials",
+    department: "Germany",
+    country: "Germany",
+    level: "International",
+    focusOverlap: "Industrial-scale recycling of post-consumer plastic waste into feedstock for additive manufacturing, including purification/sorting methodology and industrial extrusion into 3D-printable material.",
+    recentWork: "Achieved >99.8% purity recycled polypropylene from household waste sorting output, then produced solid 3D-printable filament via industrial extrusion — a full pipeline from waste stream to AM feedstock.",
+    relevance: "A major applied-research institute (not just academic) — represents the industrial/technology-transfer end of this space, relevant given your own DTV/Proof-of-Concept grant interests.",
+    url: "https://envirotecmagazine.com/2025/04/07/repurposing-plastic-waste-with-additive-manufacturing/",
+    notes: "Found via web search — find Fraunhofer IFAM's official project page for a stable link.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-akron-cavicchi",
+    name: "Prof. Kevin Cavicchi",
+    affiliation: "University of Akron",
+    department: "Department of Polymer Engineering",
+    country: "United States",
+    level: "International",
+    focusOverlap: "Recycled-polymer compatibilizers for 3D printing — developing additives ('nano stitches') to join immiscible recycled polymer blends (e.g. PE/PP) without conventional adhesives.",
+    recentWork: "Group researching shape-memory 4D-printed materials and recycled-polymer blend compatibilization for improved mechanical properties in AM feedstock.",
+    relevance: "Directly relevant to feedstock-quality challenges in recycled-polymer AM (material variability, property degradation) — a core problem your own work also addresses.",
+    url: "https://www.uakron.edu/news/researchers-focus-on-sustainability-through-recycle-additives-3-d-printing",
+    notes: "Found via web search — locate Cavicchi's University of Akron faculty page for a stable long-term link.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-alahmari-ksu",
+    name: "Prof. Abdulrahman Al-Ahmari",
+    affiliation: "King Saud University",
+    department: "Industrial Engineering Department, College of Engineering",
+    country: "Saudi Arabia",
+    level: "National (KSA)",
+    focusOverlap: "Additive manufacturing (3D printing), reverse engineering, and Industry 4.0 — direct national-level overlap in AM more broadly, distinct specialization (industrial/systems engineering angle vs. mechanical metamaterials).",
+    recentWork: "Chairman of Industrial Engineering Department at KSU; research spans additive manufacturing, reverse engineering, and digital transformation for manufacturing.",
+    relevance: "A genuine potential collaborator, not just a competitor — closest senior AM researcher at another major Saudi university. Worth reaching out to for joint KSA-wide initiatives or RDIA-style national collaboration grants.",
+    url: "https://www.linkedin.com/in/abdulrahman-al-ahmari-155111111/",
+    notes: "Found via web search — LinkedIn profile found; look for a KSU faculty page or Google Scholar profile for a more stable long-term link.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-moiduddin-ksu",
+    name: "Dr. Khaja Moiduddin",
+    affiliation: "King Saud University",
+    department: "Mechanical Engineering Department (Center of Excellence for Research in Engineering Materials)",
+    country: "Saudi Arabia",
+    level: "National (KSA)",
+    focusOverlap: "3D printing, biomedical implants, and bioprinting — very strong direct overlap with implant design and biomedical device design specifically.",
+    recentWork: "Highly cited work (2,500+ citations) on 3D printing applied to biomedical implants and bioprinting.",
+    relevance: "The closest national-level match specifically on biomedical implant design — a strong candidate for collaboration on the Hip Implant / smart insole venture work already being tracked in APS and Strategic Positioning.",
+    url: "https://scholar.google.com/citations?user=WGmsGzIAAAAJ&hl=en",
+    notes: "Found via web search (Google Scholar profile). Confirm current center/lab affiliation directly before reaching out.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-alzahrani-kau",
+    name: "Dr. Faisal Alzahrani",
+    affiliation: "King Abdulaziz University",
+    department: "Department of Mechanical Engineering",
+    country: "Saudi Arabia",
+    level: "National (KSA)",
+    focusOverlap: "Polymer additive manufacturing — specifically interlayer adhesion strength and process parameters in FDM, directly relevant to polymer AM process characterization.",
+    recentWork: "Research on the effect of layer-building time on interlayer adhesion strength in polymer additive manufacturing (FDM).",
+    relevance: "A process-focused polymer AM researcher at another major Saudi university — potential collaborator for process-characterization work complementing your own design-focused approach.",
+    url: "https://www.researchgate.net/profile/Faisal-Alzahrani-23",
+    notes: "Found via web search (ResearchGate profile). Relatively early-career — good candidate for a joint KSA proposal or student exchange.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-waleed-uaeu",
+    name: "Prof. Waleed Ahmed",
+    affiliation: "United Arab Emirates University (UAEU), Al Ain",
+    department: "Engineering Requirements Unit",
+    country: "United Arab Emirates",
+    level: "Regional (GCC)",
+    focusOverlap: "AM sandwich composites and micro-lattice structures under repeated loading, plus sustainable/biodegradable polymer composites from waste (palm waste, volcanic stone) — strong overlap on both lattice structures AND sustainable materials fronts.",
+    recentWork: "Studies on SLA-manufactured sandwich panels with micro-lattice structures under repeated loading, and sustainable biodegradable polymer composites for waste upcycling.",
+    relevance: "The strongest regional (GCC) match found — overlaps on lattice structures, energy-absorbing AM structures, AND sustainable/upcycled materials simultaneously. High-value potential collaborator for a GCC-wide proposal.",
+    url: "https://www.researchgate.net/profile/Waleed-Ahmed-6",
+    notes: "Found via web search (ResearchGate profile).",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-abualrub-khalifa",
+    name: "Dr. Rashid K. Abu Al-Ruba",
+    affiliation: "Khalifa University of Science and Technology, Abu Dhabi",
+    department: "Advanced Digital & Additive Manufacturing Group, Department of Mechanical and Nuclear Engineering",
+    country: "United Arab Emirates",
+    level: "Regional (GCC)",
+    focusOverlap: "Additively manufactured metamaterials — specifically for acoustic absorption, a distinct functional application of mechanical metamaterials design principles.",
+    recentWork: "Co-authored a 2024/2025 review on additively manufactured metamaterials for acoustic absorption.",
+    relevance: "A named AM research group at a top-tier GCC institution (Khalifa University) — good potential collaborator for multifunctional metamaterials work extending beyond purely mechanical applications.",
+    url: "https://www.tandfonline.com/doi/full/10.1080/17452759.2024.2435562",
+    notes: "Found via web search. Locate the group's official Khalifa University lab page for a more stable long-term link.",
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    id: "seed-comp-tarlochan-qu",
+    name: "Prof. Farrukh Tarlochan",
+    affiliation: "Qatar University, Doha",
+    department: "Department of Mechanical and Industrial Engineering",
+    country: "Qatar",
+    level: "Regional (GCC)",
+    focusOverlap: "Lattice structures fabricated via selective laser melting (SLM) — direct overlap on metal AM lattice structures and mechanical property optimization.",
+    recentWork: "Highly cited (5,300+ citations) work including statistical optimization of Ti6Al4V lattice structures via SLM.",
+    relevance: "The most established, highly-cited GCC researcher found working specifically on AM lattice structures — a strong senior potential collaborator for a joint GCC proposal or student/postdoc exchange.",
+    url: "https://www.researchgate.net/profile/Tarlochan-F",
+    notes: "Found via web search (ResearchGate profile). Confirm current Qatar University faculty page for a stable long-term link.",
+    lastUpdated: new Date().toISOString(),
+  },
+
+];
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(",")[1]);
+    r.onerror = () => reject(new Error("Could not read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+async function claudeExtractJSON(content) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content }] }),
+  });
+  const result = await response.json();
+  if (result.error) {
+    throw new Error(`API error: ${result.error.message || result.error.type || "unknown"}`);
+  }
+  if (result.stop_reason === "max_tokens") {
+    throw new Error("The response was cut off before finishing — try again with less content at once.");
+  }
+  const textBlock = (result.content || []).find((b) => b.type === "text");
+  if (!textBlock) throw new Error("No text response came back — try again.");
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("The response didn't contain a recognizable result — try again.");
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error("The response wasn't valid JSON (likely cut off or malformed) — try again.");
+  }
+}
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date(todayISO());
+  const target = new Date(dateStr);
+  return Math.round((target - today) / 86400000);
+}
+function urgency(deadline) {
+  const d = daysUntil(deadline);
+  if (d === null) return { label: "No deadline set", color: "#9AA2AF" };
+  if (d < 0) return { label: `${Math.abs(d)}d overdue`, color: RED };
+  if (d === 0) return { label: "Due today", color: RED };
+  if (d <= 14) return { label: `${d}d left`, color: RED };
+  if (d <= 45) return { label: `${d}d left`, color: AMBER };
+  return { label: `${d}d left`, color: MUTED };
+}
+
+const GlobalStyle = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+    * { box-sizing: border-box; }
+    .cl-display { font-family: 'Source Serif 4', Georgia, serif; letter-spacing: -0.01em; }
+    .cl-mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; letter-spacing: -0.01em; }
+    body, input, textarea, select, button { font-family: 'Inter', sans-serif; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid ${TEAL}; outline-offset: 1px; }
+    button:focus-visible { outline: 2px solid ${TEAL}; outline-offset: 2px; }
+    .cl-spin { animation: cl-spin-anim 0.9s linear infinite; }
+    @keyframes cl-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .cl-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
+  `}</style>
+);
+
+const inputStyle = { width: "100%", fontSize: 14, padding: "9px 10px", borderRadius: 3, border: "1px solid #C7CCD3", background: "#fff", color: INK };
+function Label({ children }) { return <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9AA2AF", marginBottom: 6, fontWeight: 600 }}>{children}</div>; }
+function FormField({ label, children, flex }) {
+  return (
+    <div style={{ marginBottom: 14, flex: flex ? 1 : undefined }}>
+      <label style={{ display: "block", fontSize: 12, color: MUTED, marginBottom: 5 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+function EmptyState({ text }) {
+  return <div style={{ textAlign: "center", padding: "50px 20px", color: MUTED, fontSize: 13.5, border: "1px dashed #C7CCD3", borderRadius: 4 }}>{text}</div>;
+}
+function GhostAddButton({ onClick, label }) {
+  return (
+    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px dashed #C7CCD3", color: TEAL, borderRadius: 4, padding: "5px 10px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+      <Plus size={13} /> {label}
+    </button>
+  );
+}
+
+function App() {
+  const [data, setData] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState("competitors");
+  const [expandedId, setExpandedId] = useState(null);
+  const [showExport, setShowExport] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // competitor form state
+  const [showCompForm, setShowCompForm] = useState(false);
+  const [compDraft, setCompDraft] = useState(null);
+  const [editingCompId, setEditingCompId] = useState(null);
+  const [extractingComp, setExtractingComp] = useState(false);
+  const [compLevelFilter, setCompLevelFilter] = useState("All");
+  const [collabSearchError, setCollabSearchError] = useState("");
+  const [showBulkPanel, setShowBulkPanel] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkCandidates, setBulkCandidates] = useState([]);
+  const [extractingBulk, setExtractingBulk] = useState(false);
+  const bulkFileInputRef = useRef(null);
+  const compFileInputRef = useRef(null);
+
+  // award form state
+  const [showAwardForm, setShowAwardForm] = useState(false);
+  const [awardDraft, setAwardDraft] = useState(null);
+  const [editingAwardId, setEditingAwardId] = useState(null);
+  const [extractingAward, setExtractingAward] = useState(false);
+  const [awardStatusFilter, setAwardStatusFilter] = useState("All");
+  const awardFileInputRef = useRef(null);
+
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get(STORAGE_KEY);
+        setData(res && res.value ? JSON.parse(res.value) : { competitors: SEED_COMPETITORS, awards: SEED_AWARDS });
+      } catch (e) {
+        setData({ competitors: SEED_COMPETITORS, awards: SEED_AWARDS });
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || !data) return;
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
+  }, [data, loaded]);
+
+  if (!data) return null;
+
+  // ---------- Competitor handlers ----------
+  function openNewComp() {
+    setCompDraft(emptyCompetitor());
+    setEditingCompId(null);
+    setShowCompForm(true);
+  }
+  function openEditComp(c) {
+    setCompDraft({ ...c });
+    setEditingCompId(c.id);
+    setShowCompForm(true);
+  }
+  function saveComp() {
+    if (!compDraft.name.trim()) return;
+    if (editingCompId) {
+      setData((prev) => ({ ...prev, competitors: prev.competitors.map((c) => (c.id === editingCompId ? { ...compDraft, lastUpdated: new Date().toISOString() } : c)) }));
+    } else {
+      setData((prev) => ({ ...prev, competitors: [...prev.competitors, { ...compDraft, id: Date.now().toString(), lastUpdated: new Date().toISOString() }] }));
+    }
+    setShowCompForm(false);
+  }
+  function removeComp(id) {
+    setData((prev) => ({ ...prev, competitors: prev.competitors.filter((c) => c.id !== id) }));
+    setConfirmDelete(null);
+    setExpandedId(null);
+  }
+
+  async function extractCollaboratorsFromContent(contentBlocks, sourceLabel) {
+    setExtractingBulk(true);
+    setCollabSearchError("");
+    try {
+      const RESEARCH_AREAS = "additive manufacturing, DfAM, mechanical metamaterials, lattice structures, multimaterial additive manufacturing, recycled/upcycled polymer engineering, biomedical device design, orthotics and prosthetics, implant design, and sustainable materials and design";
+      const myName = "Aamer Nazir";
+
+      const content = [
+        ...contentBlocks,
+        {
+          type: "text",
+          text:
+            `This content may be a faculty directory page, a search results listing, a CV, a LinkedIn profile, or similar — it may mention one researcher or several. I am ${myName}, a Mechanical Engineering faculty member at KFUPM (Saudi Arabia), looking for potential collaborators working in areas overlapping with: ${RESEARCH_AREAS}.\n\n` +
+            `Extract every researcher mentioned in this content who is genuinely working in an overlapping area — do not include me (${myName}) if I appear in it. For each person, give: their name, their university/affiliation, their department or research center, their country, a best-guess level (one of exactly: "National (KSA)", "Regional (GCC)", "International") based on their country, their profile/page URL if one is directly stated in the content (leave empty if not present — do not guess a URL), and a one-sentence note on their specific focus overlap. If nobody in the content is genuinely relevant, return an empty array rather than forcing a weak match.\n\n` +
+            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"people":[{"name":"","affiliation":"","department":"","country":"","level":"International","url":"","focusOverlap":""}]}',
+        },
+      ];
+      const parsed = await claudeExtractJSON(content);
+      const found = (parsed.people || []).filter((p) => p.name && !p.name.toLowerCase().includes(myName.toLowerCase()));
+      if (found.length === 0) {
+        setCollabSearchError(`Nothing relevant found in that ${sourceLabel} — either no genuine overlap, or the content didn't come through clearly.`);
+        setBulkCandidates([]);
+      } else {
+        setBulkCandidates(found.map((p, i) => ({
+          ...p,
+          _tempId: i,
+          _selected: true,
+          level: COMPETITOR_LEVELS.includes(p.level) ? p.level : "International",
+        })));
+      }
+    } catch (e) {
+      setCollabSearchError(`Could not read that ${sourceLabel}: ${e.message || "unknown error"}. Try pasting the text directly instead.`);
+      setBulkCandidates([]);
+    } finally {
+      setExtractingBulk(false);
+    }
+  }
+
+  async function handleBulkFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setCollabSearchError("Only PDF is supported for file upload here. For Word documents, open the file and paste the text into the box instead.");
+      if (bulkFileInputRef.current) bulkFileInputRef.current.value = "";
+      return;
+    }
+    const base64 = await fileToBase64(file);
+    await extractCollaboratorsFromContent(
+      [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }],
+      "PDF"
+    );
+    if (bulkFileInputRef.current) bulkFileInputRef.current.value = "";
+  }
+
+  async function handleBulkTextSubmit() {
+    if (!bulkText.trim()) return;
+    await extractCollaboratorsFromContent([{ type: "text", text: bulkText }], "pasted text");
+  }
+
+  function toggleBulkCandidate(tempId) {
+    setBulkCandidates((prev) => prev.map((c) => (c._tempId === tempId ? { ...c, _selected: !c._selected } : c)));
+  }
+
+  function setBulkCandidateLevel(tempId, level) {
+    setBulkCandidates((prev) => prev.map((c) => (c._tempId === tempId ? { ...c, level } : c)));
+  }
+
+  function addSelectedBulkCandidates() {
+    const selected = bulkCandidates.filter((c) => c._selected);
+    if (selected.length === 0) return;
+    const newOnes = selected.map((p) => ({
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      name: p.name || "",
+      affiliation: p.affiliation || "",
+      country: p.country || "",
+      level: p.level,
+      focusOverlap: p.focusOverlap || "",
+      recentWork: "",
+      relevance: "Added from pasted content — potential collaborator, not yet contacted.",
+      url: p.url || "",
+      notes: p.department ? `Department/Center: ${p.department}` : "",
+      lastUpdated: new Date().toISOString(),
+    }));
+    setData((prev) => ({ ...prev, competitors: [...prev.competitors, ...newOnes] }));
+    setBulkCandidates([]);
+    setBulkText("");
+    setShowBulkPanel(false);
+  }
+
+  async function handleCompFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const supported = file.type === "application/pdf" || file.type.startsWith("image/");
+    if (!supported) {
+      setError("That file type can't be auto-read here — PDF or image only (e.g. a screenshot of their profile page or a paper of theirs).");
+      return;
+    }
+    setExtractingComp(true);
+    setError("");
+    try {
+      const base64 = await fileToBase64(file);
+      const isPdf = file.type === "application/pdf";
+      const content = [
+        isPdf
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+          : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } },
+        {
+          type: "text",
+          text:
+            "This document is about another researcher who may be a competitor or peer in a related research field (e.g. their CV, faculty profile page, or a paper of theirs). Extract: their name, affiliation/institution, country, " +
+            "the level (one of: \"National (KSA)\" if based in Saudi Arabia, \"Regional (GCC)\" if based elsewhere in the Gulf, \"International\" if based anywhere else), " +
+            "a short description of where their research overlaps with recycled polymers / additive manufacturing / circular economy engineering, a brief note on their recent notable work or achievements, and why they're relevant to track as a competitor or peer (e.g. competing for similar funding, publishing in the same niche, ahead on a specific technique).\n\n" +
+            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"name":"","affiliation":"","country":"","level":"National (KSA)","focusOverlap":"","recentWork":"","relevance":""}',
+        },
+      ];
+      const parsed = await claudeExtractJSON(content);
+      setCompDraft({
+        ...emptyCompetitor(),
+        name: parsed.name || file.name,
+        affiliation: parsed.affiliation || "",
+        country: parsed.country || "",
+        level: COMPETITOR_LEVELS.includes(parsed.level) ? parsed.level : "National (KSA)",
+        focusOverlap: parsed.focusOverlap || "",
+        recentWork: parsed.recentWork || "",
+        relevance: parsed.relevance || "",
+      });
+      setEditingCompId(null);
+      setShowCompForm(true);
+    } catch (err) {
+      setError("Could not read that file automatically. Fill in the details manually below.");
+      setCompDraft({ ...emptyCompetitor(), name: file.name });
+      setEditingCompId(null);
+      setShowCompForm(true);
+    } finally {
+      setExtractingComp(false);
+      if (compFileInputRef.current) compFileInputRef.current.value = "";
+    }
+  }
+
+  // ---------- Award handlers ----------
+  function openNewAward() {
+    setAwardDraft(emptyAward());
+    setEditingAwardId(null);
+    setShowAwardForm(true);
+  }
+  function openEditAward(a) {
+    setAwardDraft({ ...a });
+    setEditingAwardId(a.id);
+    setShowAwardForm(true);
+  }
+  function saveAward() {
+    if (!awardDraft.name.trim()) return;
+    if (editingAwardId) {
+      setData((prev) => ({ ...prev, awards: prev.awards.map((a) => (a.id === editingAwardId ? { ...awardDraft } : a)) }));
+    } else {
+      setData((prev) => ({ ...prev, awards: [...prev.awards, { ...awardDraft, id: Date.now().toString(), addedAt: new Date().toISOString() }] }));
+    }
+    setShowAwardForm(false);
+  }
+  function removeAward(id) {
+    setData((prev) => ({ ...prev, awards: prev.awards.filter((a) => a.id !== id) }));
+    setConfirmDelete(null);
+    setExpandedId(null);
+  }
+  async function handleAwardFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const supported = file.type === "application/pdf" || file.type.startsWith("image/");
+    if (!supported) {
+      setError("That file type can't be auto-read here — PDF or image only.");
+      return;
+    }
+    setExtractingAward(true);
+    setError("");
+    try {
+      const base64 = await fileToBase64(file);
+      const isPdf = file.type === "application/pdf";
+      const content = [
+        isPdf
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+          : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } },
+        {
+          type: "text",
+          text:
+            "This document describes an academic/research award, prize, or honor. Extract: the award name, the granting body/organization, the level (one of: Institutional, National, International), " +
+            "the nomination/application deadline (YYYY-MM-DD if determinable, else empty string), a brief eligibility summary, and the nomination/application requirements.\n\n" +
+            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"name":"","grantingBody":"","level":"Institutional","deadline":"","eligibility":"","requirements":""}',
+        },
+      ];
+      const parsed = await claudeExtractJSON(content);
+      setAwardDraft({
+        ...emptyAward(),
+        name: parsed.name || file.name,
+        grantingBody: parsed.grantingBody || "",
+        level: AWARD_LEVELS.includes(parsed.level) ? parsed.level : "Institutional",
+        deadline: parsed.deadline || "",
+        eligibility: parsed.eligibility || "",
+        requirements: parsed.requirements || "",
+      });
+      setEditingAwardId(null);
+      setShowAwardForm(true);
+    } catch (err) {
+      setError("Could not read that file automatically. Fill in the details manually below.");
+      setAwardDraft({ ...emptyAward(), name: file.name });
+      setEditingAwardId(null);
+      setShowAwardForm(true);
+    } finally {
+      setExtractingAward(false);
+      if (awardFileInputRef.current) awardFileInputRef.current.value = "";
+    }
+  }
+
+  const filteredAwards = data.awards
+    .filter((a) => awardStatusFilter === "All" || a.status === awardStatusFilter)
+    .sort((a, b) => {
+      if (!a.deadline && !b.deadline) return 0;
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline) - new Date(b.deadline);
+    });
+  const awardStatusCounts = AWARD_STATUSES.reduce((acc, s) => ({ ...acc, [s]: data.awards.filter((a) => a.status === s).length }), {});
+
+  function buildSnapshot() {
+    const lines = [];
+    lines.push(`COMPETITIVE LANDSCAPE & AWARDS — ${new Date().toISOString().slice(0, 10)}`);
+    lines.push("");
+    lines.push(`COMPETITORS / PEERS (${data.competitors.length})`);
+    data.competitors.forEach((c) => {
+      lines.push(`- ${c.name}${c.affiliation ? " — " + c.affiliation : ""}${c.country ? " (" + c.country + ")" : ""}`);
+      if (c.focusOverlap) lines.push(`  Overlap: ${c.focusOverlap}`);
+      if (c.recentWork) lines.push(`  Recent work: ${c.recentWork}`);
+      if (c.relevance) lines.push(`  Why relevant: ${c.relevance}`);
+      if (c.url) lines.push(`  Link: ${c.url}`);
+    });
+    lines.push("");
+    lines.push(`AWARDS (${data.awards.length})`);
+    AWARD_STATUSES.forEach((s) => {
+      const items = data.awards.filter((a) => a.status === s);
+      if (items.length === 0) return;
+      lines.push(`\n${s.toUpperCase()} (${items.length})`);
+      items.forEach((a) => {
+        lines.push(`- ${a.name} — ${a.grantingBody} [${a.level}]`);
+        if (a.deadline) lines.push(`  Deadline: ${a.deadline}`);
+        if (a.eligibility) lines.push(`  Eligibility: ${a.eligibility}`);
+        if (a.requirements) lines.push(`  Requirements: ${a.requirements}`);
+        if (a.notes) lines.push(`  Notes: ${a.notes}`);
+      });
+    });
+    return lines.join("\n");
+  }
+  async function copySnapshot() {
+    try { await navigator.clipboard.writeText(buildSnapshot()); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch (e) {}
+  }
+  function downloadSnapshot() {
+    const blob = new Blob([buildSnapshot()], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "competitive-landscape-snapshot.txt";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 80px" }}>
+
+        <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div className="cl-mono" style={{ width: 40, height: 40, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
+            <div>
+              <h1 className="cl-display" style={{ fontSize: 26, fontWeight: 700, color: INK, margin: 0 }}>Competitive Landscape & Awards</h1>
+            </div>
+          </div>
+          <button onClick={() => setShowExport(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #C7CCD3", color: INK, borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
+            <FileText size={14} /> Export
+          </button>
+        </div>
+
+        {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid " + LINE }}>
+          {[["competitors", "Potential Collaborators", Eye], ["awards", "Awards", Award]].map(([key, label, Icon]) => (
+            <button key={key} onClick={() => setTab(key)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: "10px 14px", fontSize: 13.5, cursor: "pointer", color: tab === key ? INK : MUTED, fontWeight: tab === key ? 600 : 400, borderBottom: tab === key ? "2px solid " + INK : "2px solid transparent", marginBottom: -1 }}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "competitors" && (
+          <div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
+              Researchers and groups working in overlapping territory — within KSA, across the GCC, or internationally — worth connecting with as potential collaborators, not just for watching what others are doing.
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              <button
+                onClick={() => setShowBulkPanel(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: GREEN, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
+              >
+                <Upload size={14} /> Add from document or pasted text
+              </button>
+            </div>
+            {collabSearchError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{collabSearchError}</div>}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              <button onClick={() => setCompLevelFilter("All")} style={{ background: compLevelFilter === "All" ? INK : "#fff", color: compLevelFilter === "All" ? "#fff" : INK, border: "1px solid " + (compLevelFilter === "All" ? INK : "#C7CCD3"), borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+                All ({data.competitors.length})
+              </button>
+              {COMPETITOR_LEVELS.map((lvl) => (
+                <button key={lvl} onClick={() => setCompLevelFilter(lvl)} style={{ background: compLevelFilter === lvl ? TEAL : "#fff", color: compLevelFilter === lvl ? "#fff" : INK, border: "1px solid " + (compLevelFilter === lvl ? TEAL : "#C7CCD3"), borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+                  {lvl} ({data.competitors.filter((c) => c.level === lvl).length})
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 16 }}>
+              <input ref={compFileInputRef} type="file" accept="application/pdf,image/*" onChange={handleCompFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+              <button onClick={() => compFileInputRef.current && compFileInputRef.current.click()} disabled={extractingComp} style={{ display: "flex", alignItems: "center", gap: 6, background: extractingComp ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "8px 14px", fontSize: 12.5, fontWeight: 500, cursor: extractingComp ? "default" : "pointer" }}>
+                {extractingComp ? <Loader2 size={14} className="cl-spin" /> : <Upload size={14} />} {extractingComp ? "Reading…" : "Upload profile/CV"}
+              </button>
+              <GhostAddButton onClick={openNewComp} label="Add manually" />
+            </div>
+
+            {(() => {
+              const filteredComps = data.competitors.filter((c) => compLevelFilter === "All" || c.level === compLevelFilter);
+              if (filteredComps.length === 0) {
+                return <EmptyState text={data.competitors.length === 0 ? "No competitors or peers logged yet. Upload a profile page, CV, or paper — or add one manually." : "Nothing matches this filter."} />;
+              }
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(460px, 1fr))", gap: 10, alignItems: "start" }}>
+                  {filteredComps.map((c) => {
+                const isOpen = expandedId === c.id;
+                return (
+                  <div key={c.id} className="cl-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, overflow: "hidden" }}>
+                    <div onClick={() => setExpandedId(isOpen ? null : c.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", cursor: "pointer" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14.5, fontWeight: 600, color: INK }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{c.affiliation}{c.country ? ` · ${c.country}` : ""}</div>
+                      </div>
+                      <span className="cl-mono" style={{ fontSize: 10, color: TEAL, background: "#E7EFF5", padding: "3px 9px", borderRadius: 10, fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>{c.level}</span>
+                      <ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
+                    </div>
+                    {isOpen && (
+                      <div style={{ padding: "0 18px 18px 18px", borderTop: "1px solid #EAECF0", fontSize: 13, color: "#2E3742" }}>
+                        <div style={{ marginTop: 14, marginBottom: 12 }}>
+                          {c.focusOverlap && <div style={{ marginBottom: 10 }}><Label>Focus overlap</Label>{c.focusOverlap}</div>}
+                          {c.recentWork && <div style={{ marginBottom: 10 }}><Label>Recent notable work</Label>{c.recentWork}</div>}
+                          {c.relevance && <div style={{ marginBottom: 10 }}><Label>Why relevant</Label>{c.relevance}</div>}
+                          {c.notes && <div style={{ marginBottom: 10 }}><Label>Notes</Label><div style={{ whiteSpace: "pre-wrap" }}>{c.notes}</div></div>}
+                          {c.url && <div style={{ marginBottom: 10 }}><a href={c.url} target="_blank" rel="noreferrer" style={{ color: TEAL, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 4 }}><ExternalLink size={12} /> Profile link</a></div>}
+                          <div style={{ fontSize: 11, color: "#9AA2AF" }}>Last updated: {new Date(c.lastUpdated).toLocaleDateString()}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 14 }}>
+                          <button onClick={() => openEditComp(c)} style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: TEAL, cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><Pencil size={12} /> Edit</button>
+                          <button onClick={() => setConfirmDelete(confirmDelete === c.id ? null : c.id)} style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: RED, cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><Trash2 size={12} /> Delete</button>
+                        </div>
+                        {confirmDelete === c.id && (
+                          <div style={{ marginTop: 10, background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 4, padding: "8px 12px", fontSize: 12.5, color: "#6B5015", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            Delete permanently?
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button onClick={() => removeComp(c.id)} style={{ background: RED, color: "#fff", border: "none", borderRadius: 3, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>Delete</button>
+                              <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid #C7CCD3", borderRadius: 3, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {tab === "awards" && (
+          <div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              <button onClick={() => setAwardStatusFilter("All")} style={{ background: awardStatusFilter === "All" ? INK : "#fff", color: awardStatusFilter === "All" ? "#fff" : INK, border: "1px solid " + (awardStatusFilter === "All" ? INK : "#C7CCD3"), borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+                All ({data.awards.length})
+              </button>
+              {AWARD_STATUSES.map((s) => (
+                <button key={s} onClick={() => setAwardStatusFilter(s)} style={{ background: awardStatusFilter === s ? AWARD_STATUS_COLOR[s] : "#fff", color: awardStatusFilter === s ? "#fff" : INK, border: "1px solid " + (awardStatusFilter === s ? AWARD_STATUS_COLOR[s] : "#C7CCD3"), borderRadius: 20, padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+                  {s} ({awardStatusCounts[s]})
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 16 }}>
+              <input ref={awardFileInputRef} type="file" accept="application/pdf,image/*" onChange={handleAwardFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+              <button onClick={() => awardFileInputRef.current && awardFileInputRef.current.click()} disabled={extractingAward} style={{ display: "flex", alignItems: "center", gap: 6, background: extractingAward ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "8px 14px", fontSize: 12.5, fontWeight: 500, cursor: extractingAward ? "default" : "pointer" }}>
+                {extractingAward ? <Loader2 size={14} className="cl-spin" /> : <Upload size={14} />} {extractingAward ? "Reading…" : "Upload award call"}
+              </button>
+              <GhostAddButton onClick={openNewAward} label="Add manually" />
+            </div>
+
+            {filteredAwards.length === 0 ? (
+              <EmptyState text={data.awards.length === 0 ? "No awards tracked yet." : "Nothing matches this filter."} />
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(500px, 1fr))", gap: 10, alignItems: "start" }}>
+              {filteredAwards.map((a) => {
+                const u = urgency(a.deadline);
+                const isOpen = expandedId === a.id;
+                return (
+                  <div key={a.id} className="cl-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, overflow: "hidden" }}>
+                    <div onClick={() => setExpandedId(isOpen ? null : a.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", cursor: "pointer" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14.5, fontWeight: 600, color: INK }}>{a.name}</div>
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{a.grantingBody}</div>
+                      </div>
+                      <span className="cl-mono" style={{ fontSize: 10, color: "#9AA2AF", flexShrink: 0 }}>{a.level}</span>
+                      <span className="cl-mono" style={{ fontSize: 10.5, background: AWARD_STATUS_COLOR[a.status] + "22", color: AWARD_STATUS_COLOR[a.status], padding: "3px 9px", borderRadius: 10, fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>{a.status}</span>
+                      <span className="cl-mono" style={{ fontSize: 11.5, color: u.color, fontWeight: 600, flexShrink: 0, minWidth: 78, textAlign: "right" }}>
+                        <Clock size={11} style={{ display: "inline", marginRight: 3, verticalAlign: -1 }} />{u.label}
+                      </span>
+                      <ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
+                    </div>
+                    {isOpen && (
+                      <div style={{ padding: "0 18px 18px 18px", borderTop: "1px solid #EAECF0", fontSize: 13, color: "#2E3742" }}>
+                        <div style={{ marginTop: 14, marginBottom: 12 }}>
+                          {a.deadline && <div style={{ marginBottom: 10 }}><Label>Deadline</Label>{a.deadline}</div>}
+                          {a.eligibility && <div style={{ marginBottom: 10 }}><Label>Eligibility</Label>{a.eligibility}</div>}
+                          {a.requirements && <div style={{ marginBottom: 10 }}><Label>Requirements</Label>{a.requirements}</div>}
+                          {a.notes && <div style={{ marginBottom: 10 }}><Label>Notes</Label><div style={{ whiteSpace: "pre-wrap" }}>{a.notes}</div></div>}
+                          {a.url && <div style={{ marginBottom: 10 }}><a href={a.url} target="_blank" rel="noreferrer" style={{ color: TEAL, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 4 }}><ExternalLink size={12} /> View award page</a></div>}
+                        </div>
+                        <div style={{ display: "flex", gap: 14 }}>
+                          <button onClick={() => openEditAward(a)} style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: TEAL, cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><Pencil size={12} /> Edit</button>
+                          <button onClick={() => setConfirmDelete(confirmDelete === a.id ? null : a.id)} style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: RED, cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><Trash2 size={12} /> Delete</button>
+                        </div>
+                        {confirmDelete === a.id && (
+                          <div style={{ marginTop: 10, background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 4, padding: "8px 12px", fontSize: 12.5, color: "#6B5015", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            Delete permanently?
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button onClick={() => removeAward(a.id)} style={{ background: RED, color: "#fff", border: "none", borderRadius: 3, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>Delete</button>
+                              <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid #C7CCD3", borderRadius: 3, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Competitor form modal */}
+      {showCompForm && compDraft && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowCompForm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h2 className="cl-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingCompId ? "Edit competitor/peer" : "Add competitor/peer"}</h2>
+              <button onClick={() => setShowCompForm(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <FormField label="Name"><input style={inputStyle} value={compDraft.name} onChange={(e) => setCompDraft({ ...compDraft, name: e.target.value })} /></FormField>
+            <div style={{ display: "flex", gap: 12 }}>
+              <FormField label="Affiliation" flex><input style={inputStyle} value={compDraft.affiliation} onChange={(e) => setCompDraft({ ...compDraft, affiliation: e.target.value })} placeholder="University / institute" /></FormField>
+              <FormField label="Country" flex><input style={inputStyle} value={compDraft.country} onChange={(e) => setCompDraft({ ...compDraft, country: e.target.value })} /></FormField>
+            </div>
+            <FormField label="Level">
+              <select style={inputStyle} value={compDraft.level} onChange={(e) => setCompDraft({ ...compDraft, level: e.target.value })}>
+                {COMPETITOR_LEVELS.map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Focus overlap"><textarea style={{ ...inputStyle, minHeight: 50 }} value={compDraft.focusOverlap} onChange={(e) => setCompDraft({ ...compDraft, focusOverlap: e.target.value })} placeholder="Where their work overlaps with ours" /></FormField>
+            <FormField label="Recent notable work"><textarea style={{ ...inputStyle, minHeight: 50 }} value={compDraft.recentWork} onChange={(e) => setCompDraft({ ...compDraft, recentWork: e.target.value })} /></FormField>
+            <FormField label="Why relevant to track"><textarea style={{ ...inputStyle, minHeight: 50 }} value={compDraft.relevance} onChange={(e) => setCompDraft({ ...compDraft, relevance: e.target.value })} placeholder="e.g. competes for similar funding, ahead on a specific technique" /></FormField>
+            <FormField label="Profile / lab page link"><input style={inputStyle} value={compDraft.url} onChange={(e) => setCompDraft({ ...compDraft, url: e.target.value })} placeholder="https://…" /></FormField>
+            <FormField label="Notes"><textarea style={{ ...inputStyle, minHeight: 44 }} value={compDraft.notes} onChange={(e) => setCompDraft({ ...compDraft, notes: e.target.value })} /></FormField>
+            <button onClick={saveComp} style={{ width: "100%", background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 6 }}>
+              {editingCompId ? "Save changes" : "Add"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk collaborator extraction panel */}
+      {showBulkPanel && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => { setShowBulkPanel(false); setBulkCandidates([]); }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 className="cl-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>Add from document or pasted text</h2>
+              <button onClick={() => { setShowBulkPanel(false); setBulkCandidates([]); }} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 16 }}>
+              Paste a faculty directory listing, search results, a CV, or a LinkedIn profile — or upload a PDF. Word documents aren't readable directly; open the file and paste its text instead.
+            </div>
+
+            {bulkCandidates.length === 0 && (
+              <>
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  placeholder="Paste text here — e.g. a department faculty listing, a researcher's bio, or search results…"
+                  style={{ ...inputStyle, minHeight: 160, marginBottom: 12 }}
+                />
+                <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+                  <button
+                    onClick={handleBulkTextSubmit}
+                    disabled={extractingBulk || !bulkText.trim()}
+                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: (extractingBulk || !bulkText.trim()) ? "#C7CCD3" : INK, color: "#fff", border: "none", borderRadius: 3, padding: "10px 0", fontSize: 13.5, fontWeight: 600, cursor: (extractingBulk || !bulkText.trim()) ? "default" : "pointer" }}
+                  >
+                    {extractingBulk ? <Loader2 size={14} className="cl-spin" /> : null} {extractingBulk ? "Reading…" : "Extract from text"}
+                  </button>
+                  <input ref={bulkFileInputRef} type="file" accept="application/pdf" onChange={handleBulkFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+                  <button
+                    onClick={() => bulkFileInputRef.current && bulkFileInputRef.current.click()}
+                    disabled={extractingBulk}
+                    style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #C7CCD3", color: INK, borderRadius: 3, padding: "10px 14px", fontSize: 13.5, fontWeight: 500, cursor: extractingBulk ? "default" : "pointer", whiteSpace: "nowrap" }}
+                  >
+                    <Upload size={14} /> Upload PDF
+                  </button>
+                </div>
+                {collabSearchError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5 }}>{collabSearchError}</div>}
+              </>
+            )}
+
+            {bulkCandidates.length > 0 && (
+              <>
+                <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Found {bulkCandidates.length} — uncheck any that aren't relevant, adjust level if needed, then add.</div>
+                {bulkCandidates.map((c) => (
+                  <div key={c._tempId} style={{ border: "1px solid " + LINE, borderRadius: 5, padding: "10px 12px", marginBottom: 8, background: c._selected ? "#fff" : "#F1F3F6" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <input type="checkbox" checked={c._selected} onChange={() => toggleBulkCandidate(c._tempId)} style={{ marginTop: 3 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{c.affiliation}{c.department ? ` · ${c.department}` : ""}{c.country ? ` · ${c.country}` : ""}</div>
+                        {c.focusOverlap && <div style={{ fontSize: 12, color: "#2E3742", marginTop: 4 }}>{c.focusOverlap}</div>}
+                        {c.url ? (
+                          <a href={c.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: TEAL, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4 }}><ExternalLink size={11} /> {c.url}</a>
+                        ) : (
+                          <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 4 }}>No profile link found in the source content</div>
+                        )}
+                        <div style={{ marginTop: 6 }}>
+                          <select value={c.level} onChange={(e) => setBulkCandidateLevel(c._tempId, e.target.value)} style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 3, border: "1px solid #C7CCD3" }}>
+                            {COMPETITOR_LEVELS.map((l) => <option key={l}>{l}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                  <button onClick={addSelectedBulkCandidates} style={{ flex: 1, background: GREEN, color: "#fff", border: "none", borderRadius: 3, padding: "10px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+                    Add {bulkCandidates.filter((c) => c._selected).length} selected
+                  </button>
+                  <button onClick={() => { setBulkCandidates([]); setBulkText(""); }} style={{ background: "#fff", border: "1px solid #C7CCD3", borderRadius: 3, padding: "10px 14px", fontSize: 13.5, cursor: "pointer" }}>
+                    Start over
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Award form modal */}
+      {showAwardForm && awardDraft && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowAwardForm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h2 className="cl-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingAwardId ? "Edit award" : "Add award"}</h2>
+              <button onClick={() => setShowAwardForm(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <FormField label="Award name"><input style={inputStyle} value={awardDraft.name} onChange={(e) => setAwardDraft({ ...awardDraft, name: e.target.value })} /></FormField>
+            <FormField label="Granting body"><input style={inputStyle} value={awardDraft.grantingBody} onChange={(e) => setAwardDraft({ ...awardDraft, grantingBody: e.target.value })} /></FormField>
+            <div style={{ display: "flex", gap: 12 }}>
+              <FormField label="Level" flex>
+                <select style={inputStyle} value={awardDraft.level} onChange={(e) => setAwardDraft({ ...awardDraft, level: e.target.value })}>
+                  {AWARD_LEVELS.map((l) => <option key={l}>{l}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Deadline" flex><input type="date" style={inputStyle} value={awardDraft.deadline} onChange={(e) => setAwardDraft({ ...awardDraft, deadline: e.target.value })} /></FormField>
+            </div>
+            <FormField label="Status">
+              <select style={inputStyle} value={awardDraft.status} onChange={(e) => setAwardDraft({ ...awardDraft, status: e.target.value })}>
+                {AWARD_STATUSES.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Eligibility"><textarea style={{ ...inputStyle, minHeight: 50 }} value={awardDraft.eligibility} onChange={(e) => setAwardDraft({ ...awardDraft, eligibility: e.target.value })} /></FormField>
+            <FormField label="Requirements"><textarea style={{ ...inputStyle, minHeight: 50 }} value={awardDraft.requirements} onChange={(e) => setAwardDraft({ ...awardDraft, requirements: e.target.value })} /></FormField>
+            <FormField label="Link"><input style={inputStyle} value={awardDraft.url} onChange={(e) => setAwardDraft({ ...awardDraft, url: e.target.value })} placeholder="https://…" /></FormField>
+            <FormField label="Notes"><textarea style={{ ...inputStyle, minHeight: 44 }} value={awardDraft.notes} onChange={(e) => setAwardDraft({ ...awardDraft, notes: e.target.value })} /></FormField>
+            <button onClick={saveAward} style={{ width: "100%", background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 6 }}>
+              {editingAwardId ? "Save changes" : "Add"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Export modal */}
+      {showExport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowExport(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 620, maxHeight: "86vh", display: "flex", flexDirection: "column", padding: 24, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h2 className="cl-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>Snapshot</h2>
+              <button onClick={() => setShowExport(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+            </div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14 }}>Copy this and paste it to Claude in chat — useful when writing a proposal's "novelty vs. state of the art" section, or a promotion/tenure case.</div>
+            <textarea readOnly value={buildSnapshot()} style={{ flex: 1, minHeight: 320, fontSize: 12, fontFamily: "monospace", padding: 12, borderRadius: 4, border: "1px solid #C7CCD3", background: "#fff", color: INK, resize: "vertical", marginBottom: 14 }} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={copySnapshot} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy to clipboard"}
+update("evidenceInbox"
+
+                const validSubsections = (act.subsectionsconst newEntries = activities.map                cycleData.evidenceInbox.filter              </button>
+              <button onClick={downloadSnapshot} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "#fff", color: INK, border: "1px solid #C7CCD3", borderRadius: 3, padding: "11px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+                <Download size={16} /> Download .txt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+  return App;
+})();
+
+
+const SpGlobalStyle = () => (
+  <style>{`
+One activity may fit more than one subsection    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+    .sp-display { font-family: 'Source Serif 4', Georgia, serif; letter-spacing: -0.01em; }
+    .sp-mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; letter-spacing: -0.01em; }
+    .sp-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
+    .sp-spin { animation: sp-spin-anim 0.9s linear infinite; }
+    @keyframes sp-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  `}</style>
+);
+
+function SpEmptyState({ text }) {
+  return <div style={{ textAlign: "center", padding: "40px 20px", color: SP_MUTED, fontSize: 13.5, border: "1px dashed #C7CCD3", borderRadius: 4 }}>{text}</div>;
+}
+
+function TrendsTab() {
+  const [data, setData] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get(SkillsAndTrendsStorageKey);
+        setData(res && res.value ? JSON.parse(res.value) : SEED_SKILLS_TRENDS);
+      } catch (e) {
+        setData(SEED_SKILLS_TRENDS);
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || !data) return;
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(SkillsAndTrendsStorageKey, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Try again in a moment.");
+      }
+    })();
+  }, [data, loaded]);
+
+  if (!data) return null;
+
+  async function searchTrends() {
+    setSearching(true);
+    setSearchError("");
+    try {
+      const content = [
+        {
+          type: "text",
+          text:
+            "Search the web for current, recent developments (from the last few months) in: additive manufacturing, mechanical metamaterials, recycled/upcycled polymer engineering, and circular economy engineering for manufacturing. " +
+            "Find real items across these categories: (1) notable research breakthroughs or high-impact papers, (2) flagship research coverage in science/engineering media or magazines (e.g. Nature news, IEEE Spectrum, Advanced Science News), (3) notable startups or commercial ventures in this space, (4) emerging technical trends worth knowing about. " +
+            "For each item found, give: title, a one-sentence summary, the source/publication, an approximate date, and a category (one of: Breakthrough, Media Spotlight, Startup, Trend). Find up to 8 real, current items — do not invent anything; only report what your search actually surfaces.\n\n" +
+            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"items":[{"title":"","summary":"","source":"","date":"","category":"Trend"}]}',
+        },
+      ];
+      const parsed = await claudeCall(content, true);
+      const newItems = (parsed.items || []).map((it) => ({ ...it, id: Date.now().toString() + Math.random().toString(36).slice(2), foundAt: new Date().toISOString() }));
+      setData((p) => ({ ...p, trendItems: [...newItems, ...p.trendItems], lastTrendSearch: new Date().toISOString() }));
+    } catch (e) {
+      setSearchError("Could not complete the search right now. Try again in a moment.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function removeTrendItem(id) {
+    setData((p) => ({ ...p, trendItems: p.trendItems.filter((t) => t.id !== id) }));
+    setConfirmDelete(null);
+  }
+
+  const CATEGORY_COLOR = { Breakthrough: SP_GREEN, "Media Spotlight": "#6B4FA0", Startup: SP_AMBER, Trend: SP_TEAL };
+  const CATEGORY_ICON = { Breakthrough: TrendingUp, "Media Spotlight": Newspaper, Startup: Compass, Trend: BookOpen };
+
+  return (
+    <div>
+      {error && <div style={{ background: "#FAF1DE", border: "1px solid " + SP_AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{error}</div>}
+
+      <div style={{ fontSize: 12.5, color: SP_MUTED, marginBottom: 16, lineHeight: 1.5 }}>
+        Breakthroughs, media spotlights, startups, and emerging trends in additive manufacturing, mechanical metamaterials, and recycled-polymer engineering — searched live, not a static feed.
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 11.5, color: "#9AA2AF" }}>{data.lastTrendSearch ? `Last searched ${new Date(data.lastTrendSearch).toLocaleString()}` : "Never searched yet"}</div>
+        <button onClick={searchTrends} disabled={searching} style={{ display: "flex", alignItems: "center", gap: 6, background: searching ? "#C7CCD3" : SP_TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: searching ? "default" : "pointer" }}>
+          {searching ? <Loader2 size={14} className="sp-spin" /> : <Search size={14} />} {searching ? "Searching…" : "Search for what's new"}
+        </button>
+      </div>
+      {searchError && <div style={{ fontSize: 12.5, color: SP_AMBER, marginBottom: 16 }}>{searchError}</div>}
+
+      {data.trendItems.length === 0 ? (
+        <SpEmptyState text="Nothing found yet — click 'Search for what's new' to scan the field." />
+      ) : (
+        data.trendItems.map((t) => {
+          const Icon = CATEGORY_ICON[t.category] || BookOpen;
+          return (
+            <div key={t.id} className="sp-card" style={{ background: "#fff", border: "1px solid " + SP_LINE, borderRadius: 6, padding: "14px 18px", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span className="sp-mono" style={{ fontSize: 10, background: (CATEGORY_COLOR[t.category] || SP_MUTED) + "22", color: CATEGORY_COLOR[t.category] || SP_MUTED, padding: "2px 8px", borderRadius: 8, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                      <Icon size={10} /> {t.category}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#9AA2AF" }}>{t.source}{t.date ? ` · ${t.date}` : ""}</span>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: SP_INK }}>{t.title}</div>
+                  <div style={{ fontSize: 12.5, color: "#2E3742", marginTop: 4 }}>{t.summary}</div>
+                </div>
+                <button onClick={() => setConfirmDelete(confirmDelete === t.id ? null : t.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, flexShrink: 0 }}><Trash2 size={13} color="#9AA2AF" /></button>
+              </div>
+              {confirmDelete === t.id && (
+                <div style={{ marginTop: 10, background: "#FAF1DE", border: "1px solid " + SP_AMBER, borderRadius: 4, padding: "8px 12px", fontSize: 12.5, color: "#6B5015", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  Remove this item?
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => removeTrendItem(t.id)} style={{ background: SP_RED, color: "#fff", border: "none", borderRadius: 3, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>Remove</button>
+                    <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid #C7CCD3", borderRadius: 3, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("funding");
+
+  const TABS = [
+    { id: "funding", label: "Funding Pipeline", icon: DollarSign },
+    { id: "competitive", label: "Competitive Landscape & Awards", icon: Award },
+    { id: "trends", label: "Trends & Field Intel", icon: Compass },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: SP_PAPER, fontFamily: "'Inter', sans-serif" }}>
+      <SpGlobalStyle />
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 80px" }}>
+
+        <div style={{ borderBottom: "2px solid " + SP_INK, paddingBottom: 20, marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="sp-mono" style={{ width: 40, height: 40, border: "1.5px solid " + SP_INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: SP_INK, flexShrink: 0 }}>aM²</div>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", color: SP_MUTED, textTransform: "uppercase", marginBottom: 4 }}>AN Personal Assistant · Module 02</div>
+            <h1 className="sp-display" style={{ fontSize: 26, fontWeight: 700, color: SP_INK, margin: 0 }}>Strategic Positioning</h1>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 6, background: tab === t.id ? SP_INK : "#fff", color: tab === t.id ? "#fff" : SP_INK, border: "1px solid " + (tab === t.id ? SP_INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
+                <Icon size={13} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === "funding" && <FundingPipelineSub />}
+        {tab === "competitive" && <CompetitiveLandscapeSub />}
+        {tab === "trends" && <TrendsTab />}
+      </div>
+    </div>
+  );
+}
+
+  return App;
+})();
+
+
+const APSModule = (function() {
+const STORAGE_KEY = "am2r-aps-v1";
+
+const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
+const RED = "#B3392C";
+
+const Q_RANKS = ["Q1 (Top 10%)", "Q1", "Q2", "Q3", "Q4"];
+const Q_SCORE = { "Q1 (Top 10%)": 4, "Q1": 3, "Q2": 2, "Q3": 1, "Q4": 0.1 };
+
+const SEED_APS27_GENERAL_INFO = {
+  name: "Aamer Nazir",
+  kfupmId: "7230113",
+  college: "Mechanical Engineering Dept.",
+  academicCollege: "College of Engineering and Physics (CEP)",
+  rank: "Assistant Professor",
+  email: "aamer.nazir@kfupm.edu.sa",
+  joiningDate: "09-01-2023",
+  primaryAffiliation: "Advanced Materials IRC",
+  otherAffiliations: "No Affiliations",
+  orcid: "0000-0002-2827-0219",
+  scopusId: "57194461528",
+};
+
+const SEED_APS27 = {
+  status: "In Progress",
+  cyclePeriodNote: "Teaching / Societal Benefits / Behavior: 2-semester cycle (Term 261 + upcoming spring term). Interdisciplinary Research (R3) & Research Leadership (R6): 1 calendar year (Jan–Dec 2026). Industry Engagement (R4) & Commercialization (R5): Sep 1, 2026 – Aug 31, 2027.",
+  evidenceInbox: [],
+  generalInfo: SEED_APS27_GENERAL_INFO,
+  teaching: {
+    t1Courses: [],
+    t2Objectives: [], t2Strategies: [], t2Industry: [], t2Updates: [], t2CourseFile: [], t2Advising: [],
+    t3TermEvals: [], t3YearEvals: [],
+    t4Count: 0,
+    t4Comment: "Number of courses taught that are owned by other departments, wholly or partly (not co-listed, min 30% participation), also helping new departments in teaching newly introduced courses.",
+    t5NewPrograms: [], t5NewCourses: [], t5TeachingNewPrograms: [],
+    t6Availability: [], t6CoopProjects: [], t6FieldTrips: [],
+  },
+  research: {
+    r1Publications: [],
+    r1Notes: "",
+    r2Citations: [],
+    r2Notes: "",
+    r3Projects: [],
+    r4FundedValue: 0,
+    r4Comment: "Total value, in Saudi Riyals, of industry-funded projects initiated in the evaluation covered period in which the faculty member was listed as a primary investigator or co-investigator.",
+    r5PatentsCommercialized: "No patent has been commercialized",
+    r5ProjectsCommercialized: "No project has been commercialized",
+    r6Leading: [], r6Conferences: [], r6Mentorship: [], r6Recognitions: [],
+  },
+  societal: {
+    s1Bullets: [],
+    s2PromotingBullets: [], s2EnvironmentBullets: [], s2AccreditationBullets: [],
+    s3Voluntary: [], s3Mawhiba: [], s3Outreach: [], s3SocietyDevelopment: [],
+  },
+  behavior: {
+    b1Bullets: [], b1Violations: [],
+    b2Bullets: [], b3Bullets: [], b4Bullets: [],
+  },
+  evaluationNotes: "",
+  subsectionNotes: {},
+  ignoredQualityIssues: [],
+  advisorSuggestions: {},
+};
+
+const SEED_APS = {
+  activeCycle: "APS27",
+  cycles: {
+    APS26: {
+
+  status: "Submitted",
+  cyclePeriodNote: "Teaching / Societal Benefits / Behavior: 2-semester cycle (Term 251 + 252). Interdisciplinary Research (R3) & Research Leadership (R6): 1 calendar year (Jan–Dec 2025). Industry Engagement (R4) & Commercialization (R5): Sep 1, 2025 – Aug 31, 2026.",
+  evidenceInbox: [],
+  generalInfo: {
+    name: "Aamer Nazir",
+    kfupmId: "7230113",
+    college: "Mechanical Engineering Dept.",
+    academicCollege: "College of Engineering and Physics (CEP)",
+    rank: "Assistant Professor",
+    email: "aamer.nazir@kfupm.edu.sa",
+    joiningDate: "09-01-2023",
+    primaryAffiliation: "Advanced Materials IRC",
+    otherAffiliations: "No Affiliations",
+    orcid: "0000-0002-2827-0219",
+    scopusId: "57194461528",
+  },
+  teaching: {
+    t1Courses: [
+      { courseCode: "ME606", section: "10", creditHours: 3.0, semester: "202510" },
+      { courseCode: "RES200", section: "78", creditHours: 2.0, semester: "202510" },
+      { courseCode: "RES201", section: "52", creditHours: 2.0, semester: "202510" },
+      { courseCode: "ME582", section: "01", creditHours: 3.0, semester: "202510" },
+      { courseCode: "ME301", section: "F07", creditHours: 3.0, semester: "202510" },
+      { courseCode: "ME610", section: "114", creditHours: 6.0, semester: "202510" },
+      { courseCode: "ME712", section: "12", creditHours: 9.0, semester: "202510" },
+      { courseCode: "ME587", section: "01", creditHours: 3.0, semester: "202520" },
+      { courseCode: "ME302", section: "F03", creditHours: 3.0, semester: "202520" },
+      { courseCode: "ME610", section: "103", creditHours: 6.0, semester: "202520" },
+      { courseCode: "ME712", section: "18", creditHours: 9.0, semester: "202520" },
+    ],
+    t2Objectives: [
+      "Direct assessment confirms that all learning objectives of courses taught in 251 and 252 are satisfied.",
+    ],
+    t2Strategies: [
+      "Member of Adhoc Committee led by Dr. Jafar: ME301 improvement in 251.",
+      "Design Courses Improvement Committee led by Dr. Bari: worked to improve ME design courses, with several discussion sessions for improving instructional strategies in 252.",
+      "A newly acquired tool, \"Feedbackfruits\" (available in BB), was used in ME302 and ME587 for the first time in 251 and 252.",
+      "Inclusive learning seminar and workshop participation and learned about how to make learning materials more inclusive for all types of students in 251.",
+    ],
+    t2Industry: [],
+    t2Updates: [
+      "Updated ME582 and ME302 courses for implementing active learning, flipped classroom, IBL, and PBL strategies to the classrooms of both courses.",
+      "Involved in Additive Manufacturing lab development crucial for ME587 and ME408 courses.",
+    ],
+    t2CourseFile: [
+      "Completed and submitted course file of ME587 in term 252.",
+      "Completed and submitted course file of ME582 in term 251.",
+      "Completed and submitted course file of ME301 in term 251.",
+      "Completed and submitted course file of ME302 in term 252.",
+    ],
+    t2Advising: [
+      "Advising 3 PhD, 1 MS, and officially Co-Advising (actual advisor) 1 PhD and 1 MS student.",
+      "Advisor of 1 MX student projects in 242 in course ME619.",
+      "Advisor of 2 internship student of ME398 in 251.",
+      "Team design mentorship of two teams (ME related aspects) 1 in 251 and 1 in 252.",
+      "Advisor of 4 UG level research students (3 in RES200 and 1 in RES201) in 251 and 252. Two UG research papers already accepted in JURI Journal.",
+    ],
+    t3TermEvals: [
+      { term: "202510", evaluation: 9.46 },
+      { term: "202520", evaluation: 8.07 },
+    ],
+    t3YearEvals: [{ year: "2025", evaluation: 8.77 }],
+    t4Count: 0,
+    t4Comment: "Number of courses taught that are owned by other departments, wholly or partly (not co-listed, min 30% participation), also helping new departments in teaching newly introduced courses.",
+    t5NewPrograms: [
+      "Program Internal Reviewer: MSc in Smart and Sustainable Cities (SSC) from Architecture and City Design Department.",
+    ],
+    t5NewCourses: [
+      "Working on development of new graduate level course: Advanced Design and Additive Manufacturing. Several lecture material preparations have been completed.",
+    ],
+    t5TeachingNewPrograms: [
+      "Organized and conducted two 3d printing lab sessions for Material Science department UG students to teach them 3dprinting, process and 3dprinting software use. Printed 3 molds for fabricating epoxy composites for MSE307 in 252.",
+      "Updated ME582 and ME302 courses for implementing active learning, flipped classroom, IBL, and PBL strategies to the classrooms of both courses.",
+    ],
+    t6Availability: [
+      "Always available and engaged with the students during office hours.",
+      "Always available via teams for quick queries from students (even on weekends).",
+    ],
+    t6CoopProjects: [
+      "Advising 3 PhD, 1 MS, and officially Co-Advising (actual advisor) 1 PhD and 1 MS student.",
+      "Advisor of 2 internship student of ME398 in 251.",
+      "Team design mentorship of two teams (ME related aspects) 1 in 251 and 1 in 252.",
+      "Advisor of 4 UG level research students (3 in RES200 and 1 in RES201) in 251 and 252. Two UG research papers already accepted in JURI Journal.",
+    ],
+    t6FieldTrips: [],
+  },
+  research: {
+    r1Publications: [
+      { title: "Design and mechanical performance of nature-inspired novel hybrid triply periodic minimal surface lattice structures fabricated using material extrusion", year: 2024, qRank: "Q2" },
+      { title: "Investigating the Effect of Design Parameters on the Mechanical Performance of Contact Wave Springs Designed for Additive Manufacturing", year: 2024, qRank: "Q2" },
+      { title: "3D and 4D printing", year: 2024, qRank: "Q1 (Top 10%)" },
+      { title: "Big data, machine learning, and digital twin assisted additive manufacturing", year: 2024, qRank: "Q1 (Top 10%)" },
+      { title: "Superior strength and energy absorption capability of LPBF metallic functionally graded lattice structures", year: 2024, qRank: "Q1 (Top 10%)" },
+      { title: "Upcycling end-of-life carbon fiber in high-performance CFRP composites by the material extrusion additive manufacturing process", year: 2024, qRank: "Q2" },
+      { title: "A comparative bio-mechanical performance assessment of additively manufactured bone scaffolds using different beta Ti alloys and Gyroid based cellular structure", year: 2025, qRank: "Q1 (Top 10%)" },
+      { title: "Damping Optimization and Energy Absorption of Mechanical Metamaterials for Enhanced Vibration Control Applications", year: 2025, qRank: "Q1" },
+      { title: "Effect of fiber steering and drilling in notched continuous fiber 3D-printed composites", year: 2025, qRank: "Q1" },
+      { title: "Tensile loading response of strut-based mechanical metamaterials fabricated using selective laser sintering process", year: 2025, qRank: "Q1" },
+      { title: "Design for Additive Manufacturing Driven Multi-Layered Hybrid Mechanical Metamaterials for Improved Mechanical Performance", year: 2025, qRank: "Q2" },
+      { title: "Revolutionizing the Future of Smart Materials", year: 2025, qRank: "Q1 (Top 10%)" },
+      { title: "Plastic waste to 3D printing filaments preparation, mechanical and surface characterization for sustainable application to complex non-functional geometries", year: 2025, qRank: "Q2" },
+      { title: "Design, additive manufacturing, and machine learning prediction of multi-material diamond TPMS structure for improved mechanical performance", year: 2025, qRank: "Q1" },
+      { title: "Advanced Mechanical Metamaterials", year: 2025, qRank: "Q2" },
+      { title: "A machine learning–integrated framework for mechanical property prediction of FDM–printed PLA", year: 2025, qRank: "Q1" },
+      { title: "Thermal variables evolution inside melt pool during LPBF of 316L stainless steel", year: 2025, qRank: "Q1" },
+      { title: "High Strength-to-Weight Ratio Mechanical Metamaterials Targeting Top Left Quadrant of Ashby Charts", year: 2025, qRank: "Q2" },
+      { title: "Buckling-stretch-buckling dominated hybrid mechanical metamaterials fabricated from 3D-printed photopolymer", year: 2025, qRank: "Q1 (Top 10%)" },
+      { title: "Numerical and experimental investigation of vibration and damping performance of additively manufactured mechanical metamaterials", year: 2025, qRank: "Q1" },
+    ],
+    r1Notes: "",
+    r2Citations: [
+      { title: "Design for additive manufacturing of variable dimension wave springs analyzed using experimental and finite element methods", year: 2021, count: 31 },
+      { title: "Investigation of compression and buckling properties of a novel surface-based lattice structure manufactured using multi jet fusion technology", year: 2021, count: 25 },
+      { title: "The effect of functional gradient material distribution and patterning on torsional properties of lattice structures manufactured using multijet fusion technology", year: 2021, count: 28 },
+      { title: "Design, optimization, and selective laser melting of vin tiles cellular structure-based hip implant", year: 2021, count: 50 },
+      { title: "Effect of fillets on mechanical properties of lattice structures fabricated using multi-jet fusion technology", year: 2021, count: 31 },
+      { title: "The rise of 3D Printing entangled with smart computer aided design during COVID-19 era", year: 2021, count: 79 },
+      { title: "Investigation of torsional properties of surface- and strut-based lattice structures manufactured using multiJet fusion technology", year: 2022, count: 16 },
+      { title: "Design and performance evaluation of multi-helical springs fabricated by Multi Jet Fusion additive manufacturing technology", year: 2022, count: 22 },
+      { title: "Design and Evaluation of Asphalt Concrete Incorporating Plastic Aggregates Fabricated Using 3D Printing Technology", year: 2022, count: 6 },
+      { title: "WSdesign", year: 2022, count: 9 },
+      { title: "Design and performance evaluation of multifunctional midsole using functionally gradient wave springs produced using multijet fusion additive manufacturing process", year: 2022, count: 20 },
+      { title: "Parametric investigation of functionally gradient wave springs designed for additive manufacturing", year: 2022, count: 12 },
+      { title: "Design for Additive Manufacturing and Investigation of Surface-Based Lattice Structures for Buckling Properties Using Experimental and Finite Element Methods", year: 2022, count: 32 },
+      { title: "Mechanical Performance of Lightweight-Designed Honeycomb Structures Fabricated Using Multijet Fusion Additive Manufacturing Technology", year: 2022, count: 55 },
+      { title: "Multi-material additive manufacturing", year: 2023, count: 705 },
+      { title: "Evaluating flexural response of additively manufactured functionally graded surface-based lattice structured cantilever beams", year: 2023, count: 13 },
+      { title: "Effect of additive manufactured hybrid and functionally graded novel designed cellular lattice structures on mechanical and failure properties", year: 2023, count: 46 },
+      { title: "Deep learning based porosity prediction for additively manufactured laser powder-bed fusion parts", year: 2023, count: 23 },
+      { title: "Flexural Properties of Periodic Lattice Structured Lightweight Cantilever Beams Fabricated Using Additive Manufacturing", year: 2023, count: 15 },
+      { title: "Design and mechanical performance of nature-inspired novel hybrid triply periodic minimal surface lattice structures fabricated using material extrusion", year: 2024, count: 47 },
+      { title: "Investigating the Effect of Design Parameters on the Mechanical Performance of Contact Wave Springs Designed for Additive Manufacturing", year: 2024, count: 7 },
+      { title: "3D and 4D printing", year: 2024, count: 59 },
+      { title: "Big data, machine learning, and digital twin assisted additive manufacturing", year: 2024, count: 194 },
+      { title: "Superior strength and energy absorption capability of LPBF metallic functionally graded lattice structures", year: 2024, count: 41 },
+      { title: "Upcycling end-of-life carbon fiber in high-performance CFRP composites by the material extrusion additive manufacturing process", year: 2024, count: 7 },
+      { title: "A comparative bio-mechanical performance assessment of additively manufactured bone scaffolds using different beta Ti alloys and Gyroid based cellular structure", year: 2025, count: 20 },
+      { title: "Damping Optimization and Energy Absorption of Mechanical Metamaterials for Enhanced Vibration Control Applications", year: 2025, count: 33 },
+      { title: "Effect of fiber steering and drilling in notched continuous fiber 3D-printed composites", year: 2025, count: 3 },
+      { title: "Tensile loading response of strut-based mechanical metamaterials fabricated using selective laser sintering process", year: 2025, count: 5 },
+      { title: "Design for Additive Manufacturing Driven Multi-Layered Hybrid Mechanical Metamaterials for Improved Mechanical Performance", year: 2025, count: 8 },
+      { title: "Revolutionizing the Future of Smart Materials", year: 2025, count: 33 },
+      { title: "Plastic waste to 3D printing filaments preparation, mechanical and surface characterization for sustainable application to complex non-functional geometries", year: 2025, count: 3 },
+      { title: "Design, additive manufacturing, and machine learning prediction of multi-material diamond TPMS structure for improved mechanical performance", year: 2025, count: 11 },
+      { title: "Advanced Mechanical Metamaterials", year: 2025, count: 23 },
+      { title: "A machine learning–integrated framework for mechanical property prediction of FDM–printed PLA", year: 2025, count: 14 },
+      { title: "Thermal variables evolution inside melt pool during LPBF of 316L stainless steel", year: 2025, count: 11 },
+      { title: "High Strength-to-Weight Ratio Mechanical Metamaterials Targeting Top Left Quadrant of Ashby Charts", year: 2025, count: 0 },
+      { title: "Buckling-stretch-buckling dominated hybrid mechanical metamaterials fabricated from 3D-printed photopolymer", year: 2025, count: 7 },
+      { title: "Numerical and experimental investigation of vibration and damping performance of additively manufactured mechanical metamaterials", year: 2025, count: 5 },
+    ],
+    r2Notes: "",
+    r3Projects: [
+      { center: "IRC-IMR", title: "Dynamic Characterizations of 3D printed Mechanical metamaterial lattice structure" },
+      { center: "IRC-IMR", title: "Design, optimization and mechanical characterization of sandwich structures fabricated using additive manufacturing for packaging applications" },
+      { center: "Humanity Microgrant with Bahir Dar University, Ethiopia", title: "Additive Manufactured Smart Orthopedic Innovation to Address mHealth Technology Challenges in the Global South" },
+    ],
+    r4FundedValue: 0.0,
+    r4Comment: "Total value, in Saudi Riyals, of industry-funded projects initiated in the evaluation covered period in which the faculty member was listed as a primary investigator or co-investigator.",
+    r5PatentsCommercialized: "No patent has been commercialized",
+    r5ProjectsCommercialized: "No project has been commercialized",
+    r6Leading: [
+      "Initiated Additive Manufacturing and Metamaterials research group (AM2) in 2025.",
+      "Leading Additive Manufacturing and Metamaterials research group (AM2) research activities (as PI/Advisor), one Center-funded project, several projects as Co-I, and 1 microgrant project with Ethiopia.",
+      "Leading one Postdoc fellow research project on Multimaterial AM Joining.",
+    ],
+    r6Conferences: [
+      "Technical Committee member of 2025 International Conference on Advanced Materials and Equipment Manufacturing, Zhengzhou, China, December 4-6, 2025.",
+      "Technical Committee member of ICEIM2026 conference to be held in August 5-7 in Kyoto, Japan.",
+      "Technical committee member, 4th International Conference on Mechatronics and Mechanical Engineering, Aug. 22-24, 2025, Dalian, China.",
+      "Scientific committee member of CIRP CAT 2026, invited by Dr. Jawad Qureshi from University of Alberta, Canada.",
+      "Served as peer reviewer for an international project proposal titled \"UG-T1-2026-103428: Ibrahim Deiab - Turning Local Waste into Sustainable Bioplastics for Ontario's Farmers and Food Producers\" from Department of ME, University of Guelph, Ontario, Canada.",
+    ],
+    r6Mentorship: [
+      "Advising 3 PhD, 1 MS, and officially Co-Advising (actual advisor) 1 PhD and 1 MS student.",
+      "Involved in several graduate student thesis/dissertation committees.",
+      "Advisor of 2 internship student of ME398 in 251.",
+      "Team design mentorship of two teams (ME related aspects) 1 in 251 and 1 in 252.",
+      "Supervised ME495 UG student, he published in international Journal paper as first author.",
+      "Advisor of 4 UG level research students (3 in RES200 and 1 in RES201) in 251 and 252. Two UG research papers already accepted in JURI Journal.",
+      "Joined SBR (Student, Breakthrough, research) research program for mentoring UG research.",
+    ],
+    r6Recognitions: [
+      "Recognized as Stanford/Elsevier Top 2% Researcher (2024-Present) worldwide.",
+      "To date, the Top cited and Top downloaded article titled \"Multi-material Additive Manufacturing\" by Materials & Design Journal (IF 8.2, Q1).",
+      "Till date, Top downloaded article titled \"Big data, machine learning, and digital twin assisted additive manufacturing (2024)\" by Materials & Design Journal (IF 8.2, Q1).",
+      "Editorial board member of Discover Materials Journal by Springer since 2024 (IF: 5.8).",
+      "Editorial board member of Discover Mechanical Engineering Journal by Springer (IF: 2.9).",
+      "Young Editorial Board member of Advanced Manufacturing Journal by ELSP Publishing (Since 2024).",
+      "Topic Editor and Review Editor of Frontiers in Mechanical Engineering Journal since 2022 (IF: 3).",
+      "Peer reviewer of Top Journals (several ranked in top 20 percent in Manufacturing Category) such as Additive Manufacturing Journal, Materials & Design, Composite Structures, Progress in Additive Manufacturing and several other Journals.",
+      "Member of the International Association of Engineers since March 2022.",
+    ],
+  },
+  societal: {
+    s1Bullets: [
+      "Already initiated working on first ever Saudi made Hip Implant design and development.",
+      "Initiating work on smart insole design and development targeting diabetic user in the Kingdom.",
+      "One of the above proof of concept will be submitted to DTV next cohort.",
+    ],
+    s2PromotingBullets: [
+      "Conducted a public Seminar for promoting KFUPM and research work in TU Hamburg University in Germany. This trip was partially funded by Technical University of Hamburg Germany. Met with several Profs. from several departments and Centers to discuss potential collaboration between KFUPM and TU Hamburg.",
+      "Initiated Additive Manufacturing and Metamaterials research group (AM2) in 2025. Launched LinkedIn Page where we promote KFUPM name by sharing articles, news, conferences, collaborations etc. in weekly publishing frequency.",
+      "Oral presentation at 41st International Conference of Polymers Processing Society (PPS41), Auckland, New Zealand.",
+      "Participated in 17th International conference on materials chemistry (MC17), Edinburgh, UK.",
+    ],
+    s2EnvironmentBullets: [
+      "Department Committees: Member of self-assessment committee. In particular, my responsibility was to work on APF2 for UG program and also two graduate programs.",
+      "Adhoc committee: ME 301 Committee Review for improvement in 251.",
+      "Graduate admission interviews committees in 251 and 252.",
+      "Adhoc subcommittee for recruiting lab engineer for AM lab in 251.",
+      "Program Internal Reviewer: MSc in Smart and Sustainable Cities (SSC) from Architecture and City Design Department.",
+      "SBR Research Program as a Mentor.",
+      "Program Review Assignment for MS and PhD in 251 and 252.",
+      "Helping DAD to organize reporting week activities for 261.",
+    ],
+    s2AccreditationBullets: [
+      "Member of self-assessment committee. In particular, my responsibility was to work on APF2 for UG program and also two graduate programs.",
+      "Adhoc committee: ME 301 Committee Review for improvement in 251.",
+    ],
+    s3Voluntary: [
+      "Voluntarily advising a high school student for IBDAA program even though she didn't register for Mawhiba program.",
+      "Helping students for their SDP even when not their Advisor/co-Advisor.",
+      "Helping DAD to organize reporting week activities for 261.",
+    ],
+    s3Mawhiba: [
+      "Conducted several meetings with Mawhiba student in 253.",
+    ],
+    s3Outreach: [
+      "Joined meeting of Deep Tech Ventures program in 251.",
+      "Launched outreach emails to UG students who performed excellently in machine design courses to attract them to design research.",
+      "Attracted two excellent postdocs.",
+      "Always try to attract excellent graduate students.",
+    ],
+    s3SocietyDevelopment: [
+      "Visited King Fahd Specialist Hospital in Dammam to meet Orthopedic Surgeon to discuss design and development of first ever Saudi-made Hip Implant.",
+      "Conducted a public Seminar for promoting KFUPM and research work in TU Hamburg University in Germany. This trip was partially funded by Technical University of Hamburg Germany.",
+      "Teamed up and submitted a presentation and participated in KFUPM Rally.",
+    ],
+  },
+  behavior: {
+    b1Bullets: [
+      "Already completed required lab safety courses conducted online via Fusion.",
+      "Never have had any fire incident.",
+      "Never smoke.",
+      "No traffic violation.",
+    ],
+    b1Violations: [],
+    b2Bullets: [
+      "Always try to guide the students and peers in a constructive and positive manner to create a positive working space.",
+    ],
+    b3Bullets: [
+      "Physically available in office every working day, even also available in office on Friday for a few hours.",
+      "Actively working with several colleagues within the department and also from several other departments and centers to improve research collaborations as well as teaching quality and impact.",
+    ],
+    b4Bullets: [
+      "Working on several research projects with colleagues from several departments such as ISE, Chemical, Materials Science, Chemistry, Bioengineering and several Research Centers.",
+    ],
+  },
+  evaluationNotes: "",
+  subsectionNotes: {},
+  ignoredQualityIssues: [],
+  advisorSuggestions: {},
+    },
+    APS27: SEED_APS27,
+  },
+};
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(",")[1]);
+    r.onerror = () => reject(new Error("Could not read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+async function claudeExtractJSON(content) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content }] }),
+  });
+  const result = await response.json();
+  if (result.error) {
+    throw new Error(`API error: ${result.error.message || result.error.type || "unknown"}`);
+  }
+  if (result.stop_reason === "max_tokens") {
+    throw new Error("The response was cut off before finishing — try a shorter note, or try again.");
+  }
+  const textBlock = (result.content || []).find((b) => b.type === "text");
+  if (!textBlock) throw new Error(`No text response came back. Raw result: ${JSON.stringify(result).slice(0, 300)}`);
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`No JSON found in the response. What it actually said: "${textBlock.text.slice(0, 300)}"`);
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error("The response wasn't valid JSON (likely cut off or malformed) — try again.");
+  }
+}
+
+// Subsections eligible for evidence tagging (excludes T1/R1/R2/R3/T3, which are data tables, not narrative bullets)
+const SUBSECTION_MAP = {
+  T2_OBJECTIVES: { section: "teaching", field: "t2Objectives", label: "T2 — Satisfying the learning objectives" },
+  T2_STRATEGIES: { section: "teaching", field: "t2Strategies", label: "T2 — Incorporating new instructional strategies" },
+  T2_INDUSTRY: { section: "teaching", field: "t2Industry", label: "T2 — Course industry engagement" },
+  T2_UPDATES: { section: "teaching", field: "t2Updates", label: "T2 — Course updates and revisions" },
+  T2_COURSEFILE: { section: "teaching", field: "t2CourseFile", label: "T2 — Completing the course file" },
+  T2_ADVISING: { section: "teaching", field: "t2Advising", label: "T2 — Advising MS and PhD thesis students" },
+  T4: { section: "teaching", field: null, label: "T4 — Interdisciplinary Teaching (count field, not bullets)" },
+  T5_PROGRAMS: { section: "teaching", field: "t5NewPrograms", label: "T5 — Developing new programs (e.g. CX, MX)" },
+  T5_COURSES: { section: "teaching", field: "t5NewCourses", label: "T5 — Developing new courses" },
+  T5_TEACHING: { section: "teaching", field: "t5TeachingNewPrograms", label: "T5 — Teaching in new programs" },
+  T6_AVAILABILITY: { section: "teaching", field: "t6Availability", label: "T6 — Availability/engagement outside classroom" },
+  T6_COOP: { section: "teaching", field: "t6CoopProjects", label: "T6 — Coop, summer training, special projects" },
+  T6_FIELDTRIPS: { section: "teaching", field: "t6FieldTrips", label: "T6 — Field trips (industry, etc.)" },
+  R3: { section: "research", field: "r3Projects", isProjectRow: true, label: "R3 — Interdisciplinary Research (participating in or contributing to a jointly-owned project — not necessarily leading it; period: calendar year Jan–Dec)" },
+  R4: { section: "research", field: null, label: "R4 — Industry Engagement (value field, not bullets; period: Sep 1 – Aug 31)" },
+  R6_LEADING: { section: "research", field: "r6Leading", label: "R6 — Leading research activities / teams / areas — ONLY if this person is the actual leader, PI, or organizer, not a contributor or member (period: calendar year Jan–Dec)" },
+  R6_CONF: { section: "research", field: "r6Conferences", label: "R6 — Organizing conferences (period: calendar year Jan–Dec)" },
+  R6_MENTOR: { section: "research", field: "r6Mentorship", label: "R6 — Mentoring young researchers (period: calendar year Jan–Dec)" },
+  R6_RECOG: { section: "research", field: "r6Recognitions", label: "R6 — Recognition by professional organizations (period: calendar year Jan–Dec)" },
+  S1: { section: "societal", field: "s1Bullets", label: "S1 — Venture Startups" },
+  S2_PROMOTE: { section: "societal", field: "s2PromotingBullets", label: "S2 — Promoting university's name" },
+  S2_ENV: { section: "societal", field: "s2EnvironmentBullets", label: "S2 — Contribution towards university's environment" },
+  S2_ACCRED: { section: "societal", field: "s2AccreditationBullets", label: "S2 — Fulfilling accreditation requirements" },
+  S3_VOLUNTARY: { section: "societal", field: "s3Voluntary", label: "S3 — Voluntary work" },
+  S3_MAWHIBA: { section: "societal", field: "s3Mawhiba", label: "S3 — Support students for Mawhiba, Rhodes, etc." },
+  S3_OUTREACH: { section: "societal", field: "s3Outreach", label: "S3 — Outreach programs" },
+  S3_SOCIETY: { section: "societal", field: "s3SocietyDevelopment", label: "S3 — Society development" },
+  B1: { section: "behavior", field: "b1Bullets", label: "B1 — Safety Adherence" },
+  B2: { section: "behavior", field: "b2Bullets", label: "B2 — Creating a Positive Environment" },
+  B3: { section: "behavior", field: "b3Bullets", label: "B3 — Presence & Accessibility" },
+  B4: { section: "behavior", field: "b4Bullets", label: "B4 — Active Engagement" },
+};
+const TAGGABLE_SUBSECTIONS = Object.entries(SUBSECTION_MAP).filter(([, v]) => v.field);
+
+// APS27 uses different contribution windows for different existing subsections.
+// The same policy is used by the prompt, the review card, and approval logic.
+const APS27_PERIOD_POLICY = {
+  terms: "Teaching / Societal Benefits / Behavior: 2-semester cycle (Term 261 + upcoming spring term)",
+  calendar: "Interdisciplinary Research (R3) & Research Leadership (R6): 1 calendar year (Jan–Dec 2026)",
+  industry: "Industry Engagement (R4) & Commercialization (R5): Sep 1, 2026 – Aug 31, 2027",
+};
+
+function aps27PeriodGroup(code) {
+  if (!code) return null;
+  const meta = SUBSECTION_MAP[code];
+  if (meta && ["teaching", "societal", "behavior"].includes(meta.section)) return "terms";
+  if (code === "R3" || code.startsWith("R6")) return "calendar";
+  if (code === "R4" || code === "R5") return "industry";
+  return null;
+}
+
+function aps27PeriodPolicyFor(code) {
+  const group = aps27PeriodGroup(code);
+  return group ? APS27_PERIOD_POLICY[group] : "APS27 period needs review for this subsection";
+}
+
+function aps27MonthYearMatches(text) {
+  const monthNames = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+  const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const matches = [];
+  let match;
+  const monthFirst = new RegExp("\\b(" + monthNames + ")\\s+(20\\d{2})\\b", "gi");
+  while ((match = monthFirst.exec(text)) !== null) matches.push({ year: Number(match[2]), month: shortMonths.indexOf(match[1].slice(0, 3).toLowerCase()) + 1 });
+  const yearFirst = /\\b(20\\d{2})[-/]([01]?\\d)\\b/g;
+  while ((match = yearFirst.exec(text)) !== null) matches.push({ year: Number(match[1]), month: Number(match[2]) });
+  const numericDate = /\\b(?:[0-3]?\\d)[/-]([01]?\\d)[/-](20\\d{2})\\b/g;
+  while ((match = numericDate.exec(text)) !== null) matches.push({ year: Number(match[2]), month: Number(match[1]) });
+  return matches.filter((item) => item.year && item.month >= 1 && item.month <= 12);
+}
+
+function assessAPS27Period(code, period) {
+  const raw = String(period || "").trim();
+  if (!raw) return { status: "review", label: "Period needed", detail: "Add the activity's term or date before approving." };
+  const text = raw.toLowerCase();
+  const group = aps27PeriodGroup(code);
+  const years = [...text.matchAll(/\\b(20\\d{2})\\b/g)].map((m) => Number(m[1]));
+  const termMatches = [...text.matchAll(/\\b(?:term\\s*)?([0-9]{3})\\b/g)].map((m) => m[1]);
+  const monthYears = aps27MonthYearMatches(text);
+
+  if (group === "terms") {
+    if (/\\b(?:term\\s*)?261\\b/.test(text) || /\\b(?:term\\s*)?262\\b/.test(text) || /upcoming\\s+spring|spring\\s+term/.test(text)) {
+      return { status: "eligible", label: "Within APS27 term cycle", detail: APS27_PERIOD_POLICY.terms };
+    }
+    if (termMatches.some((term) => term.startsWith("25") || term.startsWith("24") || term.startsWith("27"))) {
+      return { status: "outside", label: "Outside APS27 term cycle", detail: APS27_PERIOD_POLICY.terms };
+    }
+    if (years.some((year) => year < 2026 || year > 2027)) {
+      return { status: "outside", label: "Outside APS27 term cycle", detail: APS27_PERIOD_POLICY.terms };
+    }
+    return { status: "review", label: "Confirm the KFUPM term", detail: APS27_PERIOD_POLICY.terms };
+  }
+
+  if (group === "calendar") {
+    if (/\\b(?:term\\s*)?261\\b/.test(text) || years.includes(2026)) {
+      return { status: "eligible", label: "Within 2026 calendar year", detail: APS27_PERIOD_POLICY.calendar };
+    }
+    if (/\\b(?:term\\s*)?262\\b/.test(text) || years.some((year) => year !== 2026)) {
+      return { status: "outside", label: "Outside the 2026 calendar year", detail: APS27_PERIOD_POLICY.calendar };
+    }
+    return { status: "review", label: "Confirm the activity date", detail: APS27_PERIOD_POLICY.calendar };
+  }
+
+  if (group === "industry") {
+    if (monthYears.length === 0) {
+      if (years.some((year) => year === 2026 || year === 2027)) return { status: "review", label: "Add month and date", detail: APS27_PERIOD_POLICY.industry };
+      return { status: "outside", label: "Outside APS27 industry window", detail: APS27_PERIOD_POLICY.industry };
+    }
+    const eligible = monthYears.some(({ year, month }) => (year === 2026 && month >= 9) || (year === 2027 && month <= 8));
+    const outside = monthYears.some(({ year, month }) => year < 2026 || (year === 2026 && month <= 8) || (year === 2027 && month >= 9) || year > 2027);
+    if (eligible && !outside) return { status: "eligible", label: "Within APS27 industry window", detail: APS27_PERIOD_POLICY.industry };
+    if (outside) return { status: "outside", label: "Outside APS27 industry window", detail: APS27_PERIOD_POLICY.industry };
+  }
+
+  return { status: "review", label: "Period needs review", detail: aps27PeriodPolicyFor(code) };
+}
+
+
+function isSubsectionEmpty(cycleData, code) {
+  const meta = SUBSECTION_MAP[code];
+  if (!meta || !meta.field) return null; // not applicable (auto-filled or single-value field)
+  const val = cycleData[meta.section][meta.field];
+  return Array.isArray(val) ? val.length === 0 : false;
+}
+
+function getGaps(cycleData) {
+  return TAGGABLE_SUBSECTIONS.filter(([code]) => isSubsectionEmpty(cycleData, code) === true).map(([code]) => code);
+}
+function getEvidenceRelation(ev, code) {
+  const saved = ev && ev.subsectionApprovals && ev.subsectionApprovals[code];
+  if (saved) return saved;
+  return {
+    approved: !!(ev && ev.approved),
+    bulletText: (ev && (ev.contributionSummary || ev.bulletText || ev.summary)) || "",
+    comment: (ev && ev.comment) || "",
+  };
+}
+
+function pendingForCode(cycleData, code) {
+  return (cycleData.evidenceInbox || [])
+    .filter((e) => (e.subsections || []).includes(code))
+    .map((e) => ({ ...e, relationCode: code, relation: getEvidenceRelation(e, code) }))
+    .filter((e) => !e.relation.approved);
+}
+
+function pendingEvidenceCount(cycleData) {
+  return (cycleData.evidenceInbox || []).reduce(
+    (total, ev) => total + (ev.subsections || []).filter((code) => !getEvidenceRelation(ev, code).approved).length,
+    0,
+  );
+}
+
+
+
+function computeCycleStats(cd) {
+  const t1Total = cd.teaching.t1Courses.reduce((s, c) => s + Number(c.creditHours || 0), 0);
+  const r1Count = cd.research.r1Publications.length;
+  const r1Score = cd.research.r1Publications.reduce((s, p) => s + (Q_SCORE[p.qRank] || 0), 0);
+  const r2Total = cd.research.r2Citations.reduce((s, c) => s + Number(c.count || 0), 0);
+  const b1Score = Math.max(0, 5 - (cd.behavior.b1Violations || []).reduce((s, v) => s + Number(v.points || 0), 0));
+  return { t1Total, r1Count, r1Score, r2Total, fundedValue: cd.research.r4FundedValue, b1Score };
+}
+
+function getQualityIssues(cycleData) {
+  const issues = [];
+  TAGGABLE_SUBSECTIONS.forEach(([code, meta]) => {
+    const rawArr = cycleData[meta.section][meta.field] || [];
+    const arr = meta.isProjectRow ? rawArr.map((item) => item.title || "") : rawArr;
+    if (arr.length === 0) return; // empty subsections are covered by the Advisor tab, not here
+    const label = meta.label.replace(/\s*\(period:.*?\)/, "");
+    const totalWords = arr.join(" ").split(/\s+/).filter(Boolean).length;
+    if (arr.length === 1 && totalWords < 10) {
+      issues.push({ id: `${code}-thin`, code, label, type: "thin", message: `Only one short entry (${totalWords} words) — consider adding more detail or another item.` });
+    }
+    const missingPeriod = arr.filter((b) => !/\([^)]+\)\.?\s*$/.test((b || "").trim()));
+    if (missingPeriod.length > 0) {
+      issues.push({ id: `${code}-period`, code, label, type: "period", message: `${missingPeriod.length} of ${arr.length} entr${missingPeriod.length === 1 ? "y" : "ies"} has no period/date tag at the end.` });
+    }
+  });
+  return issues;
+}
+
+const CODE_TO_ACCORDION = {
+  T2_OBJECTIVES: "t2", T2_STRATEGIES: "t2", T2_INDUSTRY: "t2", T2_UPDATES: "t2", T2_COURSEFILE: "t2", T2_ADVISING: "t2",
+  T5_PROGRAMS: "t5", T5_COURSES: "t5", T5_TEACHING: "t5",
+  T6_AVAILABILITY: "t6", T6_COOP: "t6", T6_FIELDTRIPS: "t6",
+  R6_LEADING: "r6", R6_CONF: "r6", R6_MENTOR: "r6", R6_RECOG: "r6",
+  S1: "s1",
+  S2_PROMOTE: "s2", S2_ENV: "s2", S2_ACCRED: "s2",
+  S3_VOLUNTARY: "s3", S3_MAWHIBA: "s3", S3_OUTREACH: "s3", S3_SOCIETY: "s3",
+  B1: "b1", B2: "b2", B3: "b3", B4: "b4",
+};
+
+const GlobalStyle = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+    * { box-sizing: border-box; }
+    .aps-display { font-family: 'Source Serif 4', Georgia, serif; letter-spacing: -0.01em; }
+    .aps-mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; letter-spacing: -0.01em; }
+    body, input, textarea, select, button { font-family: 'Inter', sans-serif; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid ${TEAL}; outline-offset: 1px; }
+    button:focus-visible { outline: 2px solid ${TEAL}; outline-offset: 2px; }
+    .aps-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
+    .aps-spin { animation: aps-spin-anim 0.9s linear infinite; }
+    @keyframes aps-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  `}</style>
+);
+
+const inputStyle = { width: "100%", maxWidth: 820, fontSize: 13.5, padding: "8px 10px", borderRadius: 3, border: "1px solid #C7CCD3", background: "#fff", color: INK };
+function Label({ children }) { return <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9AA2AF", marginBottom: 6, fontWeight: 600 }}>{children}</div>; }
+function GhostAddButton({ onClick, label }) {
+  return (
+    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px dashed #C7CCD3", color: TEAL, borderRadius: 4, padding: "5px 10px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+      <Plus size={13} /> {label}
+    </button>
+  );
+}
+function EmptyState({ text }) {
+  return <div style={{ textAlign: "center", padding: "30px 20px", color: MUTED, fontSize: 13, border: "1px dashed #C7CCD3", borderRadius: 4 }}>{text}</div>;
+}
+
+// Generic editable bullet list
+function PendingEvidenceList({ pending, onApprovePending, onDiscardPending, onCommentPending }) {
+  const [expandedPendingId, setExpandedPendingId] = useState(null);
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [bulletDrafts, setBulletDrafts] = useState({});
+  const [periodDrafts, setPeriodDrafts] = useState({});
+
+  if (pending.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      {pending.map((ev) => {
+        const isExpanded = expandedPendingId === ev.id;
+                const relation = ev.relation || getEvidenceRelation(ev, ev.relationCode);
+        const subsectionLabel = ev.relationCode && SUBSECTION_MAP[ev.relationCode] ? SUBSECTION_MAP[ev.relationCode].label : "this subsection";
+        const reviewedText = bulletDrafts[ev.id] ?? relation.bulletText ?? ev.contributionSummary ?? ev.bulletText ?? "";
+        const period = periodDrafts[ev.id] ?? ev.period ?? "";
+        const periodCheck = assessAPS27Period(ev.relationCode, period);
+        const periodColor = periodCheck.status === "eligible" ? GREEN : periodCheck.status === "outside" ? RED : AMBER;
+return (
+          <div key={ev.id} style={{ background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 5, padding: "11px 14px", marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+              <span className="aps-mono" style={{ fontSize: 9.5, background: AMBER, color: "#fff", padding: "1px 6px", borderRadius: 7, fontWeight: 700 }}>PENDING</span>
+              <button onClick={() => setExpandedPendingId(isExpanded ? null : ev.id)} title="View source / leave a comment" style={{ background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+                <ChevronDown size={14} color="#6B5015" style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+              </button>
+            </div>
+            <textarea
+                            value={reviewedText}
+              onChange={(e) => setBulletDrafts({ ...bulletDrafts, [ev.id]: e.target.value })}
+              style={{ ...inputStyle, minHeight: 50, marginBottom: 4, background: "#fff", fontSize: 12.5 }}
+            />
+            <div style={{ fontSize: 11, color: "#6B5015", marginBottom: 6 }}>
+              Reviewing <strong>{ev.relationCode}</strong> — {subsectionLabel}. The same evidence is reviewed separately in every tagged subsection.
+            </div>
+            <input
+              value={period}
+              onChange={(e) => setPeriodDrafts({ ...periodDrafts, [ev.id]: e.target.value })}
+              placeholder="Activity term/date, e.g. Term 261 or September 2026"
+              style={{ ...inputStyle, maxWidth: "100%", marginBottom: 4, background: "#fff", fontSize: 12 }}
+            />
+            <div style={{ fontSize: 11, color: periodColor, marginBottom: 10 }}>
+              {periodCheck.label} · {periodCheck.detail}{ev.center ? ` · Partner: ${ev.center}` : ""}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={() => onApprovePending(ev.id, ev.relationCode, reviewedText, period)} disabled={periodCheck.status !== "eligible"} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: periodCheck.status === "eligible" ? GREEN : "#C7CCD3", color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: periodCheck.status === "eligible" ? "pointer" : "default" }}>
+                                <Check size={12} /> Approve for this subsection
+              </button>
+              <button onClick={() => setExpandedPendingId(isExpanded ? null : ev.id)} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 3, padding: "7px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+                {ev.comment ? "Comment ✓" : "Comment"}
+              </button>
+              <button onClick={() => onDiscardPending(ev.id)} style={{ background: "#fff", color: RED, border: "1px solid #C7CCD3", borderRadius: 3, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
+                Discard
+              </button>
+            </div>
+
+            {isExpanded && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #E6D3A8" }}>
+                <div style={{ fontSize: 11, color: "#6B5015", marginBottom: 8 }}>
+                  Source: <strong>{ev.fileName}</strong>{ev.summary ? " — " + ev.summary : ""}
+                  {ev.comment && <div style={{ marginTop: 4, fontStyle: "italic" }}>Your note: "{ev.comment}"</div>}
+                </div>
+                <textarea
+                  value={commentDrafts[ev.id] ?? ev.comment ?? ""}
+                  onChange={(e) => setCommentDrafts({ ...commentDrafts, [ev.id]: e.target.value })}
+                  placeholder="Leave a comment if something needs fixing before this is approved…"
+                  style={{ ...inputStyle, minHeight: 44, marginBottom: 8, background: "#fff" }}
+                />
+                <button
+                  onClick={() => { onCommentPending(ev.id, commentDrafts[ev.id] ?? ""); }}
+                  style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 3, padding: "7px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+                >
+                  Save comment
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BulletList({ items, onChange, pending = [], onApprovePending, onDiscardPending, onCommentPending }) {
+  const [text, setText] = useState(items.map((it) => "- " + it).join("\n"));
+  const [copied, setCopied] = useState(false);
+
+  function handleChange(e) {
+    const raw = e.target.value;
+    setText(raw);
+    const lines = raw
+      .split("\n")
+      .map((line) => line.replace(/^[-•]\s*/, ""))
+      .filter((line) => line.trim().length > 0);
+    onChange(lines);
+  }
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) { /* clipboard blocked — text is still visible to select manually */ }
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        <button
+          onClick={copyToClipboard}
+          disabled={items.length === 0}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: items.length === 0 ? "#EAECF0" : (copied ? GREEN : "#fff"), color: items.length === 0 ? "#9AA2AF" : (copied ? "#fff" : TEAL), border: "1px solid " + (items.length === 0 ? "#C7CCD3" : (copied ? GREEN : "#C7CCD3")), borderRadius: 4, padding: "4px 9px", fontSize: 11, fontWeight: 500, cursor: items.length === 0 ? "default" : "pointer" }}
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <textarea
+        value={text}
+        onChange={handleChange}
+        style={{ ...inputStyle, minHeight: 90, resize: "vertical", width: "100%", lineHeight: 1.6 }}
+        placeholder={"- First point\n- Second point"}
+      />
+      <div style={{ fontSize: 11, color: "#9AA2AF", marginTop: 4 }}>One bullet per line — start each with "-", or just press Enter for a new point.</div>
+
+      <PendingEvidenceList pending={pending} onApprovePending={onApprovePending} onDiscardPending={onDiscardPending} onCommentPending={onCommentPending} />
+    </div>
+  );
+}
+
+function Accordion({ id, title, openId, setOpenId, children }) {
+  const isOpen = openId === id;
+  return (
+    <div className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, marginBottom: 10, overflow: "hidden" }}>
+      <div onClick={() => setOpenId(isOpen ? null : id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 18px", cursor: "pointer" }}>
+        <span className="aps-mono" style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{title}</span>
+        <ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+      </div>
+      {isOpen && <div style={{ padding: "0 18px 18px 18px", borderTop: "1px solid #EAECF0", paddingTop: 14 }}>{children}</div>}
+    </div>
+  );
+}
+
+function SubsectionComments({ value, onChange }) {
+  const [open, setOpen] = useState(!!value);
+  return (
+    <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #EAECF0" }}>
+      <button onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: 0, color: "#9AA2AF", fontSize: 11.5 }}>
+        <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+        Comments {value ? "(1)" : "(0)"}
+      </button>
+      {open && (
+        <textarea
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Anything else relevant to this subsection…"
+          style={{ ...inputStyle, minHeight: 44, marginTop: 8 }}
+        />
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [data, setData] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [section, setSection] = useState("advisor");
+  const [openId, setOpenId] = useState(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const [showNotePanel, setShowNotePanel] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [suggestingCode, setSuggestingCode] = useState(null);
+  const [suggestingAll, setSuggestingAll] = useState(false);
+  const [showAdvisorDetails, setShowAdvisorDetails] = useState(true);
+  const [showIgnoredIssues, setShowIgnoredIssues] = useState(false);
+  const [resetConfirmKey, setResetConfirmKey] = useState(null);
+  const [openSuggestionCode, setOpenSuggestionCode] = useState(null);
+  const evidenceFileInputRef = useRef(null);
+
+  function normalizeLoadedData(parsed) {
+    // NEVER wholesale-replace real saved data. Only fill in pieces that are genuinely absent,
+    // and preserve everything else exactly as saved — including all cycles and all evidence.
+    if (!parsed || typeof parsed !== "object") return SEED_APS;
+    const next = { ...parsed };
+    if (!next.cycles || typeof next.cycles !== "object") {
+      next.cycles = { ...SEED_APS.cycles };
+    } else {
+      next.cycles = { ...next.cycles };
+      if (!next.cycles.APS26) next.cycles.APS26 = SEED_APS.cycles.APS26;
+      if (!next.cycles.APS27) next.cycles.APS27 = SEED_APS27;
+    }
+    if (!next.activeCycle || !next.cycles[next.activeCycle]) {
+      next.activeCycle = next.cycles.APS27 ? "APS27" : Object.keys(next.cycles)[0];
+    }
+    return next;
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get(STORAGE_KEY);
+        const parsed = res && res.value ? JSON.parse(res.value) : SEED_APS;
+        setData(normalizeLoadedData(parsed));
+      } catch (e) {
+        setData(SEED_APS);
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || !data) return;
+    // Persist locally immediately; the storage layer queues cloud synchronization.
+    (async () => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+        setError("");
+      } catch (e) {
+        setError("Could not save. Your changes may not persist — try again in a moment.");
+      }
+    })();
+  }, [data, loaded]);
+
+  if (!data) return null;
+
+  if (!data.cycles || !data.activeCycle || !data.cycles[data.activeCycle]) {
+    // Something is unexpectedly malformed. Do NOT touch storage or state here — show a message and let
+    // the person decide what to do, rather than silently overwriting anything that might be real data.
+    return (
+      <div style={{ minHeight: "100vh", background: PAPER, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ maxWidth: 440, textAlign: "center" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: INK, marginBottom: 8 }}>Something looks off with the saved data shape.</div>
+          <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>Nothing has been changed or deleted. Try refreshing the page — if this keeps happening, tell Claude in chat exactly what you see and it can help diagnose without touching your data.</div>
+        </div>
+      </div>
+    );
+  }
+
+  const rawCycleData = data.cycles[data.activeCycle];
+  const cycleData = { ...rawCycleData, subsectionNotes: rawCycleData.subsectionNotes || {}, ignoredQualityIssues: rawCycleData.ignoredQualityIssues || [] };
+
+  function update(path, value) {
+    setData((prev) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const keys = ("cycles." + next.activeCycle + "." + path).split(".");
+      let obj = next;
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (obj[keys[i]] == null || typeof obj[keys[i]] !== "object") obj[keys[i]] = {};
+        obj = obj[keys[i]];
+      }
+      obj[keys[keys.length - 1]] = value;
+      return next;
+    });
+  }
+
+  function switchCycle(cycleKey) {
+    setData((prev) => ({ ...prev, activeCycle: cycleKey }));
+  }
+
+  function resetCycle(cycleKey) {
+    setData((prev) => {
+      const currentGeneralInfo = prev.cycles[cycleKey].generalInfo;
+      return {
+        ...prev,
+        cycles: {
+          ...prev.cycles,
+          [cycleKey]: { ...SEED_APS27, generalInfo: currentGeneralInfo },
+        },
+      };
+    });
+  }
+
+  async function runEvidenceExtraction(inputContentBlock, sourceLabel) {
+    setExtracting(true);
+    setExtractError("");
+    try {
+      const subsectionList = TAGGABLE_SUBSECTIONS.map(([code, v]) => `${code}: ${v.label}`).join("\n");
+      const isPlainTextNote = inputContentBlock.type === "text";
+
+      const instructionText =
+        (isPlainTextNote
+          ? "Below, between the === markers, is a note written directly by a KFUPM Mechanical Engineering faculty member describing something they did, for their Annual Performance System (APS) self-report. This note IS the evidence — there is no separate attached document. Read it carefully.\n\n" +
+            "===\n" + inputContentBlock.text + "\n===\n\n"
+          : "The attached file is evidence of faculty activity (a thank-you email, certificate, award letter, confirmation, acknowledgment, activity report, etc.) for an Annual Performance System (APS) self-report. " +
+            "Read the document carefully and fully before writing anything.\n\n") +
+        "IMPORTANT: this source may describe ONE single activity, or it may list SEVERAL distinct activities (e.g. an annual activity summary, a committee report covering multiple accomplishments, a list of different roles/tasks). Identify EVERY distinct activity separately — do not compress multiple different activities into one bullet, and do not force them all into a single category just because one category seemed to fit the overall document. Read the whole document; activities are often listed as separate items, dates, or paragraphs.\n\n" +
+        "For EACH distinct activity you identify, write ONE bullet-point sentence describing it in a formal, professional register appropriate for an official academic self-report — the tone used in the examples below, not a casual summary. " +
+        "Be specific and factual, but do not restate context the reader already has: this is a KFUPM Mechanical Engineering faculty member's own self-report, reviewed by their own department. Never write \"KFUPM\" anywhere in the bullet, in any form — it's implied throughout the entire self-report and everyone reading it already knows. Do not spell out \"Mechanical Engineering Department\" either, or name the chairman/dean by role unless the specific name is the substantive point (e.g. a named external collaborator). A course code like \"ME301\" already establishes the department — do not add \"ME Department\" on top of it. " +
+        "Use standard abbreviations for KFUPM units on every mention, not the full name — e.g. write \"DAD\" for Deanship of Academic Development, not the spelled-out name, and similarly for other Deanships/units if their common abbreviation is evident from context. Do not spell out the full name once and abbreviate later — abbreviate consistently from the first mention. Say only what adds real information. Follow this style precisely:\n" +
+        "- \"Completed and submitted course file of ME587 in term 252.\"\n" +
+        "- \"Served as peer reviewer for an international project proposal from the Department of ME, University of Guelph, Ontario, Canada.\"\n" +
+        "- \"Recognized as Stanford/Elsevier Top 2% Researcher (2024-Present) worldwide.\"\n" +
+        "- \"Served as Course Coordinator of ME301, responsible for maintaining course coverage, uniformity of exam grading, and fair distribution of final grading.\"\n\n" +
+        "If the source is written casually or in first person (e.g. \"I gave a talk on X yesterday\"), rewrite it into the same formal third-person-implied register as the examples above — do not just lightly edit the casual phrasing.\n\n" +
+                "For EACH activity, independently decide every APS subsection where the activity genuinely contributes — different activities in the same document often belong in different subsections, so classify each one on its own merits:\n" + subsectionList + "\n\n" +
+        "Pay particular attention to R3 vs R6_LEADING: if the person contributed to, participated in, joined, or was a member of an interdisciplinary or collaborative initiative WITHOUT actually leading or founding it, that belongs in R3 (Interdisciplinary Research) — not R6_LEADING, which is reserved specifically for cases where this person is the actual leader, PI, founder, or organizer. Read the wording carefully: \"contributed to initiating\" or \"joined\" is R3; \"founded,\" \"leads,\" or \"initiated as PI\" is R6_LEADING.\n\n" +
+                        "Use a broad contextual matching policy across the existing APS subsections. One activity may support several subsections, even when a subsection is not its primary purpose, if the connection is reasonable and defensible from the source. For example, professional conference attendance may support research engagement, professional/community engagement, a positive working environment, presence and accessibility, and active participation when the source and context support those interpretations. Return all such existing subsection codes so the user can review each one independently. Do not create any new subsection, do not invent a role, and do not convert attendance into organizing, leadership, mentoring, or formal recognition unless the source explicitly supports that role.\n\n" +
+        "For the period of each activity: prefer a KFUPM term code (e.g. \"261\") over an exact calendar date whenever the source lets you identify or infer the term — a term code is the standard convention here, not a full date. Only fall back to a specific date (YYYY-MM-DD or month/year) if no term is identifiable and a literal date is explicitly stated. If neither a term nor a date is determinable, leave period as an empty string — do not guess or invent either one.\n\n" +
+        "APS27 applies different contribution windows to different existing subsections: Teaching, Societal Benefits, and Behavior use the two-semester cycle (Term 261 plus the upcoming spring term); R3 and R6 use Jan–Dec 2026; R4 and R5 use Sep 1, 2026–Aug 31, 2027. Extract the activity's own term/date, not the upload date or document access date. The app checks the same activity separately against each subsection's window.\n\n" +
+        "If R3 is among an activity's subsections, also identify the partner center, department, or institution it's jointly owned with (e.g. \"IRC-IMR\" or \"Bahir Dar University, Ethiopia\") for that activity's \"center\" field.\n\n" +
+                "For EACH activity, write a concise contributionSummary of one or two sentences. It must state what the faculty member did and why it is relevant, using only information supported by the source. This is the proposed text that the user will review separately for every suggested subsection.\n\n" +
+        "Also give an overall one-sentence summary of what this source document is (e.g. \"Annual committee activity report listing service contributions\").\n\n" +
+                'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"summary":"","activities":[{"contributionSummary":"","subsections":[],"period":"","center":""}]}';
+
+      const content = isPlainTextNote
+        ? [{ type: "text", text: instructionText }]
+        : [inputContentBlock, { type: "text", text: instructionText }];
+
+      const parsed = await claudeExtractJSON(content);
+      const activities = Array.isArray(parsed.activities) ? parsed.activities : [];
+      if (activities.length === 0) {
+        setExtractError("Could not identify any specific activity in that source. Nothing was added — try a clearer document, or write a note describing it directly.");
+        return false;
+      }
+
+      const newEntries = activities.map((act, i) => {
+        const validSubsections = (act.subsections || []).filter((s) => TAGGABLE_SUBSECTIONS.some(([code]) => code === s));
+                        const contributionSummary = (act.contributionSummary || act.bulletText || parsed.summary || sourceLabel).trim();
+        const subsectionApprovals = {};
+        validSubsections.forEach((code) => {
+          subsectionApprovals[code] = { approved: false, bulletText: contributionSummary, comment: "" };
+        });
+return {
+          id: Date.now().toString() + "-" + i,
+          fileName: activities.length > 1 ? `${sourceLabel} (${i + 1} of ${activities.length})` : sourceLabel,
+          summary: parsed.summary || "",
+                    contributionSummary,
+          bulletText: contributionSummary,
+          subsections: validSubsections,
+            subsectionApprovals,
+          period: act.period || "",
+          center: act.center || "",
+          approved: false,
+          addedAt: new Date().toISOString(),
+        };
+      });
+
+      update("evidenceInbox", [...newEntries, ...(cycleData.evidenceInbox || [])]);
+      const firstCode = newEntries[0].subsections[0];
+            if (activities.length > 1 || newEntries.some((entry) => entry.subsections.length > 1)) {
+        setSection("inbox"); // multiple activities landed in different places — show the overview rather than jumping to just one
+      } else if (firstCode) {
+        const meta = SUBSECTION_MAP[firstCode];
+        setSection(meta.section);
+        setOpenId(CODE_TO_ACCORDION[firstCode] || null);
+      } else {
+        setSection("inbox");
+      }
+      return true;
+    } catch (err) {
+      setExtractError(`Could not process that automatically: ${err.message || "unknown error"}. Nothing was added.`);
+      return false;
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function processEvidenceFile(file) {
+    if (!file) return;
+    const supported = file.type === "application/pdf" || file.type.startsWith("image/");
+    if (!supported) {
+      setExtractError("That file type can't be auto-read here — PDF or image only (screenshot emails/certificates if needed).");
+      return;
+    }
+    const base64 = await fileToBase64(file);
+    const isPdf = file.type === "application/pdf";
+    const inputBlock = isPdf
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+      : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } };
+    await runEvidenceExtraction(inputBlock, file.name);
+    if (evidenceFileInputRef.current) evidenceFileInputRef.current.value = "";
+  }
+
+  async function processEvidenceNote(noteText) {
+    if (!noteText || !noteText.trim()) return false;
+    const ok = await runEvidenceExtraction({ type: "text", text: noteText.trim() }, "Written note");
+    return ok;
+  }
+
+  async function handleEvidenceFile(e) {
+    const file = e.target.files && e.target.files[0];
+    await processEvidenceFile(file);
+  }
+
+  async function handleEvidenceDrop(e) {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    await processEvidenceFile(file);
+  }
+
+  function updateEvidenceRecord(id, patch) {
+    update("evidenceInbox", cycleData.evidenceInbox.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+      function addEvidenceRelation(id, relationCode) {
+    const meta = SUBSECTION_MAP[relationCode];
+    if (!meta || !meta.field) return;
+    update("evidenceInbox", cycleData.evidenceInbox.map((e) => {
+      if (e.id !== id) return e;
+      const subsections = Array.from(new Set([...(e.subsections || []), relationCode]));
+      const subsectionApprovals = { ...(e.subsectionApprovals || {}) };
+      subsectionApprovals[relationCode] = subsectionApprovals[relationCode] || {
+        approved: false,
+        bulletText: e.contributionSummary || e.bulletText || e.summary || "",
+        comment: "",
+      };
+      return { ...e, subsections, subsectionApprovals, approved: false };
+    }));
+  }
+
+function approveEvidence(id, relationCode, overrideBulletText, overridePeriod) {
+    const ev = cycleData.evidenceInbox.find((e) => e.id === id);
+    const meta = relationCode && SUBSECTION_MAP[relationCode];
+    const relation = ev && meta ? getEvidenceRelation(ev, relationCode) : null;
+    if (!ev || !meta || !relation || relation.approved) return;
+    const bulletText = (overrideBulletText != null ? overrideBulletText : relation.bulletText).trim();
+    if (!bulletText) return;
+    const period = (overridePeriod != null ? overridePeriod : ev.period || "").trim();
+    const periodCheck = assessAPS27Period(relationCode, period);
+    if (periodCheck.status !== "eligible") {
+      setExtractError(`Before approving this evidence for ${relationCode}, confirm a period inside the APS27 window. ${periodCheck.detail}`);
+      return;
+    }
+    setExtractError("");
+    setData((prev) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const cd = next.cycles[next.activeCycle];
+      const live = cd.evidenceInbox.find((e) => e.id === id);
+      if (!live) return next;
+      const liveRelation = getEvidenceRelation(live, relationCode);
+      if (liveRelation.approved) return next;
+      const periodSuffix = period ? ` (${period})` : "";
+      const bulletLine = bulletText + periodSuffix;
+      if (meta.isProjectRow) {
+        cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), { center: live.center || "", title: bulletLine }];
+      } else if (meta.field) {
+        cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), bulletLine];
+      }
+      const subsectionApprovals = { ...(live.subsectionApprovals || {}) };
+      subsectionApprovals[relationCode] = { ...liveRelation, bulletText, approved: true, approvedAt: new Date().toISOString() };
+      const allApproved = (live.subsections || []).every((code) => getEvidenceRelation({ ...live, subsectionApprovals }, code).approved);
+      cd.evidenceInbox = cd.evidenceInbox.map((e) => (
+        e.id === id
+          ? { ...e, bulletText, period, subsectionApprovals, approved: allApproved, ...(allApproved ? { approvedAt: new Date().toISOString() } : {}) }
+          : e
+      ));
+      return next;
+    });
+  }
+
+
+      function removeEvidenceRecord(id) {
+update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
+  }
+
+  async function generateSuggestion(code) {
+    setSuggestingCode(code);
+    setExtractError("");
+    try {
+      const meta = SUBSECTION_MAP[code];
+      const fieldContext = `${cycleData.generalInfo.rank}, ${cycleData.generalInfo.college}, primary affiliation: ${cycleData.generalInfo.primaryAffiliation}.`;
+      const content = [
+        {
+          type: "text",
+          text:
+            `I am a faculty member (${fieldContext}) filling an Annual Performance System (APS) self-report. This subsection currently has nothing recorded: "${meta.label}".\n\n` +
+            "Suggest exactly 3 concrete, realistic, low-to-moderate-effort activities I could still do before the evaluation period ends that would generate a genuine, honest entry for this specific subsection — not generic advice, but specific enough to act on (e.g. name a plausible type of activity, format, or venue). " +
+            "Keep each suggestion to one sentence.\n\n" +
+            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"suggestions":["","",""]}',
+        },
+      ];
+      const parsed = await claudeExtractJSON(content);
+      const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3) : [];
+      update("advisorSuggestions." + code, { suggestions, generatedAt: new Date().toISOString() });
+    } catch (err) {
+      setExtractError("Could not generate suggestions right now. Try again in a moment.");
+    } finally {
+      setSuggestingCode(null);
+    }
+  }
+
+  async function generateAllSuggestions() {
+    const gaps = getGaps(cycleData);
+    if (gaps.length === 0) return;
+    setSuggestingAll(true);
+    for (const code of gaps) {
+      await generateSuggestion(code);
+    }
+    setSuggestingAll(false);
+  }
+
+  // ---- computed values ----
+  const t1Total = cycleData.teaching.t1Courses.reduce((s, c) => s + Number(c.creditHours || 0), 0);
+  const r1Count = cycleData.research.r1Publications.length;
+  const r1Years = new Set(cycleData.research.r1Publications.map((p) => p.year)).size || 1;
+  const r1Avg = (r1Count / 2).toFixed(1); // per PDF: "Average Publications: 10.0" over 2-year window
+  const r1Score = cycleData.research.r1Publications.reduce((s, p) => s + (Q_SCORE[p.qRank] || 0), 0);
+  const r2Total = cycleData.research.r2Citations.reduce((s, c) => s + Number(c.count || 0), 0);
+  const r2Avg = r2Total > 0 ? (r2Total / cycleData.research.r2Citations.length).toFixed(1) : "0.0";
+  const b1Score = Math.max(0, 5 - cycleData.behavior.b1Violations.reduce((s, v) => s + Number(v.points || 0), 0));
+
+  const SECTIONS = [
+    { id: "advisor", label: "Advisor — Gaps", icon: Lightbulb },
+    { id: "general", label: "General Information", icon: User },
+    { id: "teaching", label: "Teaching", icon: BookOpen },
+    { id: "research", label: "Research", icon: FlaskConical },
+    { id: "societal", label: "Societal Benefits", icon: HeartHandshake },
+    { id: "behavior", label: "Behavior", icon: Shield },
+    { id: "inbox", label: "Evidence Inbox", icon: Inbox },
+    { id: "evaluation", label: "Evaluation Score", icon: BarChart3 },
+    { id: "compare", label: "Year-over-Year", icon: TrendingUp },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 80px" }}>
+
+        <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div className="aps-mono" style={{ width: 40, height: 40, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>AN Personal Assistant · Module 03</div>
+              <h1 className="aps-display" style={{ fontSize: 26, fontWeight: 700, color: INK, margin: 0 }}>Annual Performance System (APS)</h1>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {Object.keys(data.cycles).map((key) => {
+              const c = data.cycles[key];
+              const active = data.activeCycle === key;
+              return (
+                <button key={key} onClick={() => switchCycle(key)} className="aps-mono" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 20, border: `1px solid ${active ? TEAL : "#C7CCD3"}`, background: active ? TEAL : "#fff", color: active ? "#fff" : "#2E3742", cursor: "pointer", fontWeight: 600 }}>
+                  {key} · {c.status}
+                </button>
+              );
+            })}
+          </div>
+          <input ref={evidenceFileInputRef} type="file" accept="application/pdf,image/*" onChange={handleEvidenceFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+          <button onClick={() => evidenceFileInputRef.current && evidenceFileInputRef.current.click()} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: extracting ? "default" : "pointer" }}>
+            {extracting ? <Loader2 size={14} className="aps-spin" /> : <Upload size={14} />} {extracting ? "Reading…" : "Upload evidence"}
+          </button>
+          <button onClick={() => setShowNotePanel(true)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: INK, border: "1px solid #C7CCD3", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: extracting ? "default" : "pointer" }}>
+            <Pencil size={14} /> Write a note
+          </button>
+        </div>
+
+        {cycleData.status !== "Submitted" && (
+          <div style={{ marginBottom: 16 }}>
+            {resetConfirmKey === data.activeCycle ? (
+              <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, borderRadius: 4, padding: "9px 12px", fontSize: 12.5, color: "#6B5015", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span>Clear every subsection in {data.activeCycle} back to empty? Your General Information stays; everything else — all self-reported entries and evidence history — is wiped. This can't be undone.</span>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button onClick={() => { resetCycle(data.activeCycle); setResetConfirmKey(null); }} style={{ background: RED, color: "#fff", border: "none", borderRadius: 3, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear it</button>
+                  <button onClick={() => setResetConfirmKey(null)} style={{ background: "#fff", border: "1px solid #C7CCD3", borderRadius: 3, padding: "5px 12px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setResetConfirmKey(data.activeCycle)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: RED, fontSize: 11.5, padding: 0, cursor: "pointer" }}>
+                <Trash2 size={11} /> Reset {data.activeCycle} to empty
+              </button>
+            )}
+          </div>
+        )}
+
+        {cycleData.status === "Submitted" && (
+          <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 14px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>
+            This cycle has been submitted — treat as a historical record. New evidence you upload goes to the active in-progress cycle instead.
+          </div>
+        )}
+
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={handleEvidenceDrop}
+          style={{ border: `2px dashed ${dragActive ? TEAL : "#C7CCD3"}`, borderRadius: 6, padding: "16px", textAlign: "center", marginBottom: 20, background: dragActive ? "#E7EFF5" : "#fff", transition: "background 0.15s, border-color 0.15s" }}
+        >
+          <div style={{ fontSize: 12.5, color: dragActive ? TEAL : MUTED }}>
+            {extracting ? "Reading dropped file…" : "Or drag and drop a certificate, email, or award here"}
+          </div>
+        </div>
+
+        <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: -12, marginBottom: 20, lineHeight: 1.5 }}><div>{cycleData.cyclePeriodNote}</div><div style={{ marginTop: 5, color: MUTED }}>The same evidence may appear under several existing subsections. Each subsection has its own APS27 period check and its own approval.</div></div>
+
+        {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
+          {SECTIONS.map((s) => {
+            const Icon = s.icon;
+                        const pendingCount = s.id === "inbox" ? pendingEvidenceCount(cycleData) : 0;
+            return (
+              <button key={s.id} onClick={() => { setSection(s.id); setOpenId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: section === s.id ? INK : "#fff", color: section === s.id ? "#fff" : INK, border: "1px solid " + (section === s.id ? INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
+                <Icon size={13} /> {s.label}
+                {pendingCount > 0 && <span className="aps-mono" style={{ fontSize: 10, background: AMBER, color: "#fff", padding: "1px 6px", borderRadius: 8, fontWeight: 700 }}>{pendingCount}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {section === "advisor" && (() => {
+          if (cycleData.status === "Submitted") {
+            return (
+              <div className="aps-card" style={{ background: "#fff", border: "1px solid " + GREEN, borderRadius: 6, padding: "20px 22px", textAlign: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: INK, marginBottom: 6 }}>{data.activeCycle} has already been submitted.</div>
+                <div style={{ fontSize: 12.5, color: MUTED }}>Gap suggestions and quality checks only make sense for a cycle still in progress — there's nothing to improve on something already filed. Switch to your active cycle above to use the Advisor.</div>
+              </div>
+            );
+          }
+          const gaps = getGaps(cycleData);
+          const groups = [
+            { label: "Teaching", codes: TAGGABLE_SUBSECTIONS.filter(([, m]) => m.section === "teaching") },
+            { label: "Research", codes: TAGGABLE_SUBSECTIONS.filter(([, m]) => m.section === "research") },
+            { label: "Societal Benefits", codes: TAGGABLE_SUBSECTIONS.filter(([, m]) => m.section === "societal") },
+            { label: "Behavior", codes: TAGGABLE_SUBSECTIONS.filter(([, m]) => m.section === "behavior") },
+          ];
+          return (
+            <div>
+              <div className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "16px 20px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>
+                    {gaps.length === 0 ? "Every trackable subsection has at least one entry." : `${gaps.length} of ${TAGGABLE_SUBSECTIONS.length} subsections are still empty.`}
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>Only counts subsections you self-report — T1/R1/R2 are excluded since the official system fills those.</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button onClick={() => setShowAdvisorDetails(!showAdvisorDetails)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #C7CCD3", color: INK, borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
+                    <ChevronDown size={14} style={{ transform: showAdvisorDetails ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} /> {showAdvisorDetails ? "Hide details" : "Show details"}
+                  </button>
+                  {gaps.length > 0 && (
+                    <button onClick={generateAllSuggestions} disabled={suggestingAll} style={{ display: "flex", alignItems: "center", gap: 6, background: suggestingAll ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: suggestingAll ? "default" : "pointer" }}>
+                      {suggestingAll ? <Loader2 size={14} className="aps-spin" /> : <Lightbulb size={14} />} {suggestingAll ? "Generating…" : `Suggest for all ${gaps.length} gaps`}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}
+
+              {(() => {
+                const allIssues = getQualityIssues(cycleData);
+                const ignoredIds = cycleData.ignoredQualityIssues || [];
+                const activeIssues = allIssues.filter((iss) => !ignoredIds.includes(iss.id));
+                const ignoredIssues = allIssues.filter((iss) => ignoredIds.includes(iss.id));
+
+                function ignoreIssue(id) {
+                  update("ignoredQualityIssues", [...ignoredIds, id]);
+                }
+                function unignoreIssue(id) {
+                  update("ignoredQualityIssues", ignoredIds.filter((x) => x !== id));
+                }
+
+                if (allIssues.length === 0) return null;
+                return (
+                  <div className="aps-card" style={{ background: "#fff", border: "1px solid " + AMBER, borderRadius: 6, padding: "14px 18px", marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: activeIssues.length > 0 ? 10 : 0 }}>
+                      <AlertTriangle size={15} color={AMBER} />
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>
+                        {activeIssues.length > 0 ? `${activeIssues.length} quality issue${activeIssues.length === 1 ? "" : "s"} worth a look` : "No active quality issues"}
+                      </div>
+                    </div>
+                    {activeIssues.map((iss, i) => (
+                      <div key={iss.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0", borderTop: i > 0 ? "1px solid #F1E5C8" : "none" }}>
+                        <div onClick={() => { setSection(SUBSECTION_MAP[iss.code].section); setOpenId(CODE_TO_ACCORDION[iss.code] || null); }} style={{ fontSize: 12.5, color: "#6B5015", cursor: "pointer", flex: 1 }}>
+                          <strong>{iss.label}:</strong> {iss.message}
+                        </div>
+                        <button onClick={() => ignoreIssue(iss.id)} style={{ background: "none", border: "1px solid #E6D3A8", color: "#6B5015", borderRadius: 3, padding: "3px 9px", fontSize: 11, cursor: "pointer", flexShrink: 0 }}>
+                          Ignore
+                        </button>
+                      </div>
+                    ))}
+                    {ignoredIssues.length > 0 && (
+                      <div style={{ marginTop: activeIssues.length > 0 ? 10 : 0, paddingTop: activeIssues.length > 0 ? 10 : 0, borderTop: activeIssues.length > 0 ? "1px solid #F1E5C8" : "none" }}>
+                        <button onClick={() => setShowIgnoredIssues(!showIgnoredIssues)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: 0, color: "#9AA2AF", fontSize: 11.5 }}>
+                          <ChevronDown size={12} style={{ transform: showIgnoredIssues ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                          {ignoredIssues.length} ignored
+                        </button>
+                        {showIgnoredIssues && ignoredIssues.map((iss) => (
+                          <div key={iss.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 12, color: "#9AA2AF" }}>
+                            <div style={{ flex: 1 }}><strong>{iss.label}:</strong> {iss.message}</div>
+                            <button onClick={() => unignoreIssue(iss.id)} style={{ background: "none", border: "1px solid #C7CCD3", color: TEAL, borderRadius: 3, padding: "3px 9px", fontSize: 11, cursor: "pointer", flexShrink: 0 }}>
+                              Restore
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {showAdvisorDetails && groups.map((group) => (
+                <div key={group.label} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 8 }}>{group.label}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(440px, 1fr))", gap: 8, alignItems: "start" }}>
+                  {group.codes.map(([code, meta]) => {
+                    const empty = isSubsectionEmpty(cycleData, code);
+                    const count = cycleData[meta.section][meta.field]?.length || 0;
+                    const suggestion = cycleData.advisorSuggestions[code];
+                    const isSuggesting = suggestingCode === code;
+                    const suggestionOpen = openSuggestionCode === code;
+                    return (
+                      <div key={code} className="aps-card" style={{ background: "#fff", border: "1px solid " + (empty ? AMBER : LINE), borderRadius: 6, padding: "12px 16px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <div
+                            onClick={() => suggestion && setOpenSuggestionCode(suggestionOpen ? null : code)}
+                            style={{ fontSize: 13, color: INK, fontWeight: 500, cursor: suggestion ? "pointer" : "default", display: "flex", alignItems: "center", gap: 6 }}
+                          >
+                            {suggestion && <ChevronDown size={13} color="#9AA2AF" style={{ transform: suggestionOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />}
+                            {meta.label.replace(/\s*\(period:.*?\)/, "")}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <span className="aps-mono" style={{ fontSize: 10.5, background: empty ? "#FAF1DE" : "#EFF5EF", color: empty ? "#6B5015" : GREEN, padding: "2px 9px", borderRadius: 10, fontWeight: 600 }}>
+                              {empty ? "Empty" : `${count} item${count === 1 ? "" : "s"}`}
+                            </span>
+                            {empty && (
+                              <button onClick={() => { generateSuggestion(code); setOpenSuggestionCode(code); }} disabled={isSuggesting} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "1px solid #C7CCD3", color: TEAL, borderRadius: 4, padding: "4px 9px", fontSize: 11.5, fontWeight: 500, cursor: isSuggesting ? "default" : "pointer" }}>
+                                {isSuggesting ? <Loader2 size={11} className="aps-spin" /> : <Lightbulb size={11} />} {isSuggesting ? "…" : (suggestion ? "Regenerate" : "Suggest")}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {suggestion && suggestion.suggestions.length > 0 && suggestionOpen && (
+                          <ul style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#2E3742", lineHeight: 1.6 }}>
+                            {suggestion.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {section === "general" && (
+          <div className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "20px 22px" }}>
+            {[
+              ["name", "Name"], ["kfupmId", "KFUPM ID"], ["college", "College"], ["academicCollege", "Academic College"],
+              ["rank", "Rank"], ["email", "Email"], ["joiningDate", "Joining Date"], ["primaryAffiliation", "Primary Affiliation"],
+              ["otherAffiliations", "Other Affiliations"], ["orcid", "ORCID"], ["scopusId", "Scopus ID"],
+            ].map(([key, label]) => (
+              <div key={key} style={{ display: "flex", gap: 16, marginBottom: 12, alignItems: "center" }}>
+                <div style={{ width: 160, flexShrink: 0, fontSize: 12.5, color: MUTED }}>{label}</div>
+                <input style={inputStyle} value={cycleData.generalInfo[key]} onChange={(e) => update("generalInfo." + key, e.target.value)} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {section === "teaching" && (
+          <div>
+            <Accordion id="t1" title="T1 — Teaching Load" openId={openId} setOpenId={setOpenId}>
+              <div style={{ background: "#EAECF0", border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 12px", fontSize: 12, color: MUTED, marginBottom: 12 }}>Auto-filled by the official APS system from course records — no action needed here. Kept for reference and the rollup summary.</div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Direct sum of annual (excluding summer) teaching load in credit hours.</div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", gap: 8, fontSize: 11, color: "#9AA2AF", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>
+                  <div style={{ width: 100 }}>Course</div><div style={{ width: 80 }}>Section</div><div style={{ width: 90 }}>Credits</div><div style={{ width: 90 }}>Semester</div><div style={{ width: 30 }}></div>
+                </div>
+                {cycleData.teaching.t1Courses.map((c, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                    <input style={{ ...inputStyle, width: 100 }} value={c.courseCode} onChange={(e) => { const rows = [...cycleData.teaching.t1Courses]; rows[i] = { ...rows[i], courseCode: e.target.value }; update("teaching.t1Courses", rows); }} />
+                    <input style={{ ...inputStyle, width: 80 }} value={c.section} onChange={(e) => { const rows = [...cycleData.teaching.t1Courses]; rows[i] = { ...rows[i], section: e.target.value }; update("teaching.t1Courses", rows); }} />
+                    <input type="number" step="0.5" style={{ ...inputStyle, width: 90 }} value={c.creditHours} onChange={(e) => { const rows = [...cycleData.teaching.t1Courses]; rows[i] = { ...rows[i], creditHours: Number(e.target.value) }; update("teaching.t1Courses", rows); }} />
+                    <input style={{ ...inputStyle, width: 90 }} value={c.semester} onChange={(e) => { const rows = [...cycleData.teaching.t1Courses]; rows[i] = { ...rows[i], semester: e.target.value }; update("teaching.t1Courses", rows); }} />
+                    <button onClick={() => update("teaching.t1Courses", cycleData.teaching.t1Courses.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#9AA2AF" /></button>
+                  </div>
+                ))}
+              </div>
+              <GhostAddButton onClick={() => update("teaching.t1Courses", [...cycleData.teaching.t1Courses, { courseCode: "", section: "", creditHours: 0, semester: "" }])} label="Add course" />
+              <div style={{ marginTop: 14, fontSize: 13.5, fontWeight: 600, color: INK }}>Teaching Load (excl. summer): <span className="aps-mono" style={{ color: TEAL }}>{t1Total}</span> credit hours</div>
+                          <SubsectionComments value={cycleData.subsectionNotes.t1} onChange={(v) => update("subsectionNotes.t1", v)} />
+            </Accordion>
+
+            <Accordion id="t2" title="T2 — Teaching Quality" openId={openId} setOpenId={setOpenId}>
+              <Label>Satisfying the learning objectives</Label>
+              <BulletList items={cycleData.teaching.t2Objectives} onChange={(v) => update("teaching.t2Objectives", v)} pending={pendingForCode(cycleData, "T2_OBJECTIVES")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_OBJECTIVES-" + pendingForCode(cycleData, "T2_OBJECTIVES").length} />
+              <div style={{ marginTop: 16 }}><Label>Incorporating new instructional strategies</Label></div>
+              <BulletList items={cycleData.teaching.t2Strategies} onChange={(v) => update("teaching.t2Strategies", v)} pending={pendingForCode(cycleData, "T2_STRATEGIES")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_STRATEGIES-" + pendingForCode(cycleData, "T2_STRATEGIES").length} />
+              <div style={{ marginTop: 16 }}><Label>Course industry engagement</Label></div>
+              <BulletList items={cycleData.teaching.t2Industry} onChange={(v) => update("teaching.t2Industry", v)} pending={pendingForCode(cycleData, "T2_INDUSTRY")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_INDUSTRY-" + pendingForCode(cycleData, "T2_INDUSTRY").length} />
+              <div style={{ marginTop: 16 }}><Label>Course updates and revisions</Label></div>
+              <BulletList items={cycleData.teaching.t2Updates} onChange={(v) => update("teaching.t2Updates", v)} pending={pendingForCode(cycleData, "T2_UPDATES")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_UPDATES-" + pendingForCode(cycleData, "T2_UPDATES").length} />
+              <div style={{ marginTop: 16 }}><Label>Completing the course file</Label></div>
+              <BulletList items={cycleData.teaching.t2CourseFile} onChange={(v) => update("teaching.t2CourseFile", v)} pending={pendingForCode(cycleData, "T2_COURSEFILE")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_COURSEFILE-" + pendingForCode(cycleData, "T2_COURSEFILE").length} />
+              <div style={{ marginTop: 16 }}><Label>Advising MS and PhD thesis students</Label></div>
+              <BulletList items={cycleData.teaching.t2Advising} onChange={(v) => update("teaching.t2Advising", v)} pending={pendingForCode(cycleData, "T2_ADVISING")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_ADVISING-" + pendingForCode(cycleData, "T2_ADVISING").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.t2} onChange={(v) => update("subsectionNotes.t2", v)} />
+            </Accordion>
+
+            <Accordion id="t3" title="T3 — Students Evaluation" openId={openId} setOpenId={setOpenId}>
+              <Label>By term</Label>
+              {cycleData.teaching.t3TermEvals.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                  <input style={{ ...inputStyle, width: 120 }} value={r.term} onChange={(e) => { const rows = [...cycleData.teaching.t3TermEvals]; rows[i] = { ...rows[i], term: e.target.value }; update("teaching.t3TermEvals", rows); }} />
+                  <input type="number" step="0.01" style={{ ...inputStyle, width: 100 }} value={r.evaluation} onChange={(e) => { const rows = [...cycleData.teaching.t3TermEvals]; rows[i] = { ...rows[i], evaluation: Number(e.target.value) }; update("teaching.t3TermEvals", rows); }} />
+                  <button onClick={() => update("teaching.t3TermEvals", cycleData.teaching.t3TermEvals.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#9AA2AF" /></button>
+                </div>
+              ))}
+              <GhostAddButton onClick={() => update("teaching.t3TermEvals", [...cycleData.teaching.t3TermEvals, { term: "", evaluation: 0 }])} label="Add term" />
+              <div style={{ marginTop: 14 }}><Label>By year</Label></div>
+              {cycleData.teaching.t3YearEvals.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                  <input style={{ ...inputStyle, width: 120 }} value={r.year} onChange={(e) => { const rows = [...cycleData.teaching.t3YearEvals]; rows[i] = { ...rows[i], year: e.target.value }; update("teaching.t3YearEvals", rows); }} />
+                  <input type="number" step="0.01" style={{ ...inputStyle, width: 100 }} value={r.evaluation} onChange={(e) => { const rows = [...cycleData.teaching.t3YearEvals]; rows[i] = { ...rows[i], evaluation: Number(e.target.value) }; update("teaching.t3YearEvals", rows); }} />
+                  <button onClick={() => update("teaching.t3YearEvals", cycleData.teaching.t3YearEvals.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#9AA2AF" /></button>
+                </div>
+              ))}
+              <GhostAddButton onClick={() => update("teaching.t3YearEvals", [...cycleData.teaching.t3YearEvals, { year: "", evaluation: 0 }])} label="Add year" />
+                          <SubsectionComments value={cycleData.subsectionNotes.t3} onChange={(v) => update("subsectionNotes.t3", v)} />
+            </Accordion>
+
+            <Accordion id="t4" title="T4 — Interdisciplinary Teaching" openId={openId} setOpenId={setOpenId}>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>{cycleData.teaching.t4Comment}</div>
+              <input type="number" style={{ ...inputStyle, width: 100 }} value={cycleData.teaching.t4Count} onChange={(e) => update("teaching.t4Count", Number(e.target.value))} />
+                          <SubsectionComments value={cycleData.subsectionNotes.t4} onChange={(v) => update("subsectionNotes.t4", v)} />
+            </Accordion>
+
+            <Accordion id="t5" title="T5 — Contributing to New Programs" openId={openId} setOpenId={setOpenId}>
+              <Label>Developing new programs (e.g. CX, MX, etc.)</Label>
+              <BulletList items={cycleData.teaching.t5NewPrograms} onChange={(v) => update("teaching.t5NewPrograms", v)} pending={pendingForCode(cycleData, "T5_PROGRAMS")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T5_PROGRAMS-" + pendingForCode(cycleData, "T5_PROGRAMS").length} />
+              <div style={{ marginTop: 16 }}><Label>Developing new courses</Label></div>
+              <BulletList items={cycleData.teaching.t5NewCourses} onChange={(v) => update("teaching.t5NewCourses", v)} pending={pendingForCode(cycleData, "T5_COURSES")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T5_COURSES-" + pendingForCode(cycleData, "T5_COURSES").length} />
+              <div style={{ marginTop: 16 }}><Label>Teaching in new programs</Label></div>
+              <BulletList items={cycleData.teaching.t5TeachingNewPrograms} onChange={(v) => update("teaching.t5TeachingNewPrograms", v)} pending={pendingForCode(cycleData, "T5_TEACHING")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T5_TEACHING-" + pendingForCode(cycleData, "T5_TEACHING").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.t5} onChange={(v) => update("subsectionNotes.t5", v)} />
+            </Accordion>
+
+            <Accordion id="t6" title="T6 — Students Engagement" openId={openId} setOpenId={setOpenId}>
+              <Label>Availability/engagement outside classroom</Label>
+              <BulletList items={cycleData.teaching.t6Availability} onChange={(v) => update("teaching.t6Availability", v)} pending={pendingForCode(cycleData, "T6_AVAILABILITY")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T6_AVAILABILITY-" + pendingForCode(cycleData, "T6_AVAILABILITY").length} />
+              <div style={{ marginTop: 16 }}><Label>Coop, summer training, special projects</Label></div>
+              <BulletList items={cycleData.teaching.t6CoopProjects} onChange={(v) => update("teaching.t6CoopProjects", v)} pending={pendingForCode(cycleData, "T6_COOP")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T6_COOP-" + pendingForCode(cycleData, "T6_COOP").length} />
+              <div style={{ marginTop: 16 }}><Label>Field trips (industry, etc.)</Label></div>
+              <BulletList items={cycleData.teaching.t6FieldTrips} onChange={(v) => update("teaching.t6FieldTrips", v)} pending={pendingForCode(cycleData, "T6_FIELDTRIPS")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T6_FIELDTRIPS-" + pendingForCode(cycleData, "T6_FIELDTRIPS").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.t6} onChange={(v) => update("subsectionNotes.t6", v)} />
+            </Accordion>
+          </div>
+        )}
+
+        {section === "research" && (
+          <div>
+            <Accordion id="r1" title="R1 — Research Productivity" openId={openId} setOpenId={setOpenId}>
+              <div style={{ background: "#EAECF0", border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 12px", fontSize: 12, color: MUTED, marginBottom: 12 }}>Auto-filled by the official APS system from Pure/Scopus — no action needed here. Kept for reference and the rollup summary.</div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Publications over the past two years (journal articles and reviews indexed in Scopus).</div>
+              {cycleData.research.r1Publications.map((p, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "flex-start" }}>
+                  <textarea style={{ ...inputStyle, flex: 1, minHeight: 36 }} value={p.title} onChange={(e) => { const rows = [...cycleData.research.r1Publications]; rows[i] = { ...rows[i], title: e.target.value }; update("research.r1Publications", rows); }} />
+                  <input type="number" style={{ ...inputStyle, width: 80 }} value={p.year} onChange={(e) => { const rows = [...cycleData.research.r1Publications]; rows[i] = { ...rows[i], year: Number(e.target.value) }; update("research.r1Publications", rows); }} />
+                  <select style={{ ...inputStyle, width: 140 }} value={p.qRank} onChange={(e) => { const rows = [...cycleData.research.r1Publications]; rows[i] = { ...rows[i], qRank: e.target.value }; update("research.r1Publications", rows); }}>
+                    {Q_RANKS.map((q) => <option key={q}>{q}</option>)}
+                  </select>
+                  <button onClick={() => update("research.r1Publications", cycleData.research.r1Publications.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer", marginTop: 6 }}><Trash2 size={13} color="#9AA2AF" /></button>
+                </div>
+              ))}
+              <GhostAddButton onClick={() => update("research.r1Publications", [...cycleData.research.r1Publications, { title: "", year: new Date().getFullYear(), qRank: "Q2" }])} label="Add publication" />
+              <div style={{ marginTop: 14, display: "flex", gap: 24, fontSize: 13, color: "#2E3742" }}>
+                <div>Publications count: <strong className="aps-mono">{r1Count}</strong></div>
+                <div>Average / year: <strong className="aps-mono">{r1Avg}</strong></div>
+                <div>Ranking score: <strong className="aps-mono" style={{ color: TEAL }}>{r1Score.toFixed(1)}</strong></div>
+              </div>
+              <div style={{ fontSize: 11, color: "#9AA2AF", marginTop: 4, marginBottom: 14 }}>Score = Top10% Q1 ×4 + Q1 ×3 + Q2 ×2 + Q3 ×1 + Q4 ×0.1 (auto-computed from the table above)</div>
+              <Label>Notes (anything relevant not captured by the auto-filled list above)</Label>
+              <textarea style={{ ...inputStyle, minHeight: 50 }} value={cycleData.research.r1Notes || ""} onChange={(e) => update("research.r1Notes", e.target.value)} placeholder="e.g. a paper accepted but not yet indexed, a correction to the auto-filled count, context on co-authorship…" />
+                          <SubsectionComments value={cycleData.subsectionNotes.r1} onChange={(v) => update("subsectionNotes.r1", v)} />
+            </Accordion>
+
+            <Accordion id="r2" title="R2 — Research Quality (Citations)" openId={openId} setOpenId={setOpenId}>
+              <div style={{ background: "#EAECF0", border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 12px", fontSize: 12, color: MUTED, marginBottom: 12 }}>Auto-filled by the official APS system from Pure/Scopus — no action needed here. Kept for reference and the rollup summary.</div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Citations over the past five years.</div>
+              {cycleData.research.r2Citations.map((c, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "flex-start" }}>
+                  <textarea style={{ ...inputStyle, flex: 1, minHeight: 36 }} value={c.title} onChange={(e) => { const rows = [...cycleData.research.r2Citations]; rows[i] = { ...rows[i], title: e.target.value }; update("research.r2Citations", rows); }} />
+                  <input type="number" style={{ ...inputStyle, width: 80 }} value={c.year} onChange={(e) => { const rows = [...cycleData.research.r2Citations]; rows[i] = { ...rows[i], year: Number(e.target.value) }; update("research.r2Citations", rows); }} />
+                  <input type="number" style={{ ...inputStyle, width: 90 }} value={c.count} onChange={(e) => { const rows = [...cycleData.research.r2Citations]; rows[i] = { ...rows[i], count: Number(e.target.value) }; update("research.r2Citations", rows); }} />
+                  <button onClick={() => update("research.r2Citations", cycleData.research.r2Citations.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer", marginTop: 6 }}><Trash2 size={13} color="#9AA2AF" /></button>
+                </div>
+              ))}
+              <GhostAddButton onClick={() => update("research.r2Citations", [...cycleData.research.r2Citations, { title: "", year: new Date().getFullYear(), count: 0 }])} label="Add entry" />
+              <div style={{ marginTop: 14, display: "flex", gap: 24, fontSize: 13, color: "#2E3742" }}>
+                <div>Total citations: <strong className="aps-mono" style={{ color: TEAL }}>{r2Total}</strong></div>
+                <div>Average: <strong className="aps-mono">{r2Avg}</strong></div>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <Label>Notes (anything relevant not captured by the auto-filled list above)</Label>
+                <textarea style={{ ...inputStyle, minHeight: 50 }} value={cycleData.research.r2Notes || ""} onChange={(e) => update("research.r2Notes", e.target.value)} placeholder="e.g. a notable citing paper worth flagging, context on a citation spike…" />
+              </div>
+                          <SubsectionComments value={cycleData.subsectionNotes.r2} onChange={(v) => update("subsectionNotes.r2", v)} />
+            </Accordion>
+
+            <Accordion id="r3" title="R3 — Interdisciplinary Research" openId={openId} setOpenId={setOpenId}>
+              {cycleData.research.r3Projects.map((p, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                  <input style={{ ...inputStyle, width: 220 }} value={p.center} onChange={(e) => { const rows = [...cycleData.research.r3Projects]; rows[i] = { ...rows[i], center: e.target.value }; update("research.r3Projects", rows); }} placeholder="Center / partner" />
+                  <textarea style={{ ...inputStyle, flex: 1, minHeight: 36 }} value={p.title} onChange={(e) => { const rows = [...cycleData.research.r3Projects]; rows[i] = { ...rows[i], title: e.target.value }; update("research.r3Projects", rows); }} />
+                  <button onClick={() => update("research.r3Projects", cycleData.research.r3Projects.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#9AA2AF" /></button>
+                </div>
+              ))}
+              <GhostAddButton onClick={() => update("research.r3Projects", [...cycleData.research.r3Projects, { center: "", title: "" }])} label="Add project" />
+              <PendingEvidenceList pending={pendingForCode(cycleData, "R3")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} />
+                          <SubsectionComments value={cycleData.subsectionNotes.r3} onChange={(v) => update("subsectionNotes.r3", v)} />
+            </Accordion>
+
+            <Accordion id="r4" title="R4 — Industry Engagement" openId={openId} setOpenId={setOpenId}>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>{cycleData.research.r4Comment}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13 }}>SAR</span>
+                <input type="number" style={{ ...inputStyle, width: 160 }} value={cycleData.research.r4FundedValue} onChange={(e) => update("research.r4FundedValue", Number(e.target.value))} />
+              </div>
+                          <SubsectionComments value={cycleData.subsectionNotes.r4} onChange={(v) => update("subsectionNotes.r4", v)} />
+            </Accordion>
+
+            <Accordion id="r5" title="R5 — Commercialization" openId={openId} setOpenId={setOpenId}>
+              <Label>Patents commercialized</Label>
+              <input style={{ ...inputStyle, marginBottom: 12 }} value={cycleData.research.r5PatentsCommercialized} onChange={(e) => update("research.r5PatentsCommercialized", e.target.value)} />
+              <Label>Projects commercialized</Label>
+              <input style={inputStyle} value={cycleData.research.r5ProjectsCommercialized} onChange={(e) => update("research.r5ProjectsCommercialized", e.target.value)} />
+                          <SubsectionComments value={cycleData.subsectionNotes.r5} onChange={(v) => update("subsectionNotes.r5", v)} />
+            </Accordion>
+
+            <Accordion id="r6" title="R6 — Research Leadership" openId={openId} setOpenId={setOpenId}>
+              <Label>Leading research activities / teams / areas</Label>
+              <BulletList items={cycleData.research.r6Leading} onChange={(v) => update("research.r6Leading", v)} pending={pendingForCode(cycleData, "R6_LEADING")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"R6_LEADING-" + pendingForCode(cycleData, "R6_LEADING").length} />
+              <div style={{ marginTop: 16 }}><Label>Organizing conferences</Label></div>
+              <BulletList items={cycleData.research.r6Conferences} onChange={(v) => update("research.r6Conferences", v)} pending={pendingForCode(cycleData, "R6_CONF")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"R6_CONF-" + pendingForCode(cycleData, "R6_CONF").length} />
+              <div style={{ marginTop: 16 }}><Label>Mentoring young researchers</Label></div>
+              <BulletList items={cycleData.research.r6Mentorship} onChange={(v) => update("research.r6Mentorship", v)} pending={pendingForCode(cycleData, "R6_MENTOR")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"R6_MENTOR-" + pendingForCode(cycleData, "R6_MENTOR").length} />
+              <div style={{ marginTop: 16 }}><Label>Recognition by professional organizations</Label></div>
+              <BulletList items={cycleData.research.r6Recognitions} onChange={(v) => update("research.r6Recognitions", v)} pending={pendingForCode(cycleData, "R6_RECOG")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"R6_RECOG-" + pendingForCode(cycleData, "R6_RECOG").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.r6} onChange={(v) => update("subsectionNotes.r6", v)} />
+            </Accordion>
+          </div>
+        )}
+
+        {section === "societal" && (
+          <div>
+            <Accordion id="s1" title="S1 — Venture Startups" openId={openId} setOpenId={setOpenId}>
+              <BulletList items={cycleData.societal.s1Bullets} onChange={(v) => update("societal.s1Bullets", v)} pending={pendingForCode(cycleData, "S1")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S1-" + pendingForCode(cycleData, "S1").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.s1} onChange={(v) => update("subsectionNotes.s1", v)} />
+            </Accordion>
+            <Accordion id="s2" title="S2 — University Service" openId={openId} setOpenId={setOpenId}>
+              <Label>Promoting university's name</Label>
+              <BulletList items={cycleData.societal.s2PromotingBullets} onChange={(v) => update("societal.s2PromotingBullets", v)} pending={pendingForCode(cycleData, "S2_PROMOTE")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S2_PROMOTE-" + pendingForCode(cycleData, "S2_PROMOTE").length} />
+              <div style={{ marginTop: 16 }}><Label>Contribution towards university's environment</Label></div>
+              <BulletList items={cycleData.societal.s2EnvironmentBullets} onChange={(v) => update("societal.s2EnvironmentBullets", v)} pending={pendingForCode(cycleData, "S2_ENV")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S2_ENV-" + pendingForCode(cycleData, "S2_ENV").length} />
+              <div style={{ marginTop: 16 }}><Label>Fulfilling accreditation requirements</Label></div>
+              <BulletList items={cycleData.societal.s2AccreditationBullets} onChange={(v) => update("societal.s2AccreditationBullets", v)} pending={pendingForCode(cycleData, "S2_ACCRED")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S2_ACCRED-" + pendingForCode(cycleData, "S2_ACCRED").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.s2} onChange={(v) => update("subsectionNotes.s2", v)} />
+            </Accordion>
+            <Accordion id="s3" title="S3 — Community Engagement" openId={openId} setOpenId={setOpenId}>
+              <Label>Voluntary work</Label>
+              <BulletList items={cycleData.societal.s3Voluntary} onChange={(v) => update("societal.s3Voluntary", v)} pending={pendingForCode(cycleData, "S3_VOLUNTARY")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S3_VOLUNTARY-" + pendingForCode(cycleData, "S3_VOLUNTARY").length} />
+              <div style={{ marginTop: 16 }}><Label>Support students for Mawhiba, Rhodes, etc.</Label></div>
+              <BulletList items={cycleData.societal.s3Mawhiba} onChange={(v) => update("societal.s3Mawhiba", v)} pending={pendingForCode(cycleData, "S3_MAWHIBA")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S3_MAWHIBA-" + pendingForCode(cycleData, "S3_MAWHIBA").length} />
+              <div style={{ marginTop: 16 }}><Label>Outreach programs</Label></div>
+              <BulletList items={cycleData.societal.s3Outreach} onChange={(v) => update("societal.s3Outreach", v)} pending={pendingForCode(cycleData, "S3_OUTREACH")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S3_OUTREACH-" + pendingForCode(cycleData, "S3_OUTREACH").length} />
+              <div style={{ marginTop: 16 }}><Label>Society development</Label></div>
+              <BulletList items={cycleData.societal.s3SocietyDevelopment} onChange={(v) => update("societal.s3SocietyDevelopment", v)} pending={pendingForCode(cycleData, "S3_SOCIETY")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S3_SOCIETY-" + pendingForCode(cycleData, "S3_SOCIETY").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.s3} onChange={(v) => update("subsectionNotes.s3", v)} />
+            </Accordion>
+          </div>
+        )}
+
+        {section === "behavior" && (
+          <div>
+            <Accordion id="b1" title="B1 — Safety Adherence" openId={openId} setOpenId={setOpenId}>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>Start with 5 and subtract according to severity of violation (traffic −1, smoking in unauthorized area −2, fire −4, lab safety −4, etc.).</div>
+              <BulletList items={cycleData.behavior.b1Bullets} onChange={(v) => update("behavior.b1Bullets", v)} pending={pendingForCode(cycleData, "B1")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B1-" + pendingForCode(cycleData, "B1").length} />
+              <div style={{ marginTop: 16 }}><Label>Violations (if any)</Label></div>
+              {cycleData.behavior.b1Violations.map((v, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                  <input style={{ ...inputStyle, flex: 1 }} value={v.description} onChange={(e) => { const rows = [...cycleData.behavior.b1Violations]; rows[i] = { ...rows[i], description: e.target.value }; update("behavior.b1Violations", rows); }} placeholder="Description" />
+                  <input type="number" style={{ ...inputStyle, width: 90 }} value={v.points} onChange={(e) => { const rows = [...cycleData.behavior.b1Violations]; rows[i] = { ...rows[i], points: Number(e.target.value) }; update("behavior.b1Violations", rows); }} placeholder="Points" />
+                  <button onClick={() => update("behavior.b1Violations", cycleData.behavior.b1Violations.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#9AA2AF" /></button>
+                </div>
+              ))}
+              <GhostAddButton onClick={() => update("behavior.b1Violations", [...cycleData.behavior.b1Violations, { description: "", points: 1 }])} label="Add violation" />
+              <div style={{ marginTop: 14, fontSize: 13.5, fontWeight: 600 }}>B1 Score: <span className="aps-mono" style={{ color: b1Score === 5 ? GREEN : AMBER }}>{b1Score} / 5</span></div>
+                          <SubsectionComments value={cycleData.subsectionNotes.b1} onChange={(v) => update("subsectionNotes.b1", v)} />
+            </Accordion>
+            <Accordion id="b2" title="B2 — Creating a Positive Environment" openId={openId} setOpenId={setOpenId}>
+              <BulletList items={cycleData.behavior.b2Bullets} onChange={(v) => update("behavior.b2Bullets", v)} pending={pendingForCode(cycleData, "B2")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B2-" + pendingForCode(cycleData, "B2").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.b2} onChange={(v) => update("subsectionNotes.b2", v)} />
+            </Accordion>
+            <Accordion id="b3" title="B3 — Presence & Accessibility" openId={openId} setOpenId={setOpenId}>
+              <BulletList items={cycleData.behavior.b3Bullets} onChange={(v) => update("behavior.b3Bullets", v)} pending={pendingForCode(cycleData, "B3")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B3-" + pendingForCode(cycleData, "B3").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.b3} onChange={(v) => update("subsectionNotes.b3", v)} />
+            </Accordion>
+            <Accordion id="b4" title="B4 — Active Engagement" openId={openId} setOpenId={setOpenId}>
+              <BulletList items={cycleData.behavior.b4Bullets} onChange={(v) => update("behavior.b4Bullets", v)} pending={pendingForCode(cycleData, "B4")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B4-" + pendingForCode(cycleData, "B4").length} />
+                          <SubsectionComments value={cycleData.subsectionNotes.b4} onChange={(v) => update("subsectionNotes.b4", v)} />
+            </Accordion>
+          </div>
+        )}
+
+        {section === "inbox" && (() => {
+                    const pending = cycleData.evidenceInbox.filter((e) => (e.subsections || []).length === 0 || (e.subsections || []).some((code) => !getEvidenceRelation(e, code).approved));
+
+          const approved = cycleData.evidenceInbox.filter((e) => e.approved);
+          return (
+            <div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
+                                A full log of everything uploaded. Each suggested subsection is a separate review: open the Teaching / Research / Societal Benefits / Behavior tab it was tagged to, edit the contribution text if needed, and approve it there. Approving one subsection never approves the same evidence in another subsection.
+              </div>
+
+              {pending.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: AMBER, fontWeight: 600, marginBottom: 8 }}>Pending approval ({pending.length})</div>
+                  {pending.map((ev) => (
+                    <div key={ev.id} className="aps-card" style={{ background: "#fff", border: "1px solid " + AMBER, borderRadius: 6, padding: "12px 16px", marginBottom: 8 }}>
+                                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            const code = e.target.value;
+                            if (code) addEvidenceRelation(ev.id, code);
+                            e.target.value = "";
+                          }}
+                          style={{ ...inputStyle, maxWidth: "100%", fontSize: 11.5, padding: "5px 8px", background: "#fff" }}
+                        >
+                          <option value="">Add a supported APS subsection…</option>
+                          {TAGGABLE_SUBSECTIONS.filter(([code]) => !(ev.subsections || []).includes(code)).map(([code, meta]) => (
+                            <option key={code} value={code}>{meta.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ fontSize: 13, color: INK, fontWeight: 500 }}>{ev.bulletText}{ev.period ? ` (${ev.period})` : ""}</div>
+                      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{ev.fileName} · uploaded {new Date(ev.addedAt).toLocaleDateString()}</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                        {ev.subsections.map((code) => (
+                          <span key={code} className="aps-mono" style={{ fontSize: 10, background: "#FAF1DE", color: "#6B5015", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>{code}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 8 }}>Approved ({approved.length})</div>
+              {approved.length === 0 ? (
+                <EmptyState text="Nothing approved yet." />
+              ) : (
+                approved.map((ev) => (
+                  <div key={ev.id} className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 18px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{ev.bulletText}</div>
+                        <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>
+                          {ev.fileName}{ev.period ? ` · ${ev.period}` : ""} · approved {new Date(ev.approvedAt || ev.addedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span className="aps-mono" style={{ fontSize: 10, background: "#EFF5EF", color: GREEN, padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>Approved</span>
+                        <button onClick={() => removeEvidenceRecord(ev.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={13} color="#9AA2AF" /></button>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                      {ev.subsections.map((code) => (
+                        <span key={code} className="aps-mono" style={{ fontSize: 10, background: "#EAECF0", color: TEAL, padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>{code}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          );
+        })()}
+
+        {section === "evaluation" && (
+          <div>
+            <div className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "20px 22px", marginBottom: 16 }}>
+              <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 14 }}>Rollup Summary</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <SummaryStat label="Teaching load (credit hrs)" value={t1Total} />
+                <SummaryStat label="Avg. student evaluation (2025)" value={cycleData.teaching.t3YearEvals[0]?.evaluation ?? "—"} />
+                <SummaryStat label="Publications (2yr)" value={r1Count} />
+                <SummaryStat label="Publication ranking score" value={r1Score.toFixed(1)} />
+                <SummaryStat label="Total citations (5yr)" value={r2Total} />
+                <SummaryStat label="Avg. citations" value={r2Avg} />
+                <SummaryStat label="Industry funding (SAR)" value={cycleData.research.r4FundedValue.toLocaleString()} />
+                <SummaryStat label="Behavior — Safety score" value={`${b1Score} / 5`} />
+              </div>
+            </div>
+            <div className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "20px 22px" }}>
               <Label>Notes (final score, weighting, or anything else pending official 2027-cycle rules)</Label>
               <textarea style={{ ...inputStyle, minHeight: 90 }} value={cycleData.evaluationNotes} onChange={(e) => update("evaluationNotes", e.target.value)} placeholder="e.g. Overall APS score not yet released; weights for T4/T5, B3/B4 to be added in 2027 cycle per official form." />
             </div>
