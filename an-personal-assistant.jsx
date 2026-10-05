@@ -5044,7 +5044,7 @@ function aps27MonthYearMatches(text) {
 
 function assessAPS27Period(code, period) {
   const raw = String(period || "").trim();
-  if (!raw) return { status: "review", label: "Period needed", detail: "Add the activity's term or date before approving." };
+  if (!raw) return { status: "review", label: "Activity term/date optional", detail: "You may approve without it; add it later when available for stronger APS reporting." };
   const text = raw.toLowerCase();
   const group = aps27PeriodGroup(code);
   const years = [...text.matchAll(/\\b(20\\d{2})\\b/g)].map((m) => Number(m[1]));
@@ -5230,7 +5230,7 @@ return (
             <input
               value={period}
               onChange={(e) => setPeriodDrafts({ ...periodDrafts, [ev.id]: e.target.value })}
-              placeholder="Activity term/date, e.g. Term 261 or September 2026"
+              placeholder="Activity term/date (optional), e.g. Term 261 or September 2026"
               style={{ ...inputStyle, maxWidth: "100%", marginBottom: 4, background: "#fff", fontSize: 12 }}
             />
             <div style={{ fontSize: 11, color: periodColor, marginBottom: 10 }}>
@@ -5238,7 +5238,7 @@ return (
             </div>
 
             <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => onApprovePending(ev.id, ev.relationCode, reviewedText, period)} disabled={periodCheck.status !== "eligible"} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: periodCheck.status === "eligible" ? GREEN : "#C7CCD3", color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: periodCheck.status === "eligible" ? "pointer" : "default" }}>
+                            <button onClick={() => onApprovePending(ev.id, ev.relationCode, reviewedText, period)} disabled={periodCheck.status === "outside"} title={periodCheck.status === "outside" ? "This activity date is outside the APS27 window." : "Approve this evidence for the displayed subsection."} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: periodCheck.status === "outside" ? "#C7CCD3" : GREEN, color: "#fff", border: "none", borderRadius: 3, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: periodCheck.status === "outside" ? "default" : "pointer" }}>
                                 <Check size={12} /> Approve for this subsection
               </button>
               <button onClick={() => setExpandedPendingId(isExpanded ? null : ev.id)} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 3, padding: "7px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
@@ -5616,8 +5616,8 @@ function approveEvidence(id, relationCode, overrideBulletText, overridePeriod) {
     if (!bulletText) return;
     const period = (overridePeriod != null ? overridePeriod : ev.period || "").trim();
     const periodCheck = assessAPS27Period(relationCode, period);
-    if (periodCheck.status !== "eligible") {
-      setExtractError(`Before approving this evidence for ${relationCode}, confirm a period inside the APS27 window. ${periodCheck.detail}`);
+    if (periodCheck.status === "outside") {
+      setExtractError(`This evidence appears outside the APS27 window for ${relationCode}. Correct the activity term/date or choose a more appropriate APS cycle before approving. ${periodCheck.detail}`);
       return;
     }
     setExtractError("");
@@ -5636,7 +5636,7 @@ function approveEvidence(id, relationCode, overrideBulletText, overridePeriod) {
         cd[meta.section][meta.field] = [...(cd[meta.section][meta.field] || []), bulletLine];
       }
       const subsectionApprovals = { ...(live.subsectionApprovals || {}) };
-      subsectionApprovals[relationCode] = { ...liveRelation, bulletText, approved: true, approvedAt: new Date().toISOString() };
+      subsectionApprovals[relationCode] = { ...liveRelation, bulletText, period, periodStatus: periodCheck.status, approved: true, approvedAt: new Date().toISOString() };
       const allApproved = (live.subsections || []).every((code) => getEvidenceRelation({ ...live, subsectionApprovals }, code).approved);
       cd.evidenceInbox = cd.evidenceInbox.map((e) => (
         e.id === id
