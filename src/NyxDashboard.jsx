@@ -12,6 +12,7 @@ import {
   HeartHandshake,
   LayoutDashboard,
   Lightbulb,
+  MapPinned,
   Medal,
   RefreshCw,
   Sparkles,
@@ -55,7 +56,10 @@ const GRANT_TREND = [
 
 const PERIODS = [
   { id: "2026", label: "2026" },
-  { id: "five", label: "Last 5 years" },
+  { id: "2025", label: "2025" },
+  { id: "2024", label: "2024" },
+  { id: "2023", label: "2023" },
+  { id: "2022", label: "2022" },
   { id: "career", label: "Entire career" },
 ];
 
@@ -99,8 +103,40 @@ function periodJournalCount(period) {
 
 function selectedLabel(period) {
   if (period === "career") return "Career";
-  if (period === "five") return "2022–26";
   return period;
+}
+
+function activeProjectLeads(projects) {
+  const leads = new Set();
+  projects.forEach((project) => {
+    [project?.lead, project?.projectLead, project?.objectiveLead, ...(project?.workPackages || []).map((wp) => wp?.lead || wp?.owner || wp?.objectiveLead)].forEach((name) => {
+      const clean = String(name || "").trim();
+      if (clean && !/aamer\s+nazir|dr\.?\s*aamer|prof\.?\s*aamer/i.test(clean)) leads.add(clean);
+    });
+  });
+  return [...leads];
+}
+
+function activeProducts(projects) {
+  return projects.flatMap((project) => {
+    if (Array.isArray(project?.products)) return project.products.map((product) => ({ ...product, projectTitle: project.title }));
+    if (project?.product || project?.trl) return [{ name: project.product || project.title, trl: project.trl, projectTitle: project.title }];
+    return [];
+  });
+}
+
+function affiliationCountries(outputs, period) {
+  const tally = new Map();
+  outputs.filter((output) => yearInPeriod(output?.year, period)).forEach((output) => {
+    const affiliations = Array.isArray(output?.coauthorAffiliations) ? output.coauthorAffiliations : [];
+    affiliations.forEach((affiliation) => {
+      const country = typeof affiliation === "string" ? affiliation : affiliation?.country;
+      const clean = String(country || "").trim();
+      if (!clean) return;
+      tally.set(clean, (tally.get(clean) || 0) + 1);
+    });
+  });
+  return [...tally.entries()].map(([country, outputs]) => ({ country, outputs })).sort((a, b) => b.outputs - a.outputs || a.country.localeCompare(b.country));
 }
 
 function liveOrBaseline(live, baseline) {
@@ -292,17 +328,17 @@ function CombinedBarChart({ activePeriod }) {
   const top = 22;
   const bottom = 38;
   const chartHeight = height - top - bottom;
-  const years = JOURNAL_TREND.map((point) => point.year);
-  const max = Math.max(...JOURNAL_TREND.map((point) => point.value), ...GRANT_TREND.map((point) => point.value), 1);
+  const years = JOURNAL_TREND.filter((point) => point.year >= 2022).map((point) => point.year);
+  const max = Math.max(...JOURNAL_TREND.filter((point) => point.year >= 2022).map((point) => point.value), ...GRANT_TREND.filter((point) => point.year >= 2022).map((point) => point.value), 1);
   const slot = (width - left - 10) / years.length;
   const barWidth = Math.min(19, slot * 0.28);
-  const isActive = (year) => activePeriod === "career" || (activePeriod === "five" && year >= 2022) || String(year) === activePeriod;
+  const isActive = (year) => activePeriod === "career" || String(year) === activePeriod;
   const projectValue = (year) => GRANT_TREND.find((point) => point.year === year)?.value || 0;
   return <div className="nyx-chart-wrap"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Journal publications and approved projects by year" className="nyx-chart">
     {[0, 0.5, 1].map((ratio) => { const y = top + chartHeight - chartHeight * ratio; return <line key={ratio} x1={left} x2={width - 8} y1={y} y2={y} stroke="#E7EAF0" strokeWidth="1" />; })}
     {years.map((year, index) => {
       const x = left + index * slot + slot / 2;
-      const journal = JOURNAL_TREND[index].value;
+      const journal = JOURNAL_TREND.find((point) => point.year === year)?.value || 0;
       const project = projectValue(year);
       const current = isActive(year);
       const journalHeight = (journal / max) * chartHeight;
@@ -314,6 +350,17 @@ function CombinedBarChart({ activePeriod }) {
       </g>;
     })}
   </svg></div>;
+}
+
+function AffiliationFootprint({ outputs, period }) {
+  const countries = affiliationCountries(outputs, period);
+  return <article className="nyx-panel nyx-footprint-panel">
+    <header><div><span>RESEARCH INTELLIGENCE</span><h2>Co-author affiliation footprint</h2></div><div className="nyx-source-chip"><MapPinned size={12} />Co-author affiliations</div></header>
+    {countries.length ? <div className="nyx-footprint-list" aria-label="Co-author affiliations by country">
+      {countries.slice(0, 7).map((item) => <div className="nyx-footprint-country" key={item.country}><span>{item.country}</span><div><i style={{ width: `${Math.max(12, Math.min(100, item.outputs * 18))}%` }} /><strong>{item.outputs}</strong></div></div>)}
+      <p><MapPinned size={13} />{plural(countries.length, "country")} represented in Research Intelligence for {selectedLabel(period)}.</p>
+    </div> : <div className="nyx-footprint-empty"><MapPinned size={21} /><div><strong>No co-author affiliation data yet</strong><p>Add or confirm author-affiliation countries in Research Intelligence. Nyx will then build this footprint from the records—not from fixed locations.</p></div></div>}
+  </article>;
 }
 
 function ImprovementDrawer({ section, onClose, onOpenModule }) {
@@ -412,6 +459,8 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const attentionCount = activeProjects.filter(projectNeedsAttention).length;
   const stableProjects = Math.max(0, activeProjects.length - attentionCount);
   const activeProgress = activeProjects.length ? Math.round(activeProjects.reduce((sum, project) => sum + projectProgress(project), 0) / activeProjects.length) : 0;
+  const projectLeads = activeProjectLeads(activeProjects);
+  const products = activeProducts(activeProjects);
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
   function openModule(moduleId) { setActiveNav(moduleId); onOpenModule(moduleId); }
 
@@ -422,9 +471,10 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
       <div className="nyx-side-footer"><span className={loading ? "is-loading" : ""} />{loading ? "Syncing" : "Cloud synced"}</div>
     </aside>
     <section className="nyx-main-column">
-      <header className="nyx-topbar"><div><div className="nyx-overline">AAMER'S PERSONAL ASSISTANT · CAREER INTELLIGENCE</div><h1>Nyx</h1><p>Academic career status, evidence and progress</p></div><div className="nyx-top-actions"><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
-      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived in 2026` : "CV baseline · 6 listed in 2026"}</small></article><article className="nyx-kpi"><span>Approved awards</span><strong>17</strong><small>{projects.length ? `${projects.length} represented in Project Dashboard` : "CV baseline pending live reconciliation"}</small></article><article className="nyx-kpi nyx-project-kpi"><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${stableProjects} on track · ${attentionCount} need attention` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-kpi-alert"><span>Data integrity</span><strong>{dataWarnings.length}</strong><small>CV records require reconciliation</small></article></section>
-      <section className="nyx-center-grid"><article className="nyx-panel nyx-attention-panel"><header><div><span>NEEDS ATTENTION TODAY</span><h2>Small briefing, clear next move</h2></div><span className="nyx-attention-count">{attentionItems.length}</span></header><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal articles</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} /><footer><TrendingUp size={14} /><span>Counts are displayed together by year; active-project workload is intentionally shown above, not inferred from historical awards.</span></footer></article></section>
+      <header className="nyx-topbar"><div><div className="nyx-overline">AAMER'S PERSONAL ASSISTANT · CAREER INTELLIGENCE</div><h1>Nyx</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
+      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived in 2026` : "CV baseline · 6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${stableProjects} on track · ${attentionCount} need attention` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi"><span>Project leads</span><strong>{projectLeads.length}</strong><small>{projectLeads.length ? `${projectLeads.slice(0, 2).join(" · ")}${projectLeads.length > 2 ? " …" : ""}` : "Student and postdoc leads from active projects"}</small></article><article className="nyx-kpi nyx-kpi-alert"><span>Products & TRL</span><strong>{products.length}</strong><small>{products.length ? `${products.filter((product) => product.trl).length} with a recorded TRL` : "No live product records yet"}</small></article></section>
+      <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><span>NEEDS ATTENTION TODAY</span><h2>Small briefing, clear next move</h2></div><span className="nyx-attention-count">{attentionItems.length}</span></header><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
+      <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal articles</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} /><footer><TrendingUp size={14} /><span>Five-year view only. Active-project workload is shown above and is not inferred from historical awards.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
       <section className="nyx-context-panel"><div><span>CV STATUS</span><h2>{sections.find((section) => section.id === selectedMapSection)?.title || "Career record"}</h2><p>Use the Career Map to open a section and inspect every subsection. The compact dashboard keeps detailed source content accessible without repeating it in the centre.</p></div><button onClick={() => setSelectedSection(sections.find((section) => section.id === selectedMapSection))}><Sparkles size={14} /> Improve this area</button></section>
       <footer className="nyx-page-footer"><span>NYX · AAMER'S PERSONAL ASSISTANT</span><span>{loading ? "Reading live records…" : `Updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`} · CV baseline: October 2026</span></footer>
     </section>
