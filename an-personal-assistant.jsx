@@ -6470,7 +6470,20 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
               <div className="aps-rail-subtitle">Choose a section to review the evidence linked to its own subsections.</div>
               {MAIN_SECTIONS.map((item) => {
                 const Icon = item.icon;
-                return <button key={item.id} className={`aps-rail-button ${section === item.id ? "is-active" : ""}`} onClick={() => { setSection(item.id); setOpenId(null); }}><Icon size={15} /> {item.label}</button>;
+                const pendingCount = item.id === "general" ? 0 : (cycleData.evidenceInbox || []).reduce((count, ev) => {
+                  const pendingInSection = (ev.subsections || []).some((code) => {
+                    const meta = SUBSECTION_MAP[code];
+                    return meta?.section === item.id && !getEvidenceRelation(ev, code).approved;
+                  });
+                  return count + (pendingInSection ? 1 : 0);
+                }, 0);
+                const pendingStyle = pendingCount > 0 && section !== item.id ? {
+                  background: "#FAF1DE",
+                  borderColor: AMBER,
+                  color: "#6B5015",
+                  fontWeight: 600,
+                } : {};
+                return <button key={item.id} className={`aps-rail-button ${section === item.id ? "is-active" : ""}`} style={pendingStyle} onClick={() => { setSection(item.id); setOpenId(null); }}><Icon size={15} /> {item.label}{pendingCount > 0 && <span className="aps-rail-count" style={{ marginLeft: "auto", background: AMBER, color: "#fff" }}>{pendingCount}</span>}</button>;
               })}
               <div className="aps-rail-separator" />
               <div className="aps-rail-label">Review tools</div>
