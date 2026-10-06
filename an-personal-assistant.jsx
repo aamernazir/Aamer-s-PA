@@ -6473,15 +6473,15 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                 const pendingCount = item.id === "general" ? 0 : (cycleData.evidenceInbox || []).reduce((count, ev) => {
                   const pendingInSection = (ev.subsections || []).some((code) => {
                     const meta = SUBSECTION_MAP[code];
-                    return meta?.section === item.id && !getEvidenceRelation(ev, code).approved;
+                    return meta && meta.section === item.id && !getEvidenceRelation(ev, code).approved;
                   });
                   return count + (pendingInSection ? 1 : 0);
                 }, 0);
                 const pendingStyle = pendingCount > 0 && section !== item.id ? {
-                  background: "#FAF1DE",
-                  borderColor: AMBER,
-                  color: "#6B5015",
-                  fontWeight: 600,
+                  background: "#F7D88F",
+                  border: "2px solid " + AMBER,
+                  color: "#4A3510",
+                  fontWeight: 700,
                 } : {};
                 return <button key={item.id} className={`aps-rail-button ${section === item.id ? "is-active" : ""}`} style={pendingStyle} onClick={() => { setSection(item.id); setOpenId(null); }}><Icon size={15} /> {item.label}{pendingCount > 0 && <span className="aps-rail-count" style={{ marginLeft: "auto", background: AMBER, color: "#fff" }}>{pendingCount}</span>}</button>;
               })}
