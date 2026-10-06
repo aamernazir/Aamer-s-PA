@@ -5427,6 +5427,59 @@ function App() {
   const [openSuggestionCode, setOpenSuggestionCode] = useState(null);
   const evidenceFileInputRef = useRef(null);
 
+  function historicalCycleForYear(year) {
+    const y = Number(year);
+    if (!Number.isFinite(y) || y >= 2026) return "";
+    return `APS${String(y + 1).slice(-2)}`;
+  }
+
+  function makeHistoricalCycle(year) {
+    const y = Number(year);
+    const termPrefix = String(y).slice(-2);
+    const cycle = JSON.parse(JSON.stringify(SEED_APS27));
+    cycle.status = "Historical";
+    cycle.cyclePeriodNote = `Historical APS cycle. Teaching / Societal Benefits / Behavior: Terms ${termPrefix}1 + ${termPrefix}2. Interdisciplinary Research (R3) & Research Leadership (R6): Jan–Dec ${y}. Industry Engagement (R4) & Commercialization (R5): Sep 1, ${y} – Aug 31, ${y + 1}.`;
+    cycle.evidenceInbox = [];
+    cycle.research.r1Publications = [];
+    cycle.research.r2Citations = [];
+    return cycle;
+  }
+
+  function evidenceActivityYear(ev) {
+    const direct = String(ev?.period || ev?.sourceDate || "").match(/\b(20\d{2})\b/);
+    if (direct) return Number(direct[1]);
+    const text = `${ev?.bulletText || ""} ${ev?.summary || ""} ${ev?.fileName || ""}`;
+    const years = [...text.matchAll(/\b(20\d{2})\b/g)].map((m) => Number(m[1]));
+    return years.length ? Math.min(...years) : null;
+  }
+
+  function migrateHistoricalEvidence(next) {
+    const source = next.cycles?.APS27;
+    if (!source?.evidenceInbox?.length) return next;
+    const keep = [];
+    const moves = new Map();
+    source.evidenceInbox.forEach((ev) => {
+      const year = evidenceActivityYear(ev);
+      const targetKey = historicalCycleForYear(year);
+      if (!targetKey) { keep.push(ev); return; }
+      if (!moves.has(targetKey)) moves.set(targetKey, []);
+      moves.get(targetKey).push({ ...ev, migratedFromCycle: "APS27" });
+    });
+    if (!moves.size) return next;
+    next.cycles.APS27 = { ...source, evidenceInbox: keep };
+    moves.forEach((items, key) => {
+      const year = 2000 + Number(key.slice(3)) - 1;
+      const existing = next.cycles[key] || makeHistoricalCycle(year);
+      const inbox = [...(existing.evidenceInbox || [])];
+      items.forEach((item) => {
+        const duplicate = inbox.some((x) => x.id === item.id || (x.fileName === item.fileName && x.period === item.period));
+        if (!duplicate) inbox.push(item);
+      });
+      next.cycles[key] = { ...existing, evidenceInbox: inbox };
+    });
+    return next;
+  }
+
   function normalizeLoadedData(parsed) {
     // NEVER wholesale-replace real saved data. Only fill in pieces that are genuinely absent,
     // and preserve everything else exactly as saved — including all cycles and all evidence.
@@ -5442,7 +5495,7 @@ function App() {
     if (!next.activeCycle || !next.cycles[next.activeCycle]) {
       next.activeCycle = next.cycles.APS27 ? "APS27" : Object.keys(next.cycles)[0];
     }
-    return next;
+    return migrateHistoricalEvidence(next);
   }
 
   useEffect(() => {
@@ -7881,13 +7934,10 @@ function App() {
       const res = await window.storage.get(APS_STORAGE_KEY);
       if (!res || !res.value) return { matched: 0 };
       const aps = JSON.parse(res.value);
-      const cycleKey = aps.activeCycle;
-      if (!cycleKey || !aps.cycles || !aps.cycles[cycleKey]) return { matched: 0 };
-      const cycle = aps.cycles[cycleKey];
-      if (cycle.status === "Submitted") return { matched: 0 }; // never write into a submitted, historical cycle
+      if (!aps.cycles) return { matched: 0 };
 
       let matchedCount = 0;
-      const newEvidenceItems = [];
+      const evidenceByCycle = new Map();
       for (const o of newOutputs) {
         const subsectionList = APS_TAGGABLE_SUBSECTIONS.map(([code, label]) => `${code}: ${label}`).join("\n");
         const prompt =
@@ -7900,7 +7950,22 @@ function App() {
           const parsed = await claudeExtractJSON([{ type: "text", text: prompt }]);
           const validSubsections = (parsed.subsections || []).filter((s) => APS_TAGGABLE_SUBSECTIONS.some(([code]) => code === s));
           if (validSubsections.length > 0 && parsed.bulletText) {
-            newEvidenceItems.push({
+            const outputYear = Number(o.year);
+            const historicalKey = Number.isFinite(outputYear) && outputYear < 2026 ? `APS${String(outputYear + 1).slice(-2)}` : "";
+            const targetKey = historicalKey || aps.activeCycle;
+            if (!targetKey) continue;
+            if (!aps.cycles[targetKey]) {
+              const termPrefix = String(outputYear).slice(-2);
+              const historical = JSON.parse(JSON.stringify(SEED_APS27));
+              historical.status = "Historical";
+              historical.cyclePeriodNote = `Historical APS cycle. Teaching / Societal Benefits / Behavior: Terms ${termPrefix}1 + ${termPrefix}2. Interdisciplinary Research (R3) & Research Leadership (R6): Jan–Dec ${outputYear}. Industry Engagement (R4) & Commercialization (R5): Sep 1, ${outputYear} – Aug 31, ${outputYear + 1}.`;
+              historical.evidenceInbox = [];
+              historical.research.r1Publications = [];
+              historical.research.r2Citations = [];
+              aps.cycles[targetKey] = historical;
+            }
+            if (aps.cycles[targetKey].status === "Submitted") continue;
+            const item = {
               id: Date.now().toString() + Math.random().toString(36).slice(2),
               fileName: `From Research Intelligence: ${o.title}`,
               summary: o.summary || "",
@@ -7910,13 +7975,18 @@ function App() {
               subsectionApprovals: Object.fromEntries(validSubsections.map((code) => [code, { approved: false, bulletText: parsed.bulletText, comment: "" }])),
               approved: false,
               addedAt: new Date().toISOString(),
-            });
+            };
+            if (!evidenceByCycle.has(targetKey)) evidenceByCycle.set(targetKey, []);
+            evidenceByCycle.get(targetKey).push(item);
             matchedCount += 1;
           }
         } catch (e) { /* skip this one silently, don't fail the whole batch */ }
       }
       if (matchedCount > 0) {
-        cycle.evidenceInbox = [...(cycle.evidenceInbox || []), ...newEvidenceItems];
+        evidenceByCycle.forEach((items, key) => {
+          const cycle = aps.cycles[key];
+          cycle.evidenceInbox = [...(cycle.evidenceInbox || []), ...items];
+        });
         await window.storage.set(APS_STORAGE_KEY, JSON.stringify(aps));
       }
       return { matched: matchedCount };
