@@ -155,10 +155,14 @@ function activeProducts(projects) {
 function affiliationCountries(outputs, period) {
   const tally = new Map();
   outputs.filter((output) => yearInPeriod(output?.year, period)).forEach((output) => {
-    const affiliations = Array.isArray(output?.coauthorAffiliations) ? output.coauthorAffiliations : [];
+    const structured = Array.isArray(output?.coauthorAffiliations) ? output.coauthorAffiliations : [];
+    const raw = String(output?.authorAffiliations || "").trim();
+    const affiliations = structured.length ? structured : raw.split(/\n|;/).map((value) => value.trim()).filter(Boolean);
     affiliations.forEach((affiliation) => {
-      const country = typeof affiliation === "string" ? affiliation : affiliation?.country;
-      const clean = String(country || "").trim();
+      const explicitCountry = typeof affiliation === "string" ? "" : affiliation?.country;
+      const text = typeof affiliation === "string" ? affiliation : affiliation?.affiliation || affiliation?.institution || "";
+      const country = explicitCountry || String(text).split(",").map((part) => part.trim()).filter(Boolean).pop() || "";
+      const clean = String(country).replace(/[.]+$/, "").trim();
       if (!clean) return;
       tally.set(clean, (tally.get(clean) || 0) + 1);
     });
