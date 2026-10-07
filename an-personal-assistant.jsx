@@ -7640,7 +7640,22 @@ function App() {
     (async () => {
       try {
         const res = await window.storage.get(STORAGE_KEY);
-        setData(res && res.value ? { ...SEED_DATA, ...JSON.parse(res.value) } : SEED_DATA);
+        const loadedData = res && res.value ? { ...SEED_DATA, ...JSON.parse(res.value) } : SEED_DATA;
+        const missingAffiliations = (loadedData.outputs || []).filter((o) => o.type === "Journal Paper" && o.title && !String(o.authorAffiliations || "").trim());
+        setData(loadedData);
+        if (missingAffiliations.length) {
+          Promise.all(missingAffiliations.map(async (o) => {
+            try {
+              const parsed = await claudeSearchExtractJSON(
+                `Find the published paper "${o.title}" in ${o.venue || "its journal"} (${o.year || "year unknown"}). Return each listed author mapped to their institutional affiliation, including country. Do not guess. Respond ONLY as raw JSON: {"authorAffiliations":"Author — Department, Institution, Country; Author — Department, Institution, Country"}`
+              );
+              return [o.id, parsed.authorAffiliations || ""];
+            } catch (e) { return [o.id, ""]; }
+          })).then((pairs) => {
+            const found = Object.fromEntries(pairs.filter(([, value]) => value));
+            if (Object.keys(found).length) setData((prev) => ({ ...prev, outputs: prev.outputs.map((o) => found[o.id] ? { ...o, authorAffiliations: found[o.id] } : o) }));
+          });
+        }
       } catch (e) {
         setData(SEED_DATA);
       } finally {
@@ -7830,12 +7845,12 @@ function App() {
           `Search the web to find this open-access academic output and read its actual content: "${lines[i]}"\n\n` +
           "This could be a paper (search by title or DOI) or a patent (search by patent number or title). Find the real open-access version — a journal's own open-access page, the publisher's page if free, Google Patents for a patent, or a repository like ResearchGate/arXiv if that's where it's genuinely available. " +
           "Read as much of the actual content as you can access, then extract: the title, the type " +
-          `(one of: ${OUTPUT_TYPES.join(", ")}), the venue (journal/conference/patent office), the year, the authors, a 2-3 sentence summary of the actual contribution, the core methods/techniques used, and 4-8 characterizing keywords. ` +
+          `(one of: ${OUTPUT_TYPES.join(", ")}), the venue (journal/conference/patent office), the year, the authors, and each author\'s institutional affiliation with country where stated, a 2-3 sentence summary of the actual contribution, the core methods/techniques used, and 4-8 characterizing keywords. ` +
           "Also identify the corresponding author(s) specifically — marked via an asterisk, footnote, or explicit 'corresponding author' label, not simply the first-listed author. Leave empty if not identifiable or if this is a patent. Note whether Aamer Nazir is among the corresponding author(s), if that name appears in the author list at all. " +
           "Also check the Acknowledgments/funding section for a specific project or grant reference number (e.g. \"SB211010\") — leave empty if none is stated, do not guess. " +
           "If you can read enough of the actual content (not just an abstract), also note: writingStyleNotes (how it's structured/framed), rigorNotes (what validation approach is actually used — experimental vs. simulation-only, sample sizes, baselines), and depthDiscussionNotes (whether results are genuinely interpreted or just reported). If you can only access the abstract, leave these three empty rather than guessing from limited text. " +
           "If you cannot find this item at all, or cannot confirm it's genuinely open access, say so rather than guessing at details.\n\n" +
-          'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"found":true,"title":"","type":"Journal Paper","venue":"","year":null,"authors":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}\n' +
+          'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"found":true,"title":"","type":"Journal Paper","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}\n' +
           'If not found or not accessible, respond with {"found":false}';
         const parsed = await claudeSearchExtractJSON(prompt);
         if (!parsed.found) {
@@ -7850,6 +7865,7 @@ function App() {
             venue: parsed.venue || "",
             year: parsed.year || "",
             authors: parsed.authors || "",
+            authorAffiliations: parsed.authorAffiliations || "",
             correspondingAuthors: parsed.correspondingAuthors || "",
             isOwnerCorresponding: !!parsed.isOwnerCorresponding,
             summary: parsed.summary || "",
