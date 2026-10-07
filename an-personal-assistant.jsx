@@ -7698,7 +7698,7 @@ function App() {
           type: "text",
           text:
             "This is a published academic output — a journal paper, conference paper, patent, book chapter, or report. Read it carefully and fully — not just the abstract — and extract: " +
-            `the title, the type (one of: ${OUTPUT_TYPES.join(", ")}), the venue (journal/conference/patent office name), the year, the authors (comma-separated as listed), ` +
+            `the title, the type (one of: ${OUTPUT_TYPES.join(", ")}), the venue (journal/conference/patent office name), the year, the authors (comma-separated as listed), and each author's institutional affiliations with author-to-affiliation mapping, ` +
             "a 2-3 sentence summary of what it's actually about and its key contribution, the core methods or techniques used (e.g. \"finite element analysis, selective laser sintering\"), " +
             "and 4-8 keywords/topics that genuinely characterize this work (not generic terms).\n\n" +
             "Also identify the corresponding author(s) specifically — the author(s) explicitly marked as corresponding, usually via an asterisk, footnote, or 'corresponding author' label with an email address, NOT simply the first-listed author unless they are also marked as corresponding. If more than one author is marked corresponding, list all. If this is a patent (no corresponding-author convention), leave this empty. Also note whether Aamer Nazir is among the corresponding author(s), if that name (or a close variant) appears in the author list at all.\n\n" +
@@ -7707,7 +7707,7 @@ function App() {
             "(1) writingStyleNotes — how the writing is structured (concise vs. verbose, how clearly the contribution is framed, how the paper is organized); " +
             "(2) rigorNotes — the methodological rigor actually demonstrated: validation approach used (e.g. experimental validation vs. simulation only, statistical treatment, sample sizes, controls, comparison baselines) — be specific about what IS and ISN'T validated, don't just say \"rigorous\"; " +
             "(3) depthDiscussionNotes — how thoroughly results are interpreted and discussed: does it explain WHY results occurred (mechanism/reasoning) or just report WHAT happened, are limitations acknowledged, is the discussion connected back to broader significance, or does the paper end abruptly after presenting data.\n\n" +
-            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"title":"","type":"Journal Paper","venue":"","year":null,"authors":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
+            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"title":"","type":"Journal Paper","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
         },
       ];
       const parsed = await claudeExtractJSON(content);
@@ -7720,6 +7720,7 @@ function App() {
           venue: parsed.venue || "",
           year: parsed.year || "",
           authors: parsed.authors || "",
+          authorAffiliations: parsed.authorAffiliations || "",
           correspondingAuthors: parsed.correspondingAuthors || "",
           isOwnerCorresponding: !!parsed.isOwnerCorresponding,
           summary: parsed.summary || "",
@@ -8054,7 +8055,7 @@ function App() {
   }
 
   // ---------- Manual add/edit ----------
-  const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "", summary: "", methods: "", keywords: [], qRank: "" });
+  const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", authorAffiliations: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "", summary: "", methods: "", keywords: [], qRank: "" });
   function openNew() { setDraft(emptyOutput()); setEditingId(null); setManualDupWarning(""); setShowForm(true); }
   function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setShowForm(true); }
   async function saveOutput(skipDupCheck) {
@@ -8291,6 +8292,7 @@ function App() {
               )}
             </div>
             {o.authors && <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 2, fontStyle: "italic" }}>{o.authors}</div>}
+            {isOpen && o.authorAffiliations && <div style={{ fontSize: 11, color: MUTED, marginTop: 5, whiteSpace: "pre-line" }}><strong>Author affiliations:</strong> {o.authorAffiliations}</div>}
             {o.correspondingAuthors && (
               <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
                 Corresponding: {o.correspondingAuthors}
@@ -8828,6 +8830,8 @@ function App() {
             )}
             <Label>Authors</Label>
             <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.authors} onChange={(e) => setDraft({ ...draft, authors: e.target.value })} />
+            <Label>Author affiliations</Label>
+            <textarea style={{ ...inputStyle, minHeight: 70, marginBottom: 14 }} value={draft.authorAffiliations || ""} onChange={(e) => setDraft({ ...draft, authorAffiliations: e.target.value })} placeholder="Author — institution / department; one mapping per line" />
             <Label>Corresponding author(s)</Label>
             <input style={{ ...inputStyle, marginBottom: 8 }} value={draft.correspondingAuthors} onChange={(e) => setDraft({ ...draft, correspondingAuthors: e.target.value })} />
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: MUTED, marginBottom: 14 }}>
