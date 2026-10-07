@@ -24,6 +24,9 @@ import {
   Users,
   Wrench,
   X,
+  MessageCircle,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { hasProjectNumber, projectIsActiveForWorkload } from "./project-workload.js";
 import worldMap from "./assets/nyx-world-map.jpg";
@@ -473,6 +476,10 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const [selectedMapSection, setSelectedMapSection] = useState("funding");
   const [updatedAt, setUpdatedAt] = useState(null);
   const [activeNav, setActiveNav] = useState("home");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatMessages, setChatMessages] = useState([{ role: "assistant", text: "Ask me about your projects, APS, publications, impact, skills, or mailbox. I answer from the records stored in Nyx." }]);
 
   async function loadDashboard() {
     setLoading(true);
@@ -501,6 +508,24 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const productLabel = products.slice(0, 3).map((product) => product.shortLabel || product.name).join(" · ");
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
   function openModule(moduleId) { setActiveNav(moduleId); onOpenModule(moduleId); }
+  async function askNyx() {
+    const question = chatInput.trim();
+    if (!question || chatBusy) return;
+    setChatInput("");
+    setChatMessages((items) => [...items, { role: "user", text: question }]);
+    setChatBusy(true);
+    try {
+      const context = JSON.stringify({ reportingPeriod: period, projects: raw.projects || [], aps: raw.aps || null, researchIntelligence: raw.archive || null, researchImpact: raw.impact || null, skills: raw.skills || null, mailbox: raw.mailbox || null, mailboxScan: raw.mailboxScan || null });
+      const response = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "nyx-assistant", max_tokens: 1200, system: "You are Nyx, Aamer's personal academic and research assistant. Answer only from the supplied Nyx records. Synthesize and calculate when useful, but never invent missing facts. State when information is unavailable or uncertain. End with a short Source modules line.", messages: [{ role: "user", content: "NYX RECORDS:\n" + context + "\n\nQUESTION:\n" + question }] }) });
+      const result = await response.json();
+      if (!response.ok || result.error) throw new Error(result.error?.message || "Nyx could not answer.");
+      const answer = (result.content || []).find((part) => part.type === "text")?.text || "I could not form an answer from the available Nyx records.";
+      setChatMessages((items) => [...items, { role: "assistant", text: answer }]);
+    } catch (error) {
+      setChatMessages((items) => [...items, { role: "assistant", text: "I could not answer that right now. " + (error?.message || "Please try again.") }]);
+    } finally { setChatBusy(false); }
+  }
+
   const displayDate = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date());
 
   return <main className="nyx-page"><div className="nyx-workspace">
@@ -511,7 +536,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
     </aside>
     <section className="nyx-main-column">
       <header className="nyx-topbar"><div><h1>Welcome back, Aamer.</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><strong>{displayDate}</strong><div><span className={loading ? "is-loading" : "nyx-live-dot"} />{loading ? "Updating data" : `Data updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
-      <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
+      <section style={{ marginBottom: 16 }}><button onClick={() => setChatOpen(true)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", background: "#fff", border: "1px solid #C7D2DC", borderRadius: 8, color: BLUE, cursor: "pointer", textAlign: "left" }}><MessageCircle size={18} /><span style={{ flex: 1, color: "#536273" }}>Ask Nyx about your projects, APS, publications, impact, skills, or mailbox…</span><strong>Ask Nyx</strong></button></section>\n      <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
       <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived (2026)` : "6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${activeFundedProjects.length} funded · ${activeNotFundedProjects.length} not-funded` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Users size={29} /><span>Project leads</span><strong>{projectLeads.length}</strong><small>Students & postdocs only</small></article><article className="nyx-kpi nyx-kpi-alert"><Package size={28} /><span>Products & TRL</span><strong>{products.length}</strong><small title={products.map((product) => product.name).join("; ")}>{products.length ? `${productLabel}${products.length > 3 ? ` +${products.length - 3}` : ""} · ${products.filter((product) => product.trl).length} TRL` : "No active product candidates"}</small></article></section>
       <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><h2>Needs attention today <span className="nyx-attention-count">{attentionItems.length}</span></h2></div><button onClick={() => attentionItems[0] && openModule(attentionItems[0].moduleId)}>View all <ChevronRight size={16} /></button></header><div className="nyx-attention-heading"><span>Item</span><span>Type</span><span>Module</span><span>Due date</span><span>Status</span><span>Action</span></div><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item, index) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><strong>{item.label}</strong><small>{item.detail}</small><span>{item.moduleId === "aps" ? "APS" : item.moduleId === "projects" ? "Project Dashboard" : item.moduleId === "archive" ? "Research Intelligence" : "Mailbox"}</span><em>{index === 0 ? "Today" : "Upcoming"}</em><StatusPill tone={item.tone === "warn" ? "warn" : "info"}>{item.tone === "warn" ? "Action required" : "In progress"}</StatusPill><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
       <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal articles</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} /><footer><TrendingUp size={14} /><span>Five-year view only. Active-project workload is shown above and is not inferred from historical awards.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
@@ -519,5 +544,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
       <footer className="nyx-page-footer"><span>NYX · AAMER'S PERSONAL ASSISTANT</span><span>{loading ? "Reading live records…" : `Updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`} · CV baseline: October 2026</span></footer>
     </section>
     <CareerMap sections={sections} selectedId={selectedMapSection} period={period} onSelect={setSelectedMapSection} onImprove={setSelectedSection} />
-  </div><ImprovementDrawer section={selectedSection} onClose={() => setSelectedSection(null)} onOpenModule={openModule} /></main>;
+  </div><ImprovementDrawer section={selectedSection} onClose={() => setSelectedSection(null)} onOpenModule={openModule} />
+    {chatOpen && <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(15,23,42,.28)", display: "flex", justifyContent: "flex-end" }} onClick={() => setChatOpen(false)}><aside style={{ width: "min(520px,94vw)", height: "100%", background: "#fff", display: "flex", flexDirection: "column", boxShadow: "-12px 0 35px rgba(15,23,42,.16)" }} onClick={(e) => e.stopPropagation()}><header style={{ padding: "18px 20px", borderBottom: "1px solid #E3E8ED", display: "flex", alignItems: "center", gap: 10 }}><MessageCircle size={20} color={BLUE}/><div style={{ flex: 1 }}><strong>Ask Nyx</strong><div style={{ fontSize: 11, color: "#718096" }}>Grounded in your Nyx records</div></div><button onClick={() => setChatOpen(false)} style={{ border: 0, background: "none", cursor: "pointer" }}><X size={19}/></button></header><div style={{ flex: 1, overflowY: "auto", padding: 18 }}>{chatMessages.map((message,index) => <div key={index} style={{ maxWidth: "88%", margin: message.role === "user" ? "8px 0 8px auto" : "8px auto 8px 0", padding: "10px 12px", borderRadius: 10, whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 13, background: message.role === "user" ? BLUE : "#F2F5F7", color: message.role === "user" ? "#fff" : "#263442" }}>{message.text}</div>)}{chatBusy && <div style={{ padding: 10, color: "#718096", fontSize: 12 }}><Loader2 size={14} className="nyx-spin"/> Reading Nyx records…</div>}</div><div style={{ padding: 14, borderTop: "1px solid #E3E8ED", display: "flex", gap: 8 }}><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askNyx(); } }} placeholder="Ask Nyx…" style={{ flex: 1, minHeight: 44, border: "1px solid #C7D2DC", borderRadius: 7, padding: "10px 11px", font: "inherit" }}/><button onClick={askNyx} disabled={chatBusy || !chatInput.trim()} style={{ width: 44, border: 0, borderRadius: 7, background: BLUE, color: "#fff", cursor: "pointer" }}><Send size={17}/></button></div></aside></div>}
+  </main>;
 }
