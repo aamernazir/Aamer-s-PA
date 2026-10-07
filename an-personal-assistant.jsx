@@ -7615,6 +7615,7 @@ function App() {
   const [qRankSyncMessage, setQRankSyncMessage] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
   const [syncingProjects, setSyncingProjects] = useState(false);
+  const [syncingAffiliations, setSyncingAffiliations] = useState(false);
   const fileInputRef = useRef(null);
 
   const [expandedId, setExpandedId] = useState(null);
@@ -7820,6 +7821,30 @@ function App() {
     if (failed.length > 0) errorParts.push(`Could not read: ${failed.join(", ")}`);
     if (errorParts.length > 0) setExtractError(`Added ${added.length} of ${files.length}. ${errorParts.join(". ")}.`);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function syncMissingAffiliations() {
+    const missing = data.outputs.filter((o) => o.type === "Journal Paper" && o.title && !String(o.authorAffiliations || "").trim());
+    if (!missing.length) { setSyncMessage("All journal papers already have affiliation records."); return; }
+    setSyncingAffiliations(true);
+    setSyncMessage("");
+    let updated = 0;
+    const found = {};
+    for (const o of missing) {
+      try {
+        const parsed = await claudeSearchExtractJSON(
+          `Find the published paper "${o.title}" (${o.venue || "journal"}, ${o.year || "year unknown"}). Using the publisher page or another reliable scholarly source, identify every listed author's institutional affiliation and country. Do not guess. Respond ONLY as raw JSON in this shape: {"authorAffiliations":"Author — Department, Institution, Country; Author — Department, Institution, Country"}`
+        );
+        if (parsed.authorAffiliations) { found[o.id] = parsed.authorAffiliations; updated += 1; }
+      } catch (e) {}
+    }
+    if (updated) {
+      const next = { ...data, outputs: data.outputs.map((o) => found[o.id] ? { ...o, authorAffiliations: found[o.id] } : o) };
+      setData(next);
+      try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch (e) {}
+    }
+    setSyncMessage(`Affiliations saved for ${updated} of ${missing.length} journal papers. Nyx Home can now use the saved countries.`);
+    setSyncingAffiliations(false);
   }
 
   async function retryFailedFiles() {
@@ -8426,6 +8451,9 @@ function App() {
               </button>
               <button onClick={() => setShowFindPanel(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: GREEN, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
                 <Search size={14} /> Find open-access (no download needed)
+              </button>
+              <button onClick={syncMissingAffiliations} disabled={syncingAffiliations} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: syncingAffiliations ? "default" : "pointer" }}>
+                {syncingAffiliations ? <Loader2 size={14} className="pa-spin" /> : <MapPinned size={14} />} {syncingAffiliations ? "Finding affiliations…" : "Sync author affiliations"}
               </button>
               <button onClick={syncAllArchivedOutputsToProjects} disabled={syncingProjects} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: syncingProjects ? "default" : "pointer" }}>
                 {syncingProjects ? <Loader2 size={14} className="pa-spin" /> : <RefreshCw size={14} />} {syncingProjects ? "Syncing project evidence…" : "Sync project evidence"}
