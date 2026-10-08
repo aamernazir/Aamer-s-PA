@@ -157,7 +157,7 @@ function activeProducts(projects) {
 
 function affiliationCountries(outputs, period) {
   const tally = new Map();
-  outputs.filter((output) => yearInPeriod(output?.year, period)).forEach((output) => {
+  outputs.filter((output) => period === "career" || !output?.year || yearInPeriod(output?.year, period)).forEach((output) => {
     const structured = Array.isArray(output?.coauthorAffiliations) ? output.coauthorAffiliations : [];
     const raw = String(output?.authorAffiliations || "").trim();
     const affiliations = structured.length ? structured : raw.split(/\n|;/).map((value) => value.trim()).filter(Boolean);
@@ -390,7 +390,9 @@ function CombinedBarChart({ activePeriod }) {
 }
 
 function AffiliationFootprint({ outputs, period }) {
-  const countries = affiliationCountries(outputs, period);
+  let countries = affiliationCountries(outputs, period);
+  const allCountries = affiliationCountries(outputs, "career");
+  if (!countries.length && allCountries.length) countries = allCountries;
   return <article className="nyx-panel nyx-footprint-panel">
     <header><div><h2>Co-author affiliation footprint</h2><div className="nyx-source-chip"><Boxes size={11} />Research Intelligence · co-author affiliations</div></div></header>
     <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map showing co-author affiliation footprint">
