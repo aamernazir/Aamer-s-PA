@@ -34,6 +34,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
   const [elapsedMs, setElapsedMs] = useState(0);
   const mounted = useRef(true);
   const abortRef = useRef(null);
+  const autoScanAttempted = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -50,6 +51,21 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
   }, [storage]);
 
   useEffect(() => {
+    if (loading || !saved || busy || autoScanAttempted.current) return;
+    const uid = storage.getStatus().user?.uid;
+    const token = storage.getGmailAccessToken();
+    if (!uid || !token) return;
+    autoScanAttempted.current = true;
+    const lastCompleted = saved?.history?.find((run) => run?.status === "completed");
+    const lastTime = Date.parse(lastCompleted?.completedAt || lastCompleted?.startedAt || 0);
+    const stale = !Number.isFinite(lastTime) || Date.now() - lastTime >= 15 * 60 * 1000;
+    if (!stale) return;
+    setPeriod("new");
+    const timer = setTimeout(() => scan("new"), 800);
+    return () => clearTimeout(timer);
+  }, [loading, saved, busy, storage]);
+
+  useEffect(() => {
     if (!busy || !progress?.startedAt) return undefined;
     const tick = () => setElapsedMs(Date.now() - Date.parse(progress.startedAt));
     tick();
@@ -57,11 +73,12 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
     return () => clearInterval(timer);
   }, [busy, progress?.startedAt]);
 
-  async function scan() {
+  async function scan(periodOverride = null) {
     if (scanInProgress || busy) return;
+    const scanPeriod = typeof periodOverride === "string" ? periodOverride : period;
     let periodOptions;
     try {
-      periodOptions = scanOptionsForPeriod(period, { startDate, endDate });
+      periodOptions = scanOptionsForPeriod(scanPeriod, { startDate, endDate });
       scanRange({ ...periodOptions, scope }, saved || {});
     }
     catch (error) { setMessage(error.message); return; }
@@ -82,7 +99,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       const previous = result?.value ? JSON.parse(result.value) : {};
       const next = await scanMailbox({
         accessToken: storage.getGmailAccessToken(), accountEmail, previous,
-        options: { ...periodOptions, period, scope },
+        options: { ...periodOptions, period: scanPeriod, scope },
         signal: abortRef.current.signal,
         onProgress: update => { if (mounted.current) setProgress(update); },
       });
@@ -131,7 +148,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
 
   return <section aria-label="Mailbox scan controls" style={{ background: "#fff", border: "1px solid #D9E1EA", borderRadius: 7, padding: 16, marginBottom: 18 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 10px" }}>Scan Gmail</h2>
-    <p style={{ fontSize: 13, color: "#64748B" }}>Choose a period, then press Scan Gmail. Only Gmail’s Primary category is checked. Saved message IDs are skipped automatically, while new replies in existing threads are analyzed separately.</p>
+    <p style={{ fontSize: 13, color: "#64748B" }}>Nyx checks for new Gmail automatically when Mailbox opens and the last successful check is more than 15 minutes old. You can still run a manual scan or choose a historical period. Only Gmail’s Primary category is checked.</p>
     {saved?.accountEmail && <p style={{ fontSize: 12 }}>Mailbox account: {saved.accountEmail}</p>}
     <fieldset disabled={busy || loading || saved === null} style={{ border: 0, margin: 0, padding: 0, display: "flex", alignItems: "end", flexWrap: "wrap", gap: 12 }}>
       <div style={{ flexBasis: "100%" }}><div style={{ marginBottom: 6 }}>Scan period</div><div role="group" aria-label="Scan period" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -144,7 +161,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
       <button onClick={scan} style={{ ...field, background: "#1F5C8B", color: "#fff", cursor: "pointer" }}>{busy ? "Scanning…" : "Scan Gmail"}</button>
     </fieldset>
     {busy && <button onClick={() => abortRef.current?.abort()} style={{ ...field, marginTop: 10, color: "#9A3412", cursor: "pointer" }}>Cancel scan</button>}
-    {period === "new" && <p style={{ fontSize: 12, color: "#64748B" }}>Checks the previously scanned window through today and processes only unseen Gmail message IDs. No background or scheduled scans.</p>}
+    {period === "new" && <p style={{ fontSize: 12, color: "#64748B" }}>Checks the previously scanned window through today and processes only unseen Gmail message IDs. Nyx runs this automatically when Mailbox is opened if the last successful check is more than 15 minutes old.</p>}
     {scope === FOCUSED_SCAN_SCOPE && <p style={{ fontSize: 12, color: "#64748B" }}>Focused mode automatically excludes expired deadline-only messages, review invitations older than 45 days with no current deadline, newsletters, and obvious secondary mail before they reach your review list. Completed evidence such as certificates, awards, and published work is retained. Excluded messages are remembered by ID and do not increase the Ignored count.</p>}
     <p style={{ fontSize: 12, color: "#64748B" }}>Message bodies are analyzed temporarily. Only IDs, sender, subject, date, deadline hints and scan counts are saved; bodies and attachments are not stored. Dates use UTC.</p>
     {shownRun && <div role="status" aria-live="polite" style={{ marginTop: 14, padding: 12, borderRadius: 6, border: `1px solid ${shownRun.status === "completed" ? "#9CC9AA" : shownRun.error ? "#E6C77A" : "#B9D8E8"}`, background: shownRun.status === "completed" ? "#EFF8F1" : shownRun.error ? "#FFF8E8" : "#F3F8FC", fontSize: 13 }}>
