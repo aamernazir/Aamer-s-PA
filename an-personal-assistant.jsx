@@ -447,7 +447,7 @@ function App() {
   const [activeId, setActiveId] = useState(null);
   const [error, setError] = useState("");
   const [showNewProject, setShowNewProject] = useState(false);
-  const [newDraft, setNewDraft] = useState({ title: "", projectNumber: "", program: "", pi: "", duration: "", budgetTotal: "", budgetCurrency: "SAR" });
+  const [newDraft, setNewDraft] = useState({ title: "", projectNumber: "", program: "", pi: "", ownerRole: "PI", duration: "", budgetTotal: "", budgetCurrency: "SAR" });
   const [extractingProposal, setExtractingProposal] = useState(false);
   const [extractProposalError, setExtractProposalError] = useState("");
   const [extractPhase, setExtractPhase] = useState("");
@@ -809,6 +809,7 @@ function App() {
             <FormField label="Title">
               <input style={inputStyle} value={newDraft.title} onChange={(e) => setNewDraft({ ...newDraft, title: e.target.value })} placeholder="Project title" />
             </FormField>
+            <FormField label="Your role"><select style={inputStyle} value={newDraft.ownerRole || "PI"} onChange={(e) => setNewDraft({ ...newDraft, ownerRole: e.target.value })}><option value="PI">PI</option><option value="Co-I">Co-I</option></select></FormField>
             <FormField label="Official project number (funded projects only)">
               <input style={inputStyle} value={newDraft.projectNumber} onChange={(e) => setNewDraft({ ...newDraft, projectNumber: e.target.value })} placeholder="e.g. SB211010, or the funder's grant reference code" />
               <div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>Leave blank for a not-funded project. Only entered project numbers feed Nyx's CV funding figures and publication acknowledgement links.</div>
@@ -847,24 +848,27 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
   const evidenceGaps = collectEvidenceGaps(projects);
   const workload = collectActiveWorkload(projects);
   const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
-  const fundedProjects = projects.filter(hasProjectNumber);
-  const notFundedProjects = projects.filter((project) => !hasProjectNumber(project));
+  const coIProjects = projects.filter(isCoIProject);
+  const fundedProjects = projects.filter((project) => hasProjectNumber(project) && !isCoIProject(project));
+  const notFundedProjects = projects.filter((project) => !hasProjectNumber(project) && !isCoIProject(project));
   const projectGroups = [
     { id: "funded", label: "Funded projects", projects: fundedProjects, detail: "Official project number entered · feeds CV funding and project-linked publication evidence", color: GREEN, background: "#EFF5EF" },
     { id: "not-funded", label: "Not-funded projects", projects: notFundedProjects, detail: "No project number entered · tracked operationally in Nyx, but excluded from CV funding", color: TEAL, background: "#E7EFF5" },
+    { id: "co-i", label: "Co-I projects", projects: coIProjects, detail: "Projects where Aamer Nazir participates as Co-Investigator rather than PI", color: AMBER, background: "#FAF1DE" },
   ];
 
   function ProjectCard({ project: p }) {
     const prog = projectProgress(p);
     const funded = hasProjectNumber(p);
+    const coI = isCoIProject(p);
     const riskCount = (p.workPackages || []).filter(wpIsAtRisk).length;
     return (
       <div className="pd-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "16px 18px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
           <div onClick={() => onOpen(p.id)} style={{ cursor: "pointer", flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 5 }}>
-              <span className="pd-mono" style={{ fontSize: 10, background: funded ? "#EFF5EF" : "#E7EFF5", color: funded ? GREEN : TEAL, padding: "2px 7px", borderRadius: 10, fontWeight: 700 }}>{funded ? "Funded" : "Not-funded"}</span>
-              <span style={{ fontSize: 10.5, color: MUTED }}>{funded ? `Project no. ${p.projectNumber}` : "No project number · excluded from CV funding"}</span>
+              <span className="pd-mono" style={{ fontSize: 10, background: coI ? "#FAF1DE" : funded ? "#EFF5EF" : "#E7EFF5", color: coI ? AMBER : funded ? GREEN : TEAL, padding: "2px 7px", borderRadius: 10, fontWeight: 700 }}>{coI ? "Co-I" : funded ? "Funded" : "Not-funded"}</span>
+              <span style={{ fontSize: 10.5, color: MUTED }}>{coI ? `Co-Investigator${p.projectNumber ? ` · Project no. ${p.projectNumber}` : ""}` : funded ? `Project no. ${p.projectNumber}` : "No project number · excluded from CV funding"}</span>
             </div>
             <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
