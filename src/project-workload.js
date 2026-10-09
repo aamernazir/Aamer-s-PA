@@ -27,18 +27,19 @@ export function projectFundingClass(project) {
   return hasProjectNumber(project) ? "funded" : "not-funded";
 }
 
-// A workload unit is intentionally role-sensitive. The same number of
-// objectives/WPs represents different supervision and technical responsibility
-// for a postdoc, PhD student, MS student, or UG student.
-export const WORKLOAD_ROLE_WEIGHTS = Object.freeze({ postdoc: 4, phd: 3, ms: 2, ug: 1, unclassified: 1 });
+// Workload is measured against the amount of work reasonably expected for each
+// researcher level. A postdoc is expected to carry the largest portfolio, then
+// PhD, MS, and UG. Therefore one identical assignment consumes a much larger
+// share of a UG student's expected capacity than a postdoc's.
+export const WORKLOAD_ROLE_CAPACITY = Object.freeze({ postdoc: 4, phd: 3, ms: 2, ug: 1, unclassified: 1 });
 
 export function workloadRole(roleOrName) {
   const value = String(roleOrName || "").trim().toLowerCase();
-  if (/post\s*doc|postdoctoral/.test(value)) return { key: "postdoc", label: "Postdoc", weight: WORKLOAD_ROLE_WEIGHTS.postdoc };
-  if (/ph\.?d|doctoral/.test(value)) return { key: "phd", label: "PhD", weight: WORKLOAD_ROLE_WEIGHTS.phd };
-  if (/m\.?s\.?|master|graduate\s+student/.test(value)) return { key: "ms", label: "MS", weight: WORKLOAD_ROLE_WEIGHTS.ms };
-  if (/u\.?g\.?|undergraduate|bachelor/.test(value)) return { key: "ug", label: "UG", weight: WORKLOAD_ROLE_WEIGHTS.ug };
-  return { key: "unclassified", label: "Role not recorded", weight: WORKLOAD_ROLE_WEIGHTS.unclassified };
+  if (/post\s*doc|postdoctoral/.test(value)) return { key: "postdoc", label: "Postdoc", weight: WORKLOAD_ROLE_CAPACITY.postdoc };
+  if (/ph\.?d|doctoral/.test(value)) return { key: "phd", label: "PhD", weight: WORKLOAD_ROLE_CAPACITY.phd };
+  if (/m\.?s\.?|master|graduate\s+student/.test(value)) return { key: "ms", label: "MS", weight: WORKLOAD_ROLE_CAPACITY.ms };
+  if (/u\.?g\.?|undergraduate|bachelor/.test(value)) return { key: "ug", label: "UG", weight: WORKLOAD_ROLE_CAPACITY.ug };
+  return { key: "unclassified", label: "Role not recorded", weight: WORKLOAD_ROLE_CAPACITY.unclassified };
 }
 
 function projectMemberRole(name, project, explicitRole) {
@@ -86,8 +87,8 @@ export function collectActiveWorkload(projects) {
     projectCount: member.projects.size,
     role: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.label || "Role not recorded",
     roleKey: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.key || "unclassified",
-    roleWeight: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.weight || WORKLOAD_ROLE_WEIGHTS.unclassified,
+    roleWeight: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.weight || WORKLOAD_ROLE_CAPACITY.unclassified,
     rawLoadScore: member.objectives + member.workPackages,
-    loadScore: (member.objectives + member.workPackages) * ([...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.weight || WORKLOAD_ROLE_WEIGHTS.unclassified),
+    loadScore: (member.objectives + member.workPackages) * ([...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.weight || WORKLOAD_ROLE_CAPACITY.unclassified),
   })).sort((a, b) => b.loadScore - a.loadScore || a.name.localeCompare(b.name));
 }
