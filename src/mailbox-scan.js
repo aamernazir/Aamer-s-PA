@@ -171,6 +171,32 @@ function messageSummary(subject, body, hints) {
   return details || String(subject || "Email record").slice(0, 500);
 }
 
+function extractMailboxIntelligence(subject, body, attachmentText, hints, contributionSummary) {
+  const newest = cleanMessageText(newestMessageText(body));
+  const evidence = certificateText(attachmentText);
+  const source = `${subject || ""}. ${newest}`;
+  const completed = Boolean(contributionSummary || /\b(?:certificate|awarded|received an? award|accepted for publication|has been published|patent granted|successfully completed|served as)\b/i.test(source + " " + evidence));
+  const invitation = /\b(?:invite(?:d)?|invitation|would like to invite|request(?:ing)? you to|please review|please submit|action required)\b/i.test(source);
+  const purpose = /\b(?:review|reviewer|manuscript)\b/i.test(source) ? "Editorial / peer review"
+    : /\b(?:grant|proposal|funding|project)\b/i.test(source) ? "Research project / funding"
+    : /\b(?:conference|symposium|committee|session chair)\b/i.test(source + " " + evidence) ? "Conference / professional service"
+    : /\b(?:award|certificate|recognition)\b/i.test(source + " " + evidence) ? "Recognition / evidence"
+    : /\b(?:thesis|student|course|teaching)\b/i.test(source) ? "Teaching / supervision"
+    : "Academic correspondence";
+  const actionSentence = newest.split(/(?<=[.!?])\s+/).find((sentence) => /\b(?:please|kindly|request|submit|respond|reply|confirm|review|complete|provide|send|upload|accept|decline)\b/i.test(sentence)) || "";
+  const factSummary = contributionSummary || messageSummary(subject, newest, hints);
+  const requestedAction = completed && !invitation ? "No action identified; retain as completed evidence." : actionSentence.slice(0, 400);
+  const confidence = evidence || contributionSummary ? "Confirmed" : factSummary && (hints?.length || actionSentence) ? "Confirmed" : "Needs review";
+  return {
+    purpose,
+    factSummary: String(factSummary || subject || "Email record").slice(0, 900),
+    requestedAction: String(requestedAction || "No explicit action identified.").slice(0, 500),
+    status: completed ? "Completed evidence" : invitation ? "Action / invitation" : hints?.length ? "Deadline / action" : "Information",
+    confidence,
+    evidenceBasis: evidence ? "Email + readable attachment" : "Newest email message",
+  };
+}
+
 // Dates are inclusive UTC calendar dates; Gmail epoch queries avoid its PST date default.
 export function scanRange({ mode = "initial", scope = FOCUSED_SCAN_SCOPE, months = 12, startDate, endDate } = {}, previous = {}, now = new Date()) {
   const today = now.toISOString().slice(0, 10);
@@ -201,14 +227,20 @@ export function messageMetadata(data, attachmentEvidence = []) {
   const hints = deadlineHints(newestBody).map(hint => hint.slice(0, 200));
   const attachmentText = attachmentEvidence.map(attachment => attachment.text || "").join(" ");
   const contributionSummary = deriveContributionSummary(headers.subject, newestBody, attachmentText);
+  const intelligence = extractMailboxIntelligence(headers.subject, newestBody, attachmentText, hints, contributionSummary);
   return {
     id: String(data.id), threadId: String(data.threadId || ""),
     subject: String(headers.subject || "").slice(0, 500),
     from: String(headers.from || "").slice(0, 300),
     receivedAt: data.internalDate ? new Date(Number(data.internalDate)).toISOString() : String(headers.date || "").slice(0, 100),
     deadlineHints: hints,
-    summary: messageSummary(headers.subject, newestBody, hints),
+    summary: intelligence.factSummary,
     contributionSummary,
+    purpose: intelligence.purpose,
+    requestedAction: intelligence.requestedAction,
+    messageStatus: intelligence.status,
+    confidence: intelligence.confidence,
+    evidenceBasis: intelligence.evidenceBasis,
     attachments: attachmentEvidence.map(attachment => ({ filename: attachment.filename, mimeType: "application/pdf", readStatus: attachment.readStatus })),
   };
 }
@@ -284,7 +316,7 @@ export function isFocusedMailboxMessage(item, now = new Date()) {
 }
 
 function savedMetadata(item) {
-  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)), summary: String(item.summary || item.subject || "").slice(0, 700), contributionSummary: String(item.contributionSummary || "").slice(0, 700), attachments: (item.attachments || []).slice(0, 3).map(attachment => ({ filename: String(attachment.filename || "certificate.pdf").slice(0, 200), mimeType: "application/pdf", readStatus: String(attachment.readStatus || "unreadable").slice(0, 30) })) };
+  return { id: String(item.id), threadId: String(item.threadId || ""), subject: String(item.subject || "").slice(0, 500), from: String(item.from || "").slice(0, 300), receivedAt: String(item.receivedAt || "").slice(0, 100), deadlineHints: (item.deadlineHints || []).slice(0, 3).map(h => String(h).slice(0, 200)), summary: String(item.summary || item.subject || "").slice(0, 900), contributionSummary: String(item.contributionSummary || "").slice(0, 900), purpose: String(item.purpose || "").slice(0, 120), requestedAction: String(item.requestedAction || "").slice(0, 500), messageStatus: String(item.messageStatus || "").slice(0, 80), confidence: String(item.confidence || "").slice(0, 40), evidenceBasis: String(item.evidenceBasis || "").slice(0, 100), attachments: (item.attachments || []).slice(0, 3).map(attachment => ({ filename: String(attachment.filename || "certificate.pdf").slice(0, 200), mimeType: "application/pdf", readStatus: String(attachment.readStatus || "unreadable").slice(0, 30) })) };
 }
 
 function scanFailure(error, cancelled) {
