@@ -968,19 +968,19 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
-                  <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 9 }}>Active projects only — completed, closed, archived, or cancelled projects are excluded. Weighted workload: Postdoc 4× · PhD 3× · MS 2× · UG 1×.</div>
+                  <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 9 }}>Active projects only — completed, closed, archived, or cancelled projects are excluded. Workload is relative to expected capacity: Postdoc highest · PhD · MS · UG lowest. The same assignment therefore loads a UG researcher more heavily than a postdoc.</div>
                   {workload.map((w, i) => {
                     const status = workloadStatus(workload, w);
                     return (
                       <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < workload.length - 1 ? "1px solid #EAECF0" : "none" }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}</div>
-                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {w.roleWeight}× · {status.label}</span>
+                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · expected capacity {w.expectedCapacity} units · {status.label}</span>
                         </div>
                         <span style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
                           {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}
                           {w.workPackages > 0 && `${w.workPackages} WP${w.workPackages > 1 ? "s" : ""}`}
-                          {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""} · weighted ${w.loadScore}`}
+                          {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""} · capacity load ${Math.round(w.loadScore)}%`}
                         </span>
                       </div>
                     );
