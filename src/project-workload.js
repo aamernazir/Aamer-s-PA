@@ -12,7 +12,18 @@ export function hasProjectNumber(project) {
   return Boolean(String(project?.projectNumber || "").trim());
 }
 
+export function isCoIProject(project) {
+  const explicitRole = String(project?.ownerRole || project?.myRole || project?.role || "").trim();
+  if (/\bco[- ]?i\b|co-investigator/i.test(explicitRole)) return true;
+  const pi = String(project?.pi || "").trim();
+  if (pi && !/aamer\s+nazir|dr\.?\s*aamer|prof\.?\s*aamer/i.test(pi)) {
+    return (Array.isArray(project?.team) ? project.team : []).some((member) => /aamer\s+nazir/i.test(String(member?.name || "")) && /\bco[- ]?i\b|co-investigator/i.test(String(member?.role || "")));
+  }
+  return false;
+}
+
 export function projectFundingClass(project) {
+  if (isCoIProject(project)) return "co-i";
   return hasProjectNumber(project) ? "funded" : "not-funded";
 }
 
