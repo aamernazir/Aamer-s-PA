@@ -1,1 +1,85 @@
-const GK="an-pa:gemini-api-key",RK="an-pa:openrouter-api-key",MODELS=["gemini-3.5-flash-lite","gemini-2.5-flash-lite"];const txt=c=>typeof c==="string"?c:Array.isArray(c)?c.map(x=>x?.type==="text"?x.text:x?.type==="tool_result"?JSON.stringify(x.content||""):typeof x==="string"?x:"").filter(Boolean).join(" "):"";const parts=(c,r)=>{if(typeof c==="string")return r?[{type:"text",text:c}]:[{text:c}];return(Array.isArray(c)?c:[]).flatMap(x=>{if(x?.type==="text")return r?[{type:"text",text:x.text||""}]:[{text:x.text||""}];if(x?.type==="tool_result")return r?[{type:"text",text:JSON.stringify(x.content||"")}]:[{text:JSON.stringify(x.content||"")}];if(x?.source?.type!=="base64")return[];const m=x.source.media_type||(x.type==="document"?"application/pdf":"image/jpeg");return r?(x.type==="document"?[{type:"file",file:{filename:"upload.pdf",file_data:"data:"+m+";base64,"+x.source.data}}]:[{type:"image_url",image_url:{url:"data:"+m+";base64,"+x.source.data}}]):[{inline_data:{mime_type:m,data:x.source.data}}]})};const gb=b=>{const q={contents:(b.messages||[]).map(m=>({role:m.role==="assistant"?"model":"user",parts:parts(m.content,false)})),generationConfig:{maxOutputTokens:Math.max(+b.max_tokens||0,3200)}};const s=txt(b.system);if(s)q.systemInstruction={parts:[{text:s}]};return q};const rb=b=>{const q=(b.messages||[]).map(m=>({role:m.role==="assistant"?"assistant":"user",content:parts(m.content,true)})),s=txt(b.system);if(s)q.unshift({role:"system",content:s});return{model:"openrouter/free",messages:q,max_tokens:Math.max(+b.max_tokens||0,3200),temperature:.1}};const out=t=>new Response(JSON.stringify({content:[{type:"text",text:t}],stop_reason:"end_turn"}),{status:200,headers:{"Content-Type":"application/json"}});export function installAiFallback(n){window.fetch=async(i,x={})=>{const u=typeof i==="string"?i:i?.url||"";if(!u.includes("api.anthropic.com/v1/messages"))return n(i,x);const b=JSON.parse(x.body||"{}");let k=localStorage.getItem(GK)||prompt("Enter your Google AI Studio API key. It stays only in this browser.");if(!k)throw Error("No Gemini API key was provided.");localStorage.setItem(GK,k);const er=[];for(const m of MODELS)for(let z=0;z<2;z++)try{const q=await n("https://generativelanguage.googleapis.com/v1beta/models/"+m+":generateContent?key="+encodeURIComponent(k),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(gb(b))}),j=await q.json(),t=(j.candidates||[]).flatMap(v=>v.content?.parts||[]).map(v=>v.text||"").join(" ");if(!q.ok||j.error)throw Error(j.error?.message||("HTTP "+q.status));if(t.trim())return out(t)}catch(e){er.push("Gemini "+m+": "+e.message);if(!z)await new Promise(a=>setTimeout(a,500))}let k2=localStorage.getItem(RK)||prompt("Gemini is busy. Optional fallback: enter an OpenRouter API key. Cancel to stop.");if(k2){localStorage.setItem(RK,k2);try{const q=await n("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+k2},body:JSON.stringify(rb(b))}),j=await q.json(),t=j.choices?.[0]?.message?.content;if(!q.ok||j.error)throw Error(j.error?.message||("HTTP "+q.status));if(t?.trim())return out(t)}catch(e){er.push("OpenRouter Free: "+e.message)}}const e="All AI extraction providers failed. "+er.join("; ");alert(e);throw Error(e)}}
+const GK = "an-pa:gemini-api-key";
+const RK = "an-pa:openrouter-api-key";
+const MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+
+const textOf = (content) => typeof content === "string" ? content : Array.isArray(content)
+  ? content.map((item) => item?.type === "text" ? item.text : item?.type === "tool_result" ? JSON.stringify(item.content || "") : typeof item === "string" ? item : "").filter(Boolean).join(" ")
+  : "";
+
+const parts = (content, openRouter) => {
+  if (typeof content === "string") return openRouter ? [{ type: "text", text: content }] : [{ text: content }];
+  return (Array.isArray(content) ? content : []).flatMap((item) => {
+    if (item?.type === "text") return openRouter ? [{ type: "text", text: item.text || "" }] : [{ text: item.text || "" }];
+    if (item?.type === "tool_result") return openRouter ? [{ type: "text", text: JSON.stringify(item.content || "") }] : [{ text: JSON.stringify(item.content || "") }];
+    if (item?.source?.type !== "base64") return [];
+    const mime = item.source.media_type || (item.type === "document" ? "application/pdf" : "image/jpeg");
+    return openRouter
+      ? item.type === "document" ? [{ type: "file", file: { filename: "upload.pdf", file_data: "data:" + mime + ";base64," + item.source.data } }] : [{ type: "image_url", image_url: { url: "data:" + mime + ";base64," + item.source.data } }]
+      : [{ inline_data: { mime_type: mime, data: item.source.data } }];
+  });
+};
+
+const geminiBody = (body) => {
+  const request = {
+    contents: (body.messages || []).map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: parts(message.content, false) })),
+    generationConfig: { maxOutputTokens: Math.max(Number(body.max_tokens) || 0, 3200) },
+  };
+  const system = textOf(body.system);
+  if (system) request.systemInstruction = { parts: [{ text: system }] };
+  return request;
+};
+
+const openRouterBody = (body) => {
+  const messages = (body.messages || []).map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: parts(message.content, true) }));
+  const system = textOf(body.system);
+  if (system) messages.unshift({ role: "system", content: system });
+  return { model: "openrouter/free", messages, max_tokens: Math.max(Number(body.max_tokens) || 0, 3200), temperature: 0.1 };
+};
+
+const anthropicLikeResponse = (text) => new Response(JSON.stringify({ content: [{ type: "text", text }], stop_reason: "end_turn" }), { status: 200, headers: { "Content-Type": "application/json" } });
+
+export function installAiFallback(nativeFetch) {
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input?.url || "";
+    if (!url.includes("api.anthropic.com/v1/messages")) return nativeFetch(input, init);
+
+    const body = JSON.parse(init.body || "{}");
+    let geminiKey = localStorage.getItem(GK);
+    if (!geminiKey) {
+      geminiKey = prompt("Enter your Google AI Studio API key. It stays only in this browser.");
+      if (!geminiKey) throw new Error("No Gemini API key was provided.");
+      localStorage.setItem(GK, geminiKey);
+    }
+
+    const errors = [];
+    for (const model of MODELS) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await nativeFetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(geminiKey), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody(body)) });
+          const result = await response.json();
+          const answer = (result.candidates || []).flatMap((candidate) => candidate.content?.parts || []).map((part) => part.text || "").join(" ");
+          if (!response.ok || result.error) throw new Error(result.error?.message || ("HTTP " + response.status));
+          if (answer.trim()) return anthropicLikeResponse(answer);
+        } catch (error) {
+          errors.push("Gemini " + model + ": " + error.message);
+          if (!attempt) await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+    }
+
+    // OpenRouter is optional and configured once. Never interrupt normal use
+    // with a fallback-key popup just because Gemini is temporarily unavailable.
+    const openRouterKey = localStorage.getItem(RK);
+    if (openRouterKey) {
+      try {
+        const response = await nativeFetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + openRouterKey }, body: JSON.stringify(openRouterBody(body)) });
+        const result = await response.json();
+        const answer = result.choices?.[0]?.message?.content;
+        if (!response.ok || result.error) throw new Error(result.error?.message || ("HTTP " + response.status));
+        if (answer?.trim()) return anthropicLikeResponse(answer);
+      } catch (error) { errors.push("OpenRouter: " + error.message); }
+    }
+
+    throw new Error("Nyx AI is temporarily unavailable. Gemini did not respond successfully. Please try again shortly. Technical details: " + errors.join("; "));
+  };
+}
