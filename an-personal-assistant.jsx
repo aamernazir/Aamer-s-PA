@@ -7718,7 +7718,7 @@ function App() {
         {
           type: "text",
           text:
-            "This archive accepts ALL career evidence, not only publications. First classify the uploaded file from its actual content. Do not assume it is a paper. Valid classes include publications, patents, reports, professional rankings/recognition, awards/certificates, editorial/reviewer service, conference/professional service, project/grant evidence, teaching/supervision evidence, memberships/appointments, media/outreach, and Other. Then read it carefully and extract: " +
+            "This archive accepts ALL career evidence, not only publications. FIRST ask: what does this uploaded evidence PROVE? Classify by the purpose of the evidence, not merely by the object visible in it. Example: a Web of Science page showing an existing article marked Highly Cited Paper and Hot Paper is Professional Recognition / Ranking, NOT a Journal Paper. A certificate about reviewing is Editorial / Reviewer Service, not the reviewed paper. If the evidence recognizes an existing publication/person/project, capture that referenced entity separately. Valid classes include publications, patents, reports, professional rankings/recognition, awards/certificates, editorial/reviewer service, conference/professional service, project/grant evidence, teaching/supervision evidence, memberships/appointments, media/outreach, and Other. Then read it carefully and extract: " +
             `the title, the type (one of: ${OUTPUT_TYPES.join(", ")}), the venue (journal/conference/patent office name), the year, the authors (comma-separated as listed), and each author's institutional affiliations with author-to-affiliation mapping, ` +
             "a 2-3 sentence summary of what it's actually about and its key contribution, the core methods or techniques used (e.g. \"finite element analysis, selective laser sintering\"), " +
             "and 4-8 keywords/topics that genuinely characterize this work (not generic terms).\n\n" +
@@ -7728,7 +7728,7 @@ function App() {
             "(1) writingStyleNotes — how the writing is structured (concise vs. verbose, how clearly the contribution is framed, how the paper is organized); " +
             "(2) rigorNotes — the methodological rigor actually demonstrated: validation approach used (e.g. experimental validation vs. simulation only, statistical treatment, sample sizes, controls, comparison baselines) — be specific about what IS and ISN'T validated, don't just say \"rigorous\"; " +
             "(3) depthDiscussionNotes — how thoroughly results are interpreted and discussed: does it explain WHY results occurred (mechanism/reasoning) or just report WHAT happened, are limitations acknowledged, is the discussion connected back to broader significance, or does the paper end abruptly after presenting data.\n\n" +
-            'Respond with ONLY raw JSON, no markdown fences, no preamble. Choose "type" from the allowed classes above based on evidence; never default a non-publication to Journal Paper. Use this shape: {"title":"","type":"","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
+            'Respond with ONLY raw JSON, no markdown fences, no preamble. Choose "type" from the allowed classes based on what the evidence proves. For recognition evidence, make title the recognition itself (for example "Highly Cited Paper & Hot Paper Recognition — Web of Science"), not the underlying paper title. Use this shape: {"title":"","type":"","subtype":"","recognitionDetails":"","referencedEntityTitle":"","referencedEntityType":"","referencedEntityDoi":"","recognitionSource":"","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
         },
       ];
       const parsed = await claudeExtractJSON(content);
@@ -7738,6 +7738,12 @@ function App() {
           id: Date.now().toString() + Math.random().toString(36).slice(2),
           title: parsed.title || file.name,
           type: OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other",
+          subtype: parsed.subtype || "",
+          recognitionDetails: parsed.recognitionDetails || "",
+          referencedEntityTitle: parsed.referencedEntityTitle || "",
+          referencedEntityType: parsed.referencedEntityType || "",
+          referencedEntityDoi: parsed.referencedEntityDoi || "",
+          recognitionSource: parsed.recognitionSource || "",
           venue: parsed.venue || "",
           year: parsed.year || "",
           authors: parsed.authors || "",
@@ -8337,6 +8343,9 @@ function App() {
                 </select>
               )}
             </div>
+            {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
+            {o.referencedEntityTitle && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}><strong>Recognized work:</strong> {o.referencedEntityTitle}{o.referencedEntityDoi ? ` · DOI ${o.referencedEntityDoi}` : ""}</div>}
+            {o.recognitionSource && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}><strong>Recognition source:</strong> {o.recognitionSource}</div>}
             {o.authors && <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 2, fontStyle: "italic" }}>{o.authors}</div>}
             {isOpen && o.authorAffiliations && <div style={{ fontSize: 11, color: MUTED, marginTop: 5, whiteSpace: "pre-line" }}><strong>Author affiliations:</strong> {o.authorAffiliations}</div>}
             {o.correspondingAuthors && (
