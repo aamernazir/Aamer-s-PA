@@ -1,6 +1,38 @@
 const GK = "an-pa:gemini-api-key";
 const RK = "an-pa:openrouter-api-key";
-const MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+const FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"];
+let modelCache = { expires: 0, models: [] };
+async function discoverModels(nativeFetch, key) {
+  if (modelCache.expires > Date.now() && modelCache.models.length) return modelCache.models;
+  try {
+    let pageToken = "";
+    const names = [];
+    for (let page = 0; page < 4; page += 1) {
+      const url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=" + encodeURIComponent(key) + (pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : "");
+      const response = await nativeFetch(url);
+      if (!response.ok) break;
+      const json = await response.json();
+      for (const model of json.models || []) {
+        if ((model.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-/i.test(model.name || "")) names.push(model.name.replace(/^models\//, ""));
+      }
+      pageToken = json.nextPageToken || "";
+      if (!pageToken) break;
+    }
+    const score = (name) => {
+      const version = [...name.matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0]))[0] || 0;
+      const lite = /flash-lite/i.test(name);
+      const flash = /flash/i.test(name);
+      return (lite ? 1000 : flash ? 500 : 0) + version * 10 - (/preview|exp/i.test(name) ? 5 : 0);
+    };
+    const candidates = names.filter((name) => /flash/i.test(name) && !/tts|image|audio|live|native|robotics/i.test(name)).sort((a, b) => score(b) - score(a));
+    const ordered = [...new Set([...candidates, ...FALLBACK_MODELS])];
+    modelCache = { models: ordered, expires: Date.now() + 6 * 60 * 60 * 1000 };
+    return ordered;
+  } catch {
+    return FALLBACK_MODELS;
+  }
+}
+
 
 const textOf = (content) => typeof content === "string" ? content : Array.isArray(content)
   ? content.map((item) => item?.type === "text" ? item.text : item?.type === "tool_result" ? JSON.stringify(item.content || "") : typeof item === "string" ? item : "").filter(Boolean).join(" ")
@@ -53,23 +85,25 @@ export function installAiFallback(nativeFetch) {
     }
 
     const errors = [];
-    // Gemini fallback cannot emulate Anthropic web_search tools. Let search-enabled
-    // Research Intelligence requests continue to Anthropic instead of silently
-    // stripping the tool and returning unusable results.
     if (needsWebSearch) return nativeFetch(input, init);
-    for (const model of MODELS) {
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const response = await nativeFetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(geminiKey), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody(body)) });
-          const result = await response.json();
-          const answer = (result.candidates || []).flatMap((candidate) => candidate.content?.parts || []).map((part) => part.text || "").join(" ");
-          if (!response.ok || result.error) throw new Error(result.error?.message || ("HTTP " + response.status));
-          if (answer.trim()) return anthropicLikeResponse(answer);
-        } catch (error) {
-          errors.push("Gemini " + model + ": " + error.message);
-          if (!attempt) await new Promise((resolve) => setTimeout(resolve, 800));
+    const models = await discoverModels(nativeFetch, geminiKey);
+    for (const model of models) {
+      try {
+        const response = await nativeFetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(geminiKey), {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody(body)),
+        });
+        const result = await response.json();
+        const answer = (result.candidates || []).flatMap((candidate) => candidate.content?.parts || []).map((part) => part.text || "").join(" ");
+        if (response.ok && !result.error && answer.trim()) {
+          modelCache.models = [model, ...models.filter((name) => name !== model)];
+          return anthropicLikeResponse(answer);
         }
-      }
+        const reason = result.error?.message || "HTTP " + response.status;
+        errors.push(model + ": " + String(reason).slice(0, 140));
+        if (response.status === 429) break;
+        if (response.status === 401 || response.status === 403) break;
+        if (response.status >= 500) await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (error) { errors.push(model + ": " + String(error.message).slice(0, 140)); }
     }
 
     // OpenRouter is optional and configured once. Never interrupt normal use
@@ -85,6 +119,6 @@ export function installAiFallback(nativeFetch) {
       } catch (error) { errors.push("OpenRouter: " + error.message); }
     }
 
-    throw new Error("Nyx AI is temporarily unavailable. Gemini did not respond successfully. Please try again shortly. Technical details: " + errors.join("; "));
+    throw new Error("Nyx AI could not process this item. Check the Gemini API key, model access, or quota, then retry. " + (errors[0] || "No available model").slice(0, 170));
   };
 }
