@@ -797,6 +797,7 @@ function App() {
           error={error}
           onOpen={setActiveId}
           onDelete={deleteProject}
+          onReprocess={(id, updater) => updateProject(id, updater)}
           onNew={() => setShowNewProject(true)}
           sharedProjects={sharedProjects.filter((sp) => !projects.some((p) => p.id === sp.id))}
           onImportShared={importSharedProject}
@@ -873,8 +874,33 @@ function App() {
   );
 }
 
-function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects, onImportShared, onRefreshShared }) {
+function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onNew, sharedProjects, onImportShared, onRefreshShared }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [reprocessingId, setReprocessingId] = useState(null);
+  const [reprocessError, setReprocessError] = useState("");
+  async function reprocessProject(project) {
+    if (reprocessingId) return;
+    setReprocessingId(project.id);
+    setReprocessError("");
+    try {
+      const parsed = await claudeExtractJSON([{ type: "text", text:
+        "Review this EXISTING project record and propose corrections to project classification and metadata. Never invent missing facts. Do not alter tasks, work packages, objectives, progress, budget, completion status, or evidence. Return ONLY JSON with optional fields title, program, projectNumber, pi, ownerRole, duration, and an explanation field. Use ownerRole PI or Co-I only if supported by the record. Existing record: " +
+        JSON.stringify({ title: project.title, program: project.program, projectNumber: project.projectNumber, pi: project.pi, ownerRole: project.ownerRole, duration: project.duration, objectives: (project.objectives || []).map(o => o.text), notes: project.notes })
+      }]);
+      const allowed = ["title", "program", "projectNumber", "pi", "ownerRole", "duration"];
+      const changes = Object.fromEntries(allowed.filter(key => typeof parsed[key] === "string" && parsed[key].trim() && parsed[key] !== project[key] && (key !== "ownerRole" || ["PI", "Co-I"].includes(parsed[key]))).map(key => [key, parsed[key].trim()]));
+      if (!Object.keys(changes).length) {
+        window.alert("Reprocessing finished. No supported metadata changes were identified.");
+        return;
+      }
+      const summary = Object.entries(changes).map(([key, value]) => key + ": " + String(project[key] || "(empty)") + " → " + value).join("\n");
+      if (window.confirm("Review proposed project updates:\n\n" + summary + (parsed.explanation ? "\n\nReason: " + parsed.explanation : "") + "\n\nApply these changes?")) {
+        onReprocess(project.id, current => ({ ...current, ...changes }));
+      }
+    } catch (error) {
+      setReprocessError("Could not reprocess project: " + (error.message || "unknown error"));
+    } finally { setReprocessingId(null); }
+  }
   const [portfolioTab, setPortfolioTab] = useState("attention");
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
@@ -905,6 +931,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
             <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
           </div>
+          <button onClick={() => reprocessProject(p)} disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
           <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }} aria-label={`Delete ${p.title}`}>
             <Trash2 size={15} color="#9AA2AF" />
           </button>
@@ -931,6 +958,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 24px 80px" }}>
+      {reprocessError && <div role="alert" style={{ color: "#B3392C", padding: "8px 12px" }}>{reprocessError}</div>}
       <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 28, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div className="pd-mono" style={{ width: 40, height: 40, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
