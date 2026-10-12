@@ -336,16 +336,19 @@ function wpProgress(wp) {
   return Math.round((wp.tasks.filter((t) => t.done).length / wp.tasks.length) * 100);
 }
 
-function projectProgress(p) {
-  const objectives = Array.isArray(p.objectives) ? p.objectives : [];
-  if (objectives.length) {
-    const completed = objectives.filter((o) => o.completed).length;
-    if (completed === objectives.length) return 100;
-    return Math.round(completed / objectives.length * 100);
-  }
-  const packages = Array.isArray(p.workPackages) ? p.workPackages : [];
-  if (!packages.length) return 0;
-  return Math.round(packages.reduce((sum, wp) => sum + wpProgress(wp), 0) / packages.length);
+function objectiveProgress(project, index) {
+  const objective = (project.objectives || [])[index];
+  if (!objective) return 0;
+  if (objective.completed) return 100;
+  const linked = (project.workPackages || []).filter((wp) => (wp.objectiveIdxs || []).includes(index));
+  if (!linked.length) return 0;
+  return Math.round(linked.reduce((sum, wp) => sum + wpProgress(wp), 0) / linked.length);
+}
+function projectProgress(project) {
+  const objectives = project.objectives || [];
+  if (objectives.length) return Math.round(objectives.reduce((sum, _, i) => sum + objectiveProgress(project, i), 0) / objectives.length);
+  const packages = project.workPackages || [];
+  return packages.length ? Math.round(packages.reduce((sum, wp) => sum + wpProgress(wp), 0) / packages.length) : 0;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1284,32 +1287,22 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
     }
   }
   function toggleObjectiveComplete(idx) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const completing = !data.objectives[idx]?.completed;
-    const objectives = data.objectives.map((objective, i) => i === idx
-      ? { ...objective, completed: completing, completedAt: completing ? today : null }
-      : objective);
-    const finalObjective = completing && objectives.length > 0 && objectives.every((objective) => objective.completed);
-    const cascade = finalObjective && window.confirm(
-      "All objectives are completed. Also complete the project and every work package and task? Cancel will complete only this objective."
-    );
-    update((project) => ({
-      ...project,
-      objectives,
-      ...(cascade ? {
-        status: "Completed",
-        completedAt: today,
-        workPackages: (project.workPackages || []).map((wp) => ({
-          ...wp,
-          completed: true,
-          completedAt: wp.completedAt || today,
-          tasks: (wp.tasks || []).map((task) => ({ ...task, done: true })),
-        })),
-      } : {}),
-      ...(!completing && project.status === "Completed" ? { status: "Active", completedAt: null } : {}),
-    }));
-    logChange(cascade ? "Completed project and all linked work packages" :
-      (completing ? "Completed" : "Reopened") + " objective " + (idx + 1));
+    const linked = (data.workPackages || []).filter((wp) => (wp.objectiveIdxs || []).includes(idx));
+    const shared = linked.filter((wp) => (wp.objectiveIdxs || []).some((other) => other !== idx));
+    if (completing && shared.length && !window.confirm("Some linked work packages serve multiple objectives. Completing them will affect those objectives too. Continue?")) return;
+    update((p) => {
+      const objectives = p.objectives.map((o, i) => i === idx ? { ...o, completed: completing, completedAt: completing ? today : null } : o);
+      const workPackages = (p.workPackages || []).map((wp) => {
+        if (!completing || !(wp.objectiveIdxs || []).includes(idx)) return wp;
+        return { ...wp, completed: true, completedAt: wp.completedAt || today, tasks: (wp.tasks || []).map((task) => ({ ...task, done: true })) };
+      });
+      const candidate = { ...p, objectives, workPackages };
+      const done = objectives.length > 0 && objectives.every((_, i) => objectiveProgress(candidate, i) === 100);
+      return { ...candidate, status: done ? "Completed" : p.status === "Completed" ? "Active" : p.status, completedAt: done ? (p.completedAt || today) : null };
+    });
+    logChange((completing ? "Completed" : "Reopened") + " objective " + (idx + 1));
   }
   function removeObjective(idx) {
     const label = data.objectives[idx]?.text?.slice(0, 60) || `Objective ${idx + 1}`;
@@ -1850,6 +1843,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
             {data.objectives.length === 0 && <EmptyState text="No objectives yet." />}
             {data.objectives.map((o, i) => {
               const evidenceCount = (data.evidence || []).filter((e) => (e.objectiveIdxs || []).includes(i)).length;
+              const objectivePct = objectiveProgress(data, i);
               const linkedWPs = data.workPackages.filter((wp) => (wp.objectiveIdxs || []).includes(i));
               const overdueWPs = linkedWPs.filter((wp) => wpIsAtRisk(wp));
               const needsJustification = !o.completed && evidenceCount === 0 && overdueWPs.length > 0;
@@ -1861,7 +1855,8 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
                   <textarea value={o.text} onChange={(e) => updateObjective(i, "text", e.target.value)} placeholder="Objective description" style={{ ...inputStyle, minHeight: 44, resize: "vertical", flex: 1 }} />
                   <button onClick={() => removeObjective(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={14} color="#9AA2AF" /></button>
                 </div>
-                {o.completed && <div style={{ paddingLeft: 22, marginBottom: 8, color: GREEN, fontSize: 11.5 }}>Completed {o.completedAt || ""} · Linked work packages remain independently tracked.</div>}
+                {o.completed && <div style={{ paddingLeft: 22, marginBottom: 8, color: GREEN, fontSize: 11.5 }}>Completed {o.completedAt || ""} · Linked work packages and tasks are completed.</div>}
+                <div style={{ paddingLeft: 22, fontSize: 11, color: objectivePct === 100 ? GREEN : TEAL, marginBottom: 8 }}>Objective progress: {objectivePct}%</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 22 }}>
                   <span style={{ fontSize: 11.5, color: MUTED, flexShrink: 0 }}>Lead:</span>
                   <select value={o.lead} onChange={(e) => updateObjective(i, "lead", e.target.value)} style={{ fontSize: 12.5, padding: "5px 8px", borderRadius: 3, border: "1px solid #C7CCD3", flex: 1, maxWidth: 280 }}>
