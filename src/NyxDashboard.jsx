@@ -389,6 +389,41 @@ function CombinedBarChart({ activePeriod }) {
   </svg></div>;
 }
 
+// Coordinates are approximate country centroids in the equirectangular world
+// map image; unknown locations are listed separately rather than invented.
+const COUNTRY_POINTS = {
+  "saudi arabia":[44.5,24.0], "pakistan":[69.3,30.4], "india":[79,22.5],
+  "china":[104,35], "japan":[138,37], "south korea":[128,36],
+  "united states":[-98,39], "usa":[-98,39], "united kingdom":[-2,54],
+  "uk":[-2,54], "germany":[10.5,51], "france":[2.3,46.5],
+  "italy":[12.5,42.5], "spain":[-4,40], "turkey":[35,39],
+  "türkiye":[35,39], "iran":[54,32], "iraq":[44,33],
+  "united arab emirates":[54,24], "uae":[54,24], "qatar":[51,25.3],
+  "bahrain":[50.55,26], "oman":[57,21], "kuwait":[47.5,29.5],
+  "egypt":[30,27], "morocco":[-7,32], "south africa":[24,-29],
+  "australia":[134,-25], "new zealand":[172,-41], "canada":[-106,56],
+  "brazil":[-52,-11], "mexico":[-102,24], "singapore":[104,1.3],
+  "malaysia":[102,4], "indonesia":[118,-3], "thailand":[101,15],
+  "vietnam":[108,16], "bangladesh":[90,24], "nepal":[84,28],
+  "sri lanka":[81,7], "russia":[95,61], "switzerland":[8.3,47],
+  "netherlands":[5,52], "belgium":[4.6,50.6], "sweden":[15,62],
+  "norway":[9,62], "denmark":[10,56], "finland":[26,64],
+  "poland":[19,52], "portugal":[-8,39.5], "greece":[23,39],
+  "austria":[14,47.5], "ireland":[-8,53], "israel":[35,31.5],
+  "jordan":[36,31], "lebanon":[36,34], "taiwan":[121,24],
+  "hong kong":[114,22], "philippines":[123,12], "ethiopia":[40,9],
+  "nigeria":[8,9], "kenya":[38,0], "argentina":[-64,-35],
+  "chile":[-71,-33], "colombia":[-74,4], "peru":[-75,-10],
+  "czech republic":[15,50], "czechia":[15,50], "romania":[25,46],
+  "hungary":[19,47], "slovakia":[19.5,49], "slovenia":[15,46],
+};
+function countryPoint(country) {
+  const key = String(country || "").trim().toLowerCase().replace(/^the\s+/,"");
+  const point = COUNTRY_POINTS[key];
+  if (!point) return null;
+  return { x: (point[0] + 180) / 360 * 100, y: (90 - point[1]) / 180 * 100 };
+}
+
 function AffiliationFootprint({ outputs, period }) {
   let countries = affiliationCountries(outputs, period);
   const allCountries = affiliationCountries(outputs, "career");
@@ -396,9 +431,14 @@ function AffiliationFootprint({ outputs, period }) {
   return <article className="nyx-panel nyx-footprint-panel">
     <header><div><h2>Co-author affiliation footprint</h2><div className="nyx-source-chip"><Boxes size={11} />Research Intelligence · co-author affiliations</div></div></header>
     <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map showing co-author affiliation footprint">
-      {countries.length ? <div className="nyx-map-data-note"><MapPinned size={16} /><strong>{plural(countries.length, "country")}</strong><span>with confirmed co-author affiliations</span></div> : <div className="nyx-map-data-note"><MapPinned size={16} /><strong>Awaiting affiliation records</strong><span>Nyx will plot countries after Research Intelligence confirms them.</span></div>}
+      {countries.length ? countries.map(({country, outputs: count}) => {
+        const point = countryPoint(country);
+        if (!point) return null;
+        return <div key={country} title={country + " · " + count + " affiliation records"} style={{ position: "absolute", left: point.x + "%", top: point.y + "%", transform: "translate(-50%, -50%)", display: "flex", alignItems: "center", gap: 3, zIndex: 2, color: "#064e3b", fontSize: 9, fontWeight: 700, textShadow: "0 1px 2px white, 0 -1px 2px white" }}><span style={{ display: "block", width: Math.min(15, 7 + Math.sqrt(count) * 2), height: Math.min(15, 7 + Math.sqrt(count) * 2), background: "#087f5b", border: "2px solid white", borderRadius: "50%", boxShadow: "0 1px 5px #064e3b99", flexShrink: 0 }} />{country}</div>;
+      }) : <div className="nyx-map-data-note"><MapPinned size={16} /><strong>Awaiting affiliation records</strong><span>Nyx will plot countries after Research Intelligence confirms them.</span></div>}
     </div>
-    <footer><i /><span>Active publication co-authors · affiliations extracted from Research Intelligence</span></footer>
+    {countries.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 9px", fontSize: 10, padding: "7px 0", color: "#236353" }}>{countries.map((item) => <span key={item.country}>{countryPoint(item.country) ? "● " : "○ "}{item.country} ({item.outputs})</span>)}</div>}
+    <footer><i /><span>Co-author affiliations · green pins show mapped countries; unmapped names appear in the legend</span></footer>
   </article>;
 }
 
