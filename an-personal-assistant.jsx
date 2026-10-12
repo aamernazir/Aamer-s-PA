@@ -1277,10 +1277,32 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
     }
   }
   function toggleObjectiveComplete(idx) {
-    const objective = data.objectives[idx];
-    const completed = !objective?.completed;
-    update((p) => ({ ...p, objectives: p.objectives.map((o, i) => i === idx ? { ...o, completed, completedAt: completed ? new Date().toISOString().slice(0, 10) : null } : o) }));
-    logChange((completed ? "Completed" : "Reopened") + " objective " + (idx + 1));
+    const today = new Date().toISOString().slice(0, 10);
+    const completing = !data.objectives[idx]?.completed;
+    const objectives = data.objectives.map((objective, i) => i === idx
+      ? { ...objective, completed: completing, completedAt: completing ? today : null }
+      : objective);
+    const finalObjective = completing && objectives.length > 0 && objectives.every((objective) => objective.completed);
+    const cascade = finalObjective && window.confirm(
+      "All objectives are completed. Also complete the project and every work package and task? Cancel will complete only this objective."
+    );
+    update((project) => ({
+      ...project,
+      objectives,
+      ...(cascade ? {
+        status: "Completed",
+        completedAt: today,
+        workPackages: (project.workPackages || []).map((wp) => ({
+          ...wp,
+          completed: true,
+          completedAt: wp.completedAt || today,
+          tasks: (wp.tasks || []).map((task) => ({ ...task, done: true })),
+        })),
+      } : {}),
+      ...(!completing && project.status === "Completed" ? { status: "Active", completedAt: null } : {}),
+    }));
+    logChange(cascade ? "Completed project and all linked work packages" :
+      (completing ? "Completed" : "Reopened") + " objective " + (idx + 1));
   }
   function removeObjective(idx) {
     const label = data.objectives[idx]?.text?.slice(0, 60) || `Objective ${idx + 1}`;
