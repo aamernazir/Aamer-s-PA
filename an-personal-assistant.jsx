@@ -337,8 +337,15 @@ function wpProgress(wp) {
 }
 
 function projectProgress(p) {
-  if (!p.workPackages.length) return 0;
-  return Math.round(p.workPackages.reduce((sum, wp) => sum + wpProgress(wp), 0) / p.workPackages.length);
+  const objectives = Array.isArray(p.objectives) ? p.objectives : [];
+  if (objectives.length) {
+    const completed = objectives.filter((o) => o.completed).length;
+    if (completed === objectives.length) return 100;
+    return Math.round(completed / objectives.length * 100);
+  }
+  const packages = Array.isArray(p.workPackages) ? p.workPackages : [];
+  if (!packages.length) return 0;
+  return Math.round(packages.reduce((sum, wp) => sum + wpProgress(wp), 0) / packages.length);
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1667,7 +1674,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
     setEvidenceDraft((d) => ({ ...d, objectiveIdxs: d.objectiveIdxs.includes(idx) ? d.objectiveIdxs.filter((x) => x !== idx) : [...d.objectiveIdxs, idx] }));
   }
 
-  const overallProgress = data.workPackages.length ? Math.round(data.workPackages.reduce((sum, wp) => sum + wpProgress(wp), 0) / data.workPackages.length) : 0;
+  const overallProgress = projectProgress(data);
   const budgetSum = data.budgetLines.reduce((s, b) => s + b.amount, 0);
 
   function buildSnapshot() {
@@ -1815,7 +1822,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
           <span style={{ fontWeight: 600 }}>Overall progress</span><span>{overallProgress}%</span>
         </div>
         <div style={{ height: 8, background: "#EAECF0", borderRadius: 4, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${overallProgress}%`, background: TEAL, transition: "width 0.3s" }} />
+          <div style={{ height: "100%", width: `${overallProgress}%`, background: overallProgress === 100 ? GREEN : TEAL, transition: "width 0.3s" }} />
         </div>
       </div>
 
