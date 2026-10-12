@@ -3140,7 +3140,7 @@ function App() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
       <GlobalStyle />
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 80px" }}>
+      <div style={{ width: "100%", maxWidth: 1680, margin: "0 auto", padding: "28px clamp(18px, 3vw, 52px) 72px", boxSizing: "border-box" }}>
 
         <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
