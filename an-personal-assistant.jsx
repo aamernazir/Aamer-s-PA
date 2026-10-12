@@ -797,6 +797,7 @@ function App() {
           error={error}
           onOpen={setActiveId}
           onDelete={deleteProject}
+          onReprocess={(id, updater) => updateProject(id, updater)}
           onNew={() => setShowNewProject(true)}
           sharedProjects={sharedProjects.filter((sp) => !projects.some((p) => p.id === sp.id))}
           onImportShared={importSharedProject}
@@ -873,8 +874,33 @@ function App() {
   );
 }
 
-function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects, onImportShared, onRefreshShared }) {
+function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onNew, sharedProjects, onImportShared, onRefreshShared }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [reprocessingId, setReprocessingId] = useState(null);
+  const [reprocessError, setReprocessError] = useState("");
+  async function reprocessProject(project) {
+    if (reprocessingId) return;
+    setReprocessingId(project.id);
+    setReprocessError("");
+    try {
+      const parsed = await claudeExtractJSON([{ type: "text", text:
+        "Review this EXISTING project record and propose corrections to project classification and metadata. Never invent missing facts. Do not alter tasks, work packages, objectives, progress, budget, completion status, or evidence. Return ONLY JSON with optional fields title, program, projectNumber, pi, ownerRole, duration, and an explanation field. Use ownerRole PI or Co-I only if supported by the record. Existing record: " +
+        JSON.stringify({ title: project.title, program: project.program, projectNumber: project.projectNumber, pi: project.pi, ownerRole: project.ownerRole, duration: project.duration, objectives: (project.objectives || []).map(o => o.text), notes: project.notes })
+      }]);
+      const allowed = ["title", "program", "projectNumber", "pi", "ownerRole", "duration"];
+      const changes = Object.fromEntries(allowed.filter(key => typeof parsed[key] === "string" && parsed[key].trim() && parsed[key] !== project[key] && (key !== "ownerRole" || ["PI", "Co-I"].includes(parsed[key]))).map(key => [key, parsed[key].trim()]));
+      if (!Object.keys(changes).length) {
+        window.alert("Reprocessing finished. No supported metadata changes were identified.");
+        return;
+      }
+      const summary = Object.entries(changes).map(([key, value]) => key + ": " + String(project[key] || "(empty)") + " → " + value).join("\n");
+      if (window.confirm("Review proposed project updates:\n\n" + summary + (parsed.explanation ? "\n\nReason: " + parsed.explanation : "") + "\n\nApply these changes?")) {
+        onReprocess(project.id, current => ({ ...current, ...changes }));
+      }
+    } catch (error) {
+      setReprocessError("Could not reprocess project: " + (error.message || "unknown error"));
+    } finally { setReprocessingId(null); }
+  }
   const [portfolioTab, setPortfolioTab] = useState("attention");
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
@@ -905,6 +931,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
             <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
           </div>
+          <button onClick={() => reprocessProject(p)} disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
           <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }} aria-label={`Delete ${p.title}`}>
             <Trash2 size={15} color="#9AA2AF" />
           </button>
@@ -931,6 +958,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onNew, sharedProjects,
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 24px 80px" }}>
+      {reprocessError && <div role="alert" style={{ color: "#B3392C", padding: "8px 12px" }}>{reprocessError}</div>}
       <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 28, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div className="pd-mono" style={{ width: 40, height: 40, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
@@ -9025,6 +9053,37 @@ function MailboxModule({ onOpenModule }) {
   const [savingRoute, setSavingRoute] = useState(false);
   const [routeError, setRouteError] = useState("");
   const [rereadIds, setRereadIds] = useState(new Set());
+  const [reprocessingMailId, setReprocessingMailId] = useState(null);
+  const [reprocessMailError, setReprocessMailError] = useState("");
+  async function reprocessMailItem(item) {
+    if (reprocessingMailId) return;
+    const id = mailboxItemId(item);
+    setReprocessingMailId(id);
+    setReprocessMailError("");
+    try {
+      const parsed = await claudeExtractJSON([{ type: "text", text:
+        "Re-evaluate this existing email triage record from the supplied email content only. Do not invent facts or imply attachments were read. Return ONLY JSON with optional string fields summary, contributionSummary, category, and explanation. Summary must be concise and factual; contributionSummary must describe the user's actual contribution only if supported. Email: " +
+        JSON.stringify({ subject: item.subject, from: item.from, receivedAt: item.receivedAt, snippet: item.snippet, body: item.body, text: item.text, summary: item.summary, contributionSummary: item.contributionSummary, category: item.category, attachments: (item.attachments || []).map(a => ({ filename: a.filename, readStatus: a.readStatus })) })
+      }]);
+      const keys = ["summary", "contributionSummary", "category"];
+      const changes = Object.fromEntries(keys.filter(key => typeof parsed[key] === "string" && parsed[key].trim() && parsed[key].trim() !== (item[key] || "")).map(key => [key, parsed[key].trim()]));
+      if (!Object.keys(changes).length) {
+        setMessage("Reprocessing finished. No supported changes identified.");
+        return;
+      }
+      const preview = Object.entries(changes).map(([key, value]) => key + ": " + value).join("\n\n");
+      if (!window.confirm("Review proposed Mailbox updates:\n\n" + preview + (parsed.explanation ? "\n\nReason: " + parsed.explanation : "") + "\n\nSave changes?")) return;
+      const existing = archive[id] || {};
+      const record = { ...item, ...existing, ...changes, id, reprocessedAt: new Date().toISOString() };
+      const nextArchive = { ...archive, [id]: record };
+      await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(nextArchive));
+      setArchive(nextArchive);
+      setItems(current => current.map(entry => mailboxItemId(entry) === id ? record : entry));
+      setMessage("Reprocessed email saved. Review suggested destinations before transferring.");
+    } catch (error) {
+      setReprocessMailError("Could not reprocess email: " + (error.message || "unknown error"));
+    } finally { setReprocessingMailId(null); }
+  }
   const [confirmClearIgnored, setConfirmClearIgnored] = useState(false);
   const [clearingIgnored, setClearingIgnored] = useState(false);
 
@@ -9247,6 +9306,7 @@ function MailboxModule({ onOpenModule }) {
           <label style={{ display: "flex", alignItems: "center", gap: 7, color: HUB_MUTED, fontSize: 13 }}>APS cycle <select value={apsCycle} onChange={(e) => setApsCycle(e.target.value)} style={{ border: "1px solid " + HUB_LINE, borderRadius: 5, padding: "8px 10px", background: "#fff", color: HUB_INK }}><option>APS27</option><option>APS28</option><option>Future APS</option></select></label>
         </div>
 
+        {reprocessMailError && <div role="alert" style={{ color: "#B3392C", padding: "9px 12px", marginBottom: 12 }}>{reprocessMailError}</div>}
         {message && <div style={{ background: "#fff", border: "1px solid " + HUB_LINE, color: HUB_MUTED, borderRadius: 5, padding: "9px 12px", marginBottom: 14, fontSize: 13 }}>{message}</div>}
 
         {!loading && !visibleItems.length && <div style={{ background: "#fff", border: "1px dashed #C7CCD3", borderRadius: 8, padding: "42px 22px", textAlign: "center", color: HUB_MUTED }}><Inbox size={32} style={{ color: HUB_TEAL, marginBottom: 10 }} /><div style={{ fontWeight: 600, color: HUB_INK, marginBottom: 6 }}>{items.length ? "No messages match this view" : "Your mailbox is ready"}</div><div style={{ fontSize: 13 }}>{items.length ? "Try another filter or search term." : "Use Scan Gmail above to analyze messages in your chosen date range."}</div></div>}
@@ -9282,6 +9342,7 @@ function MailboxModule({ onOpenModule }) {
                   {reviewStatus !== "ignored" && <button onClick={() => setReviewStatus(item, "ignored")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #D2D6DC", background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><X size={13} /> Ignore</button>}
                   {reviewStatus === "ignored" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>Restore to review</button>}
                   {reviewStatus === "kept" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Return to review</button>}
+                  <button onClick={() => reprocessMailItem(item)} disabled={!!reprocessingMailId} title="AI reprocess email summary and classification; review before saving" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: reprocessingMailId ? "wait" : "pointer" }}>{reprocessingMailId === id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingMailId === id ? "Reprocessing…" : "Reprocess"}</button>
                   <button onClick={() => queueMessageReread(item)} disabled={rereadIds.has(id)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: rereadIds.has(id) ? "default" : "pointer" }}>{rereadIds.has(id) ? "Queued for re-read" : "Re-read this email on next scan"}</button>
                 </div>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
