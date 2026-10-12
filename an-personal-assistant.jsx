@@ -9053,6 +9053,37 @@ function MailboxModule({ onOpenModule }) {
   const [savingRoute, setSavingRoute] = useState(false);
   const [routeError, setRouteError] = useState("");
   const [rereadIds, setRereadIds] = useState(new Set());
+  const [reprocessingMailId, setReprocessingMailId] = useState(null);
+  const [reprocessMailError, setReprocessMailError] = useState("");
+  async function reprocessMailItem(item) {
+    if (reprocessingMailId) return;
+    const id = mailboxItemId(item);
+    setReprocessingMailId(id);
+    setReprocessMailError("");
+    try {
+      const parsed = await claudeExtractJSON([{ type: "text", text:
+        "Re-evaluate this existing email triage record from the supplied email content only. Do not invent facts or imply attachments were read. Return ONLY JSON with optional string fields summary, contributionSummary, category, and explanation. Summary must be concise and factual; contributionSummary must describe the user's actual contribution only if supported. Email: " +
+        JSON.stringify({ subject: item.subject, from: item.from, receivedAt: item.receivedAt, snippet: item.snippet, body: item.body, text: item.text, summary: item.summary, contributionSummary: item.contributionSummary, category: item.category, attachments: (item.attachments || []).map(a => ({ filename: a.filename, readStatus: a.readStatus })) })
+      }]);
+      const keys = ["summary", "contributionSummary", "category"];
+      const changes = Object.fromEntries(keys.filter(key => typeof parsed[key] === "string" && parsed[key].trim() && parsed[key].trim() !== (item[key] || "")).map(key => [key, parsed[key].trim()]));
+      if (!Object.keys(changes).length) {
+        setMessage("Reprocessing finished. No supported changes identified.");
+        return;
+      }
+      const preview = Object.entries(changes).map(([key, value]) => key + ": " + value).join("\n\n");
+      if (!window.confirm("Review proposed Mailbox updates:\n\n" + preview + (parsed.explanation ? "\n\nReason: " + parsed.explanation : "") + "\n\nSave changes?")) return;
+      const existing = archive[id] || {};
+      const record = { ...item, ...existing, ...changes, id, reprocessedAt: new Date().toISOString() };
+      const nextArchive = { ...archive, [id]: record };
+      await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(nextArchive));
+      setArchive(nextArchive);
+      setItems(current => current.map(entry => mailboxItemId(entry) === id ? record : entry));
+      setMessage("Reprocessed email saved. Review suggested destinations before transferring.");
+    } catch (error) {
+      setReprocessMailError("Could not reprocess email: " + (error.message || "unknown error"));
+    } finally { setReprocessingMailId(null); }
+  }
   const [confirmClearIgnored, setConfirmClearIgnored] = useState(false);
   const [clearingIgnored, setClearingIgnored] = useState(false);
 
@@ -9275,6 +9306,7 @@ function MailboxModule({ onOpenModule }) {
           <label style={{ display: "flex", alignItems: "center", gap: 7, color: HUB_MUTED, fontSize: 13 }}>APS cycle <select value={apsCycle} onChange={(e) => setApsCycle(e.target.value)} style={{ border: "1px solid " + HUB_LINE, borderRadius: 5, padding: "8px 10px", background: "#fff", color: HUB_INK }}><option>APS27</option><option>APS28</option><option>Future APS</option></select></label>
         </div>
 
+        {reprocessMailError && <div role="alert" style={{ color: "#B3392C", padding: "9px 12px", marginBottom: 12 }}>{reprocessMailError}</div>}
         {message && <div style={{ background: "#fff", border: "1px solid " + HUB_LINE, color: HUB_MUTED, borderRadius: 5, padding: "9px 12px", marginBottom: 14, fontSize: 13 }}>{message}</div>}
 
         {!loading && !visibleItems.length && <div style={{ background: "#fff", border: "1px dashed #C7CCD3", borderRadius: 8, padding: "42px 22px", textAlign: "center", color: HUB_MUTED }}><Inbox size={32} style={{ color: HUB_TEAL, marginBottom: 10 }} /><div style={{ fontWeight: 600, color: HUB_INK, marginBottom: 6 }}>{items.length ? "No messages match this view" : "Your mailbox is ready"}</div><div style={{ fontSize: 13 }}>{items.length ? "Try another filter or search term." : "Use Scan Gmail above to analyze messages in your chosen date range."}</div></div>}
@@ -9310,6 +9342,7 @@ function MailboxModule({ onOpenModule }) {
                   {reviewStatus !== "ignored" && <button onClick={() => setReviewStatus(item, "ignored")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #D2D6DC", background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><X size={13} /> Ignore</button>}
                   {reviewStatus === "ignored" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>Restore to review</button>}
                   {reviewStatus === "kept" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Return to review</button>}
+                  <button onClick={() => reprocessMailItem(item)} disabled={!!reprocessingMailId} title="AI reprocess email summary and classification; review before saving" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: reprocessingMailId ? "wait" : "pointer" }}>{reprocessingMailId === id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingMailId === id ? "Reprocessing…" : "Reprocess"}</button>
                   <button onClick={() => queueMessageReread(item)} disabled={rereadIds.has(id)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: rereadIds.has(id) ? "default" : "pointer" }}>{rereadIds.has(id) ? "Queued for re-read" : "Re-read this email on next scan"}</button>
                 </div>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
