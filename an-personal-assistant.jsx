@@ -6831,6 +6831,9 @@ function App() {
   }, [data, loaded]);
 
   if (!data) return null;
+  // Research Intelligence must remain render-safe even when an older cloud
+  // record is missing fields introduced by newer versions.
+  if (!Array.isArray(data.outputs)) data.outputs = [];
 
   function addSnapshot(snap) {
     setData((prev) => ({ ...prev, snapshots: [{ ...snap, id: Date.now().toString(), addedAt: new Date().toISOString() }, ...prev.snapshots] }));
@@ -7645,22 +7648,13 @@ function App() {
     (async () => {
       try {
         const res = await window.storage.get(STORAGE_KEY);
-        const loadedData = res && res.value ? { ...SEED_DATA, ...JSON.parse(res.value) } : SEED_DATA;
-        const missingAffiliations = (loadedData.outputs || []).filter((o) => o.type === "Journal Paper" && o.title && !String(o.authorAffiliations || "").trim());
+        const parsed = res && res.value ? JSON.parse(res.value) : {};
+        const loadedData = {
+          ...SEED_DATA,
+          ...(parsed && typeof parsed === "object" ? parsed : {}),
+          outputs: Array.isArray(parsed?.outputs) ? parsed.outputs : [],
+        };
         setData(loadedData);
-        if (missingAffiliations.length) {
-          Promise.all(missingAffiliations.map(async (o) => {
-            try {
-              const parsed = await claudeSearchExtractJSON(
-                `Find the published paper "${o.title}" in ${o.venue || "its journal"} (${o.year || "year unknown"}). Return each listed author mapped to their institutional affiliation, including country. Do not guess. Respond ONLY as raw JSON: {"authorAffiliations":"Author — Department, Institution, Country; Author — Department, Institution, Country"}`
-              );
-              return [o.id, parsed.authorAffiliations || ""];
-            } catch (e) { return [o.id, ""]; }
-          })).then((pairs) => {
-            const found = Object.fromEntries(pairs.filter(([, value]) => value));
-            if (Object.keys(found).length) setData((prev) => ({ ...prev, outputs: prev.outputs.map((o) => found[o.id] ? { ...o, authorAffiliations: found[o.id] } : o) }));
-          });
-        }
       } catch (e) {
         setData(SEED_DATA);
       } finally {
