@@ -2766,8 +2766,6 @@ function App() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [expandedId, setExpandedId] = useState(null);
-  const [reprocessingId, setReprocessingId] = useState(null);
-  const [reprocessError, setReprocessError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(emptyOpportunity());
   const [editingId, setEditingId] = useState(null);
@@ -7636,6 +7634,8 @@ function App() {
   const fileInputRef = useRef(null);
 
   const [expandedId, setExpandedId] = useState(null);
+  const [reprocessingId, setReprocessingId] = useState(null);
+  const [reprocessError, setReprocessError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const [showForm, setShowForm] = useState(false);
