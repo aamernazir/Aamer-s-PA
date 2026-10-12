@@ -6561,10 +6561,17 @@ const IMPACT_STORAGE_KEY = "am2r-research-impact-v1";
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
 const RED = "#B3392C";
 
-const OUTPUT_TYPES = ["Journal Paper", "Patent", "Conference Paper", "Book Chapter", "Report", "Other"];
+const OUTPUT_TYPES = [
+  "Journal Paper", "Patent", "Conference Paper", "Book Chapter", "Report",
+  "Professional Recognition / Ranking", "Award / Certificate",
+  "Editorial / Reviewer Service", "Conference / Professional Service",
+  "Project / Grant Evidence", "Teaching / Supervision Evidence",
+  "Membership / Professional Appointment", "Media / Outreach",
+  "Other"
+];
 const Q_RANKS = ["Q1 (Top 10%)", "Q1", "Q2", "Q3", "Q4"];
-const TYPE_ICON = { "Journal Paper": FileText, "Conference Paper": Presentation, "Patent": Award, "Book Chapter": BookOpen, "Report": FileText, "Other": FileText };
-const TYPE_COLOR = { "Journal Paper": TEAL, "Conference Paper": "#6B4FA0", "Patent": AMBER, "Book Chapter": GREEN, "Report": MUTED, "Other": MUTED };
+const TYPE_ICON = { "Journal Paper": FileText, "Conference Paper": Presentation, "Patent": Award, "Book Chapter": BookOpen, "Report": FileText, "Professional Recognition / Ranking": Medal, "Award / Certificate": Award, "Editorial / Reviewer Service": Quote, "Conference / Professional Service": Presentation, "Project / Grant Evidence": FolderKanban, "Teaching / Supervision Evidence": GraduationCap, "Membership / Professional Appointment": Users, "Media / Outreach": Newspaper, "Other": FileText };
+const TYPE_COLOR = { "Journal Paper": TEAL, "Conference Paper": "#6B4FA0", "Patent": AMBER, "Book Chapter": GREEN, "Report": MUTED, "Professional Recognition / Ranking": AMBER, "Award / Certificate": AMBER, "Editorial / Reviewer Service": "#6B4FA0", "Conference / Professional Service": TEAL, "Project / Grant Evidence": GREEN, "Teaching / Supervision Evidence": "#4E6FAE", "Membership / Professional Appointment": "#6B4FA0", "Media / Outreach": TEAL, "Other": MUTED };
 const CITATION_SOURCE_COLOR = { Pure: TEAL, "Google Scholar": "#4285F4", Scopus: "#E9711C", ORCID: GREEN, Manual: MUTED };
 const DEFAULT_CITATION_SNAPSHOTS = [
   { id: "seed-pure-1", date: new Date().toISOString().slice(0, 10), source: "Pure", citations: 2754, hIndex: 25, publicationCount: 68 },
@@ -7711,7 +7718,7 @@ function App() {
         {
           type: "text",
           text:
-            "This is a published academic output — a journal paper, conference paper, patent, book chapter, or report. Read it carefully and fully — not just the abstract — and extract: " +
+            "This archive accepts ALL career evidence, not only publications. First classify the uploaded file from its actual content. Do not assume it is a paper. Valid classes include publications, patents, reports, professional rankings/recognition, awards/certificates, editorial/reviewer service, conference/professional service, project/grant evidence, teaching/supervision evidence, memberships/appointments, media/outreach, and Other. Then read it carefully and extract: " +
             `the title, the type (one of: ${OUTPUT_TYPES.join(", ")}), the venue (journal/conference/patent office name), the year, the authors (comma-separated as listed), and each author's institutional affiliations with author-to-affiliation mapping, ` +
             "a 2-3 sentence summary of what it's actually about and its key contribution, the core methods or techniques used (e.g. \"finite element analysis, selective laser sintering\"), " +
             "and 4-8 keywords/topics that genuinely characterize this work (not generic terms).\n\n" +
@@ -7721,7 +7728,7 @@ function App() {
             "(1) writingStyleNotes — how the writing is structured (concise vs. verbose, how clearly the contribution is framed, how the paper is organized); " +
             "(2) rigorNotes — the methodological rigor actually demonstrated: validation approach used (e.g. experimental validation vs. simulation only, statistical treatment, sample sizes, controls, comparison baselines) — be specific about what IS and ISN'T validated, don't just say \"rigorous\"; " +
             "(3) depthDiscussionNotes — how thoroughly results are interpreted and discussed: does it explain WHY results occurred (mechanism/reasoning) or just report WHAT happened, are limitations acknowledged, is the discussion connected back to broader significance, or does the paper end abruptly after presenting data.\n\n" +
-            'Respond with ONLY raw JSON, no markdown fences, no preamble, in exactly this shape: {"title":"","type":"Journal Paper","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
+            'Respond with ONLY raw JSON, no markdown fences, no preamble. Choose "type" from the allowed classes above based on evidence; never default a non-publication to Journal Paper. Use this shape: {"title":"","type":"","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
         },
       ];
       const parsed = await claudeExtractJSON(content);
