@@ -76,7 +76,7 @@ export function collectActiveWorkload(projects) {
   (Array.isArray(projects) ? projects : [])
     .filter(projectIsActiveForWorkload)
     .forEach((project) => {
-      (project.objectives || []).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
+      (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
       (project.workPackages || []).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
     });
 
