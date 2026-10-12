@@ -1276,6 +1276,12 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
       update((p) => ({ ...p, objectives: p.objectives.map((o, i) => (i === idx ? { ...o, [field]: value } : o)) }));
     }
   }
+  function toggleObjectiveComplete(idx) {
+    const objective = data.objectives[idx];
+    const completed = !objective?.completed;
+    update((p) => ({ ...p, objectives: p.objectives.map((o, i) => i === idx ? { ...o, completed, completedAt: completed ? new Date().toISOString().slice(0, 10) : null } : o) }));
+    logChange((completed ? "Completed" : "Reopened") + " objective " + (idx + 1));
+  }
   function removeObjective(idx) {
     const label = data.objectives[idx]?.text?.slice(0, 60) || `Objective ${idx + 1}`;
     update((p) => ({ ...p, objectives: p.objectives.filter((_, i) => i !== idx) }));
@@ -1817,14 +1823,16 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
               const evidenceCount = (data.evidence || []).filter((e) => (e.objectiveIdxs || []).includes(i)).length;
               const linkedWPs = data.workPackages.filter((wp) => (wp.objectiveIdxs || []).includes(i));
               const overdueWPs = linkedWPs.filter((wp) => wpIsAtRisk(wp));
-              const needsJustification = evidenceCount === 0 && overdueWPs.length > 0;
+              const needsJustification = !o.completed && evidenceCount === 0 && overdueWPs.length > 0;
               return (
               <div key={i} style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 16px", marginBottom: 10 }}>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <strong style={{ color: INK, fontSize: 13.5, flexShrink: 0, paddingTop: 8 }}>{i + 1}.</strong>
+                  <button type="button" onClick={() => toggleObjectiveComplete(i)} title={o.completed ? "Reopen objective" : "Mark objective complete"} aria-label={o.completed ? "Reopen objective " + (i + 1) : "Complete objective " + (i + 1)} style={{ border: "1px solid " + (o.completed ? GREEN : LINE), borderRadius: 5, background: o.completed ? "#EFF8F1" : "#fff", color: o.completed ? GREEN : MUTED, cursor: "pointer", padding: "6px 8px", alignSelf: "flex-start", fontSize: 11, fontWeight: 700 }}>{o.completed ? "✓ Complete" : "○ Complete"}</button>
                   <textarea value={o.text} onChange={(e) => updateObjective(i, "text", e.target.value)} placeholder="Objective description" style={{ ...inputStyle, minHeight: 44, resize: "vertical", flex: 1 }} />
                   <button onClick={() => removeObjective(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={14} color="#9AA2AF" /></button>
                 </div>
+                {o.completed && <div style={{ paddingLeft: 22, marginBottom: 8, color: GREEN, fontSize: 11.5 }}>Completed {o.completedAt || ""} · Linked work packages remain independently tracked.</div>}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 22 }}>
                   <span style={{ fontSize: 11.5, color: MUTED, flexShrink: 0 }}>Lead:</span>
                   <select value={o.lead} onChange={(e) => updateObjective(i, "lead", e.target.value)} style={{ fontSize: 12.5, padding: "5px 8px", borderRadius: 3, border: "1px solid #C7CCD3", flex: 1, maxWidth: 280 }}>
