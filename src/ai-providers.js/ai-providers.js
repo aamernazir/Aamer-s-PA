@@ -44,6 +44,7 @@ export function installAiFallback(nativeFetch) {
     if (!url.includes("api.anthropic.com/v1/messages")) return nativeFetch(input, init);
 
     const body = JSON.parse(init.body || "{}");
+    const needsWebSearch = Array.isArray(body.tools) && body.tools.some((tool) => String(tool?.type || "").includes("web_search"));
     let geminiKey = localStorage.getItem(GK);
     if (!geminiKey) {
       geminiKey = prompt("Enter your Google AI Studio API key. It stays only in this browser.");
@@ -52,6 +53,10 @@ export function installAiFallback(nativeFetch) {
     }
 
     const errors = [];
+    // Gemini fallback cannot emulate Anthropic web_search tools. Let search-enabled
+    // Research Intelligence requests continue to Anthropic instead of silently
+    // stripping the tool and returning unusable results.
+    if (needsWebSearch) return nativeFetch(input, init);
     for (const model of MODELS) {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
