@@ -1,6 +1,6 @@
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
-import { collectActiveWorkload, hasProjectNumber } from "./src/project-workload.js";
+import { collectActiveWorkload, hasProjectNumber, isCoIProject } from "./src/project-workload.js";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
