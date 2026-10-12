@@ -332,8 +332,30 @@ async function claudeExtractJSON(content) {
 }
 
 function wpProgress(wp) {
-  if (!wp.tasks.length) return 0;
-  return Math.round((wp.tasks.filter((t) => t.done).length / wp.tasks.length) * 100);
+  const tasks = wp.tasks || [];
+  if (tasks.length) return Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100);
+  return wp.completed ? 100 : 0;
+}
+
+// Reconcile bottom-up progress while retaining explicit archive completion for objectives
+// that have no linked work packages. Shared work packages contribute to each linked objective.
+function reconcileProjectCompletion(project) {
+  const today = todayISO();
+  const workPackages = (project.workPackages || []).map((wp) => {
+    const tasks = wp.tasks || [];
+    const completed = tasks.length ? tasks.every((t) => t.done) : Boolean(wp.completed);
+    return { ...wp, completed, completedAt: completed ? (wp.completedAt || today) : null };
+  });
+  const objectives = (project.objectives || []).map((objective, index) => {
+    const linked = workPackages.filter((wp) => (wp.objectiveIdxs || []).includes(index));
+    const completed = linked.length ? linked.every((wp) => wpProgress(wp) === 100) : Boolean(objective.completed);
+    return { ...objective, completed, completedAt: completed ? (objective.completedAt || today) : null };
+  });
+  const candidate = { ...project, workPackages, objectives };
+  const done = objectives.length
+    ? objectives.every((_, i) => objectiveProgress(candidate, i) === 100)
+    : workPackages.length > 0 && workPackages.every((wp) => wpProgress(wp) === 100);
+  return { ...candidate, status: done ? "Completed" : project.status === "Completed" ? "Active" : project.status, completedAt: done ? (project.completedAt || today) : null };
 }
 
 function objectiveProgress(project, index) {
@@ -1298,9 +1320,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
         if (!completing || !(wp.objectiveIdxs || []).includes(idx)) return wp;
         return { ...wp, completed: true, completedAt: wp.completedAt || today, tasks: (wp.tasks || []).map((task) => ({ ...task, done: true })) };
       });
-      const candidate = { ...p, objectives, workPackages };
-      const done = objectives.length > 0 && objectives.every((_, i) => objectiveProgress(candidate, i) === 100);
-      return { ...candidate, status: done ? "Completed" : p.status === "Completed" ? "Active" : p.status, completedAt: done ? (p.completedAt || today) : null };
+      return reconcileProjectCompletion({ ...p, objectives, workPackages });
     });
     logChange((completing ? "Completed" : "Reopened") + " objective " + (idx + 1));
   }
@@ -1360,7 +1380,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
   function toggleTask(wpId, taskId) {
     let willBeDone = false;
     let taskLabel = "";
-    update((p) => ({
+    update((p) => reconcileProjectCompletion({
       ...p,
       workPackages: p.workPackages.map((wp) => {
         if (wp.id !== wpId) return wp;
@@ -1383,7 +1403,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
   function applyTaskSuggestions() {
     const idsToComplete = Object.entries(suggestTaskChecked).filter(([, v]) => v).map(([k]) => k);
     if (idsToComplete.length > 0) {
-      update((p) => ({
+      update((p) => reconcileProjectCompletion({
         ...p,
         workPackages: p.workPackages.map((wp) => ({
           ...wp,
