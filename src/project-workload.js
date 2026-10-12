@@ -54,6 +54,8 @@ export function projectIsActiveForWorkload(project) {
   if (["completed", "complete", "closed", "archived", "cancelled", "canceled"].includes(explicitStatus)) return false;
 
   const workPackages = Array.isArray(project?.workPackages) ? project.workPackages : [];
+  const objectives = Array.isArray(project?.objectives) ? project.objectives : [];
+  if (objectives.length && objectives.every((objective) => objective?.completed)) return false;
   if (!workPackages.length) return true;
   const progress = Math.round(workPackages.reduce((sum, workPackage) => sum + workPackageProgress(workPackage), 0) / workPackages.length);
   return progress < 100;
@@ -77,7 +79,7 @@ export function collectActiveWorkload(projects) {
     .filter(projectIsActiveForWorkload)
     .forEach((project) => {
       (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
-      (project.workPackages || []).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
+      (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
     });
 
   return Array.from(workload, ([name, member]) => ({
