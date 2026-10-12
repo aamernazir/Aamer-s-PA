@@ -2766,6 +2766,8 @@ function App() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [expandedId, setExpandedId] = useState(null);
+  const [reprocessingId, setReprocessingId] = useState(null);
+  const [reprocessError, setReprocessError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(emptyOpportunity());
   const [editingId, setEditingId] = useState(null);
@@ -3171,7 +3173,8 @@ function App() {
         </div>
 
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
-        {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{extractError}</div>}
+        {reprocessError && <div role="alert" style={{ color: RED, padding: "8px 12px", marginBottom: 10 }}>{reprocessError}</div>}
+            {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{extractError}</div>}
         {liveSearchError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{liveSearchError}</div>}
 
         {/* Status summary row */}
@@ -8110,6 +8113,25 @@ function App() {
   const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", authorAffiliations: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "", summary: "", methods: "", keywords: [], qRank: "" });
   function openNew() { setDraft(emptyOutput()); setEditingId(null); setManualDupWarning(""); setShowForm(true); }
   function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setShowForm(true); }
+  async function reprocessOutput(output) {
+    if (reprocessingId) return;
+    setReprocessingId(output.id);
+    setReprocessError("");
+    try {
+      const parsed = await claudeExtractJSON([{ type: "text", text:
+        "Reclassify this EXISTING archive record based on what the evidence actually proves, not merely the object it mentions. Do not invent details. A Highly Cited / Hot Paper screenshot is recognition, not a new paper. Choose type from: " + OUTPUT_TYPES.join(", ") +
+        ". Return ONLY JSON with fields title, type, subtype, recognitionDetails, referencedEntityTitle, referencedEntityType, referencedEntityDoi, recognitionSource, summary. Existing record: " +
+        JSON.stringify({ title: output.title, type: output.type, summary: output.summary, sourceFile: output.sourceFile, venue: output.venue, year: output.year, authors: output.authors })
+      }]);
+      const proposed = { ...output, ...Object.fromEntries(["title","type","subtype","recognitionDetails","referencedEntityTitle","referencedEntityType","referencedEntityDoi","recognitionSource","summary"].filter((key) => parsed[key] !== undefined).map((key) => [key, parsed[key]])) };
+      if (!OUTPUT_TYPES.includes(proposed.type)) proposed.type = "Other";
+      setDraft({ ...proposed, keywords: proposed.keywords || [] });
+      setEditingId(output.id);
+      setShowForm(true);
+    } catch (error) { setReprocessError("Could not reprocess this record: " + (error.message || "unknown error")); }
+    finally { setReprocessingId(null); }
+  }
+
   async function saveOutput(skipDupCheck) {
     if (!draft.title.trim()) return;
     if (editingId) {
@@ -8357,6 +8379,7 @@ function App() {
             {o.fundingProjectNumber && <div style={{ fontSize: 11, color: TEAL, marginTop: 3 }}>Acknowledgement project: <span className="pa-mono">{o.fundingProjectNumber}</span></div>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <button onClick={(e) => { e.stopPropagation(); reprocessOutput(o); }} disabled={!!reprocessingId} title="Reprocess classification and review before saving" style={{ background: "none", border: "none", cursor: reprocessingId ? "wait" : "pointer", padding: 2 }}>{reprocessingId === o.id ? <Loader2 size={13} className="pa-spin" /> : <RefreshCw size={13} color={TEAL} />}</button>
             <button onClick={(e) => { e.stopPropagation(); openEdit(o); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pencil size={13} color="#9AA2AF" /></button>
             <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(confirmDelete === o.id ? null : o.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={13} color="#9AA2AF" /></button>
             <ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
