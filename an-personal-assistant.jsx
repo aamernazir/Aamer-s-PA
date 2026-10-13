@@ -283,6 +283,7 @@ function emptyProject(fields) {
     program: fields.program || "",
     pi: fields.pi || "",
     projectLead: "",
+    ownerRole: fields.ownerRole || "PI",
     duration: fields.duration || "",
     budgetTotal: Number(fields.budgetTotal) || 0,
     budgetCurrency: fields.budgetCurrency || "SAR",
@@ -491,7 +492,12 @@ function App() {
       try {
         const res = await window.storage.get(STORAGE_KEY);
         if (res && res.value) {
-          setProjects(JSON.parse(res.value));
+          setProjects(JSON.parse(res.value).map(project => {
+            // One-time correction of the confirmed Co-I record, without overriding a manually assigned role.
+            const knownCoI = String(project.projectNumber || "").trim().toUpperCase() === "IN26018"
+              && /yasmeen|yassmin|yasmin|yasmine/i.test(String(project.pi || ""));
+            return knownCoI && !project.ownerRole ? { ...project, ownerRole: "Co-I" } : project;
+          }));
         } else {
           // migrate legacy single-project key if present, else seed with KFUPM project
           let seeded = [KFUPM_PROJECT];
@@ -798,6 +804,7 @@ function App() {
           onOpen={setActiveId}
           onDelete={deleteProject}
           onReprocess={(id, updater) => updateProject(id, updater)}
+          onSetRole={(id, role) => updateProject(id, current => ({ ...current, ownerRole: role }))}
           onNew={() => setShowNewProject(true)}
           sharedProjects={sharedProjects.filter((sp) => !projects.some((p) => p.id === sp.id))}
           onImportShared={importSharedProject}
@@ -874,7 +881,7 @@ function App() {
   );
 }
 
-function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onNew, sharedProjects, onImportShared, onRefreshShared }) {
+function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole, onNew, sharedProjects, onImportShared, onRefreshShared }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [reprocessingId, setReprocessingId] = useState(null);
   const [reprocessError, setReprocessError] = useState("");
@@ -931,7 +938,8 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onNew, sh
             <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
           </div>
-          <button onClick={() => reprocessProject(p)} disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
+          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: MUTED, height: "fit-content" }}>My role <select aria-label={"My role in " + p.title} value={coI ? "Co-I" : "PI"} onChange={(e) => onSetRole(p.id, e.target.value)} style={{ border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, padding: "5px 3px", fontSize: 11 }}><option value="PI">PI</option><option value="Co-I">Co-I</option></select></label>
+          <button onClick={() => reprocessProject(p) disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
           <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }} aria-label={`Delete ${p.title}`}>
             <Trash2 size={15} color="#9AA2AF" />
           </button>
@@ -940,7 +948,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onNew, sh
           <div style={{ flex: 1, height: 6, background: "#EAECF0", borderRadius: 3, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${prog}%`, background: prog === 100 ? GREEN : TEAL }} />
           </div>
-          <span style={{ fontSize: 12, color: MUTED, width: 70, textAlign: "right" }}>{prog}% · {(p.workPackages || []).length} WPs</span>
+          <span style={{ fontSize: 12, color: MUTED, width: 90, textAlign: "right" }}>{coI ? "Light tracking" : prog + "% · " + (p.workPackages || []).length + " WPs"}</span>
         </div>
         {riskCount > 0 && <div style={{ marginTop: 8, fontSize: 11.5, color: "#B3392C", fontWeight: 600 }}>{riskCount} work package{riskCount > 1 ? "s" : ""} overdue</div>}
         {confirmDelete === p.id && (
