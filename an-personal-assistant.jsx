@@ -496,7 +496,7 @@ function App() {
             // One-time correction of the confirmed Co-I record, without overriding a manually assigned role.
             const knownCoI = String(project.projectNumber || "").trim().toUpperCase() === "IN26018"
               && /yasmeen|yassmin|yasmin|yasmine/i.test(String(project.pi || ""));
-            return knownCoI && !project.ownerRole ? { ...project, ownerRole: "Co-I" } : project;
+            return knownCoI && project.ownerRole !== "Co-I" ? { ...project, ownerRole: "Co-I" } : project;
           }));
         } else {
           // migrate legacy single-project key if present, else seed with KFUPM project
@@ -939,7 +939,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: MUTED, height: "fit-content" }}>My role <select aria-label={"My role in " + p.title} value={coI ? "Co-I" : "PI"} onChange={(e) => onSetRole(p.id, e.target.value)} style={{ border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, padding: "5px 3px", fontSize: 11 }}><option value="PI">PI</option><option value="Co-I">Co-I</option></select></label>
-          <button onClick={() => reprocessProject(p) disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
+          <button onClick={() => reprocessProject(p)} disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
           <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }} aria-label={`Delete ${p.title}`}>
             <Trash2 size={15} color="#9AA2AF" />
           </button>
