@@ -157,18 +157,30 @@ function activeProducts(projects) {
 
 function affiliationCountries(outputs, period) {
   const tally = new Map();
+  const aliases = { "ksa": "Saudi Arabia", "kingdom of saudi arabia": "Saudi Arabia", "united states of america": "United States", "usa": "United States", "uk": "United Kingdom", "uae": "United Arab Emirates" };
+  const canonical = (value) => {
+    const key = String(value || "").trim().toLowerCase().replace(/^the\\s+/, "").replace(/[.]+$/, "");
+    if (!key) return null;
+    const alias = aliases[key];
+    if (alias) return alias;
+    const matched = Object.keys(COUNTRY_POINTS).find((country) => country === key);
+    return matched ? matched.replace(/\\b\\w/g, (letter) => letter.toUpperCase()) : null;
+  };
   outputs.filter((output) => period === "career" || !output?.year || yearInPeriod(output?.year, period)).forEach((output) => {
     const structured = Array.isArray(output?.coauthorAffiliations) ? output.coauthorAffiliations : [];
     const raw = String(output?.authorAffiliations || "").trim();
-    const affiliations = structured.length ? structured : raw.split(/\n|;/).map((value) => value.trim()).filter(Boolean);
+    const affiliations = structured.length ? structured : raw.split(/\\n|;/).map((value) => value.trim()).filter(Boolean);
+    const countriesForOutput = new Set();
     affiliations.forEach((affiliation) => {
-      const explicitCountry = typeof affiliation === "string" ? "" : affiliation?.country;
       const text = typeof affiliation === "string" ? affiliation : affiliation?.affiliation || affiliation?.institution || "";
-      const country = explicitCountry || String(text).split(",").map((part) => part.trim()).filter(Boolean).pop() || "";
-      const clean = String(country).replace(/[.]+$/, "").trim();
-      if (!clean) return;
-      tally.set(clean, (tally.get(clean) || 0) + 1);
+      const author = typeof affiliation === "string" ? String(text).split(":")[0] : String(affiliation?.author || affiliation?.name || "");
+      // Never count the dashboard owner's own affiliations as international co-author locations.
+      if (/\\baamer\\s+nazir\\b/i.test(author)) return;
+      const explicit = typeof affiliation === "string" ? "" : affiliation?.country;
+      const country = canonical(explicit) || String(text).split(",").map((part) => canonical(part)).find(Boolean);
+      if (country && country !== "Saudi Arabia") countriesForOutput.add(country);
     });
+    countriesForOutput.forEach((country) => tally.set(country, (tally.get(country) || 0) + 1));
   });
   return [...tally.entries()].map(([country, outputs]) => ({ country, outputs })).sort((a, b) => b.outputs - a.outputs || a.country.localeCompare(b.country));
 }
@@ -425,20 +437,20 @@ function countryPoint(country) {
 }
 
 function AffiliationFootprint({ outputs, period }) {
-  let countries = affiliationCountries(outputs, period);
-  const allCountries = affiliationCountries(outputs, "career");
-  if (!countries.length && allCountries.length) countries = allCountries;
+  const countries = affiliationCountries(outputs, period);
+  const base = countryPoint("Saudi Arabia");
   return <article className="nyx-panel nyx-footprint-panel">
-    <header><div><h2>Co-author affiliation footprint</h2><div className="nyx-source-chip"><Boxes size={11} />Research Intelligence · co-author affiliations</div></div></header>
-    <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map showing co-author affiliation footprint">
-      {countries.length ? countries.map(({country, outputs: count}) => {
+    <header><div><h2>International co-author footprint</h2><div className="nyx-source-chip"><Boxes size={11} />Research Intelligence · verified co-author countries</div></div></header>
+    <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map with Saudi Arabia as home base and international co-author countries">
+      {base && <div title="Home research base · Saudi Arabia" style={{ position: "absolute", left: base.x + "%", top: base.y + "%", transform: "translate(-50%, -50%)", zIndex: 3, display: "flex", alignItems: "center", gap: 4, color: "#064e3b", fontSize: 10, fontWeight: 700, textShadow: "0 1px 2px white" }}><span style={{ width: 14, height: 14, background: "#087f5b", border: "3px solid white", borderRadius: "50%", boxShadow: "0 0 0 2px #087f5b", flexShrink: 0 }} />Saudi Arabia · Home</div>}
+      {countries.map(({country, outputs: count}) => {
         const point = countryPoint(country);
         if (!point) return null;
-        return <div key={country} title={country + " · " + count + " affiliation records"} style={{ position: "absolute", left: point.x + "%", top: point.y + "%", transform: "translate(-50%, -50%)", display: "flex", alignItems: "center", gap: 3, zIndex: 2, color: "#064e3b", fontSize: 9, fontWeight: 700, textShadow: "0 1px 2px white, 0 -1px 2px white" }}><span style={{ display: "block", width: Math.min(15, 7 + Math.sqrt(count) * 2), height: Math.min(15, 7 + Math.sqrt(count) * 2), background: "#087f5b", border: "2px solid white", borderRadius: "50%", boxShadow: "0 1px 5px #064e3b99", flexShrink: 0 }} />{country}</div>;
-      }) : <div className="nyx-map-data-note"><MapPinned size={16} /><strong>Awaiting affiliation records</strong><span>Nyx will plot countries after Research Intelligence confirms them.</span></div>}
+        return <div key={country} title={country + " · " + count + " publication records"} style={{ position: "absolute", left: point.x + "%", top: point.y + "%", transform: "translate(-50%, -50%)", display: "flex", alignItems: "center", gap: 3, zIndex: 2, color: "#1F5C8B", fontSize: 9, fontWeight: 700, textShadow: "0 1px 2px white" }}><span style={{ width: Math.min(15, 7 + Math.sqrt(count) * 2), height: Math.min(15, 7 + Math.sqrt(count) * 2), background: "#1F5C8B", border: "2px solid white", borderRadius: "50%", boxShadow: "0 1px 5px #1F5C8B99", flexShrink: 0 }} />{country}</div>;
+      })}
     </div>
-    {countries.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 9px", fontSize: 10, padding: "7px 0", color: "#236353" }}>{countries.map((item) => <span key={item.country}>{countryPoint(item.country) ? "● " : "○ "}{item.country} ({item.outputs})</span>)}</div>}
-    <footer><i /><span>Co-author affiliations · green pins show mapped countries; unmapped names appear in the legend</span></footer>
+    {countries.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", fontSize: 11, padding: "7px 0", color: "#236353" }}>{countries.map(({country, outputs: count}) => <span key={country}>{country} ({count})</span>)}</div> : <div className="nyx-map-data-note" style={{ position: "static", padding: "8px 0", fontSize: 11 }}>No international co-author countries verified from the currently stored affiliations. Add country-level co-author affiliations in Research Intelligence.</div>}
+    <footer><i /><span>Saudi Arabia is the home base · other pins represent countries verified from co-author affiliation records</span></footer>
   </article>;
 }
 
