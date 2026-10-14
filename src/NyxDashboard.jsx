@@ -370,35 +370,60 @@ function StatusPill({ tone, children }) {
   return <span className={`nyx-status nyx-status-${tone || "info"}`}>{children}</span>;
 }
 
-function CombinedBarChart({ activePeriod }) {
-  const width = 700;
-  const height = 232;
-  const left = 32;
-  const top = 22;
-  const bottom = 38;
+function publicationTrend(outputs, years) {
+  const totals = new Map(years.map(year => [year, { journal: 0, conference: 0 }]));
+  const seen = new Set();
+  (outputs || []).forEach((item) => {
+    const type = String(item?.type || "").trim().toLowerCase();
+    const kind = /journal/.test(type) ? "journal" : /conference/.test(type) ? "conference" : null;
+    const year = Number(item?.year);
+    if (!kind || !totals.has(year)) return;
+    const key = String(item?.doi || item?.DOI || item?.id || [item?.title, year, kind].join("|")).trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    totals.get(year)[kind] += 1;
+  });
+  return totals;
+}
+
+function CombinedBarChart({ activePeriod, outputs }) {
+  const width = 700, height = 160, left = 32, top = 12, bottom = 28;
   const chartHeight = height - top - bottom;
-  const years = JOURNAL_TREND.filter((point) => point.year >= 2022).map((point) => point.year);
-  const max = Math.max(...JOURNAL_TREND.filter((point) => point.year >= 2022).map((point) => point.value), ...GRANT_TREND.filter((point) => point.year >= 2022).map((point) => point.value), 1);
+  const years = [2022, 2023, 2024, 2025, 2026];
+  const publications = publicationTrend(outputs, years);
+  const max = Math.max(1, ...years.map(year => publications.get(year).journal + publications.get(year).conference), ...GRANT_TREND.filter(point => years.includes(point.year)).map(point => point.value));
   const slot = (width - left - 10) / years.length;
-  const barWidth = Math.min(19, slot * 0.28);
-  const isActive = (year) => activePeriod === "career" || String(year) === activePeriod;
-  const projectValue = (year) => GRANT_TREND.find((point) => point.year === year)?.value || 0;
-  return <div className="nyx-chart-wrap"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Journal publications and approved projects by year" className="nyx-chart">
-    {[0, 0.5, 1].map((ratio) => { const y = top + chartHeight - chartHeight * ratio; return <line key={ratio} x1={left} x2={width - 8} y1={y} y2={y} stroke="#E7EAF0" strokeWidth="1" />; })}
+  const barWidth = Math.min(24, slot * 0.24);
+  return <div className="nyx-chart-wrap"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Journal papers, conference papers, and approved projects by year" className="nyx-chart">
+    {[0, 0.5, 1].map(ratio => { const y = top + chartHeight - chartHeight * ratio; return <line key={ratio} x1={left} x2={width-8} y1={y} y2={y} stroke="#E7EAF0" strokeWidth="1" />; })}
     {years.map((year, index) => {
-      const x = left + index * slot + slot / 2;
-      const journal = JOURNAL_TREND.find((point) => point.year === year)?.value || 0;
-      const project = projectValue(year);
-      const current = isActive(year);
-      const journalHeight = (journal / max) * chartHeight;
-      const projectHeight = (project / max) * chartHeight;
-      return <g key={year} opacity={current ? 1 : 0.38}>
-        <rect x={x - barWidth - 2} y={top + chartHeight - journalHeight} width={barWidth} height={journalHeight} rx="2.5" fill={BLUE}><title>{`${year}: ${journal} journal articles`}</title></rect>
-        <rect x={x + 2} y={top + chartHeight - projectHeight} width={barWidth} height={projectHeight} rx="2.5" fill={GOLD}><title>{`${year}: ${project} approved projects`}</title></rect>
-        <text x={x} y={height - 13} textAnchor="middle" fontSize="10.5" fill="#687386">{String(year).slice(2)}</text>
+      const x = left + index*slot + slot/2;
+      const {journal,conference} = publications.get(year);
+      const project = GRANT_TREND.find(point => point.year === year)?.value || 0;
+      const journalHeight = journal/max*chartHeight, conferenceHeight = conference/max*chartHeight, projectHeight = project/max*chartHeight;
+      return <g key={year} opacity={activePeriod === "career" || String(year) === activePeriod ? 1 : 0.48}>
+        <rect x={x-barWidth-3} y={top+chartHeight-journalHeight} width={barWidth} height={journalHeight} rx="1.5" fill={BLUE}><title>{year}: {journal} journal papers</title></rect>
+        <rect x={x-barWidth-3} y={top+chartHeight-journalHeight-conferenceHeight} width={barWidth} height={conferenceHeight} rx="1.5" fill="#4BA9C5"><title>{year}: {conference} conference papers</title></rect>
+        <rect x={x+3} y={top+chartHeight-projectHeight} width={barWidth} height={projectHeight} rx="1.5" fill={GOLD}><title>{year}: {project} approved projects (historical baseline)</title></rect>
+        <text x={x} y={height-8} textAnchor="middle" fontSize="11" fill="#687386">{String(year).slice(2)}</text>
       </g>;
     })}
   </svg></div>;
+}
+
+function ResearchProducts({ products }) {
+  const selected = products.slice(0, 4);
+  return <div className="nyx-research-products">
+    <strong>Research products</strong>
+    {selected.length ? <div className="nyx-research-product-list">{selected.map((product, index) => {
+      const image = product.imageUrl || product.image || product.thumbnailUrl || product.thumbnail;
+      const safeImage = typeof image === "string" && (/^https:\/\//i.test(image) || /^data:image\/(png|jpeg|webp);base64,/i.test(image));
+      return <div className="nyx-research-product" key={String(product.projectTitle || "") + ":" + String(product.name || index)}>
+        <div className="nyx-research-product-image">{safeImage ? <img src={image} alt="" loading="lazy" /> : <Package size={19} aria-hidden="true" />}</div>
+        <span title={product.name}>{product.shortLabel || product.name}</span>
+      </div>;
+    })}</div> : <p>No research products recorded in active projects.</p>}
+  </div>;
 }
 
 // Coordinates are approximate country centroids in the equirectangular world
@@ -619,7 +644,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
       <section style={{ marginBottom: 16 }}><button onClick={() => setChatOpen(true)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", background: "#fff", border: "1px solid #C7D2DC", borderRadius: 8, color: BLUE, cursor: "pointer", textAlign: "left" }}><MessageCircle size={18} /><span style={{ flex: 1, color: "#536273" }}>Ask Nyx about your projects, APS, publications, impact, skills, or mailbox…</span><strong>Ask Nyx</strong></button></section>\n      <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
       <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived (2026)` : "6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${activeFundedProjects.length} funded · ${activeNotFundedProjects.length} not-funded` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Users size={29} /><span>Project leads</span><strong>{projectLeads.length}</strong><small>Students & postdocs only</small></article><article className="nyx-kpi nyx-kpi-alert"><Package size={28} /><span>Products & TRL</span><strong>{products.length}</strong><small title={products.map((product) => product.name).join("; ")}>{products.length ? `${productLabel}${products.length > 3 ? ` +${products.length - 3}` : ""} · ${products.filter((product) => product.trl).length} TRL` : "No active product candidates"}</small></article></section>
       <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><h2>Needs attention today <span className="nyx-attention-count">{attentionItems.length}</span></h2></div><button onClick={() => attentionItems[0] && openModule(attentionItems[0].moduleId)}>View all <ChevronRight size={16} /></button></header><div className="nyx-attention-heading"><span>Item</span><span>Type</span><span>Module</span><span>Due date</span><span>Status</span><span>Action</span></div><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item, index) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId)}><i className={`nyx-attention-dot ${item.tone}`} /><strong>{item.label}</strong><small>{item.detail}</small><span>{item.moduleId === "aps" ? "APS" : item.moduleId === "projects" ? "Project Dashboard" : item.moduleId === "archive" ? "Research Intelligence" : "Mailbox"}</span><em>{index === 0 ? "Today" : "Upcoming"}</em><StatusPill tone={item.tone === "warn" ? "warn" : "info"}>{item.tone === "warn" ? "Action required" : "In progress"}</StatusPill><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
-      <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal articles</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} /><footer><TrendingUp size={14} /><span>Five-year view only. Active-project workload is shown above and is not inferred from historical awards.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
+      <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal papers</span><span><i className="conference" />Conference papers</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} outputs={outputs} /><ResearchProducts products={products} /><footer><TrendingUp size={14} /><span>Publications: Research Intelligence records · projects: historical baseline.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
       <section className="nyx-module-pathways"><header><h2>Module pathways</h2><span>Operational modules and the number of Career map sections they feed.</span></header><div>{modules.map((module) => { const Icon = module.icon; const count = sections.filter((section) => section.moduleId === module.id).length; return <button key={module.id} className={`nyx-pathway nyx-pathway-${module.id}`} onClick={() => openModule(module.id)}><Icon size={19} /><span>{module.name}</span><small>{count} {count === 1 ? "section" : "sections"}</small></button>; })}</div></section>
       <footer className="nyx-page-footer"><span>NYX · AAMER'S PERSONAL ASSISTANT</span><span>{loading ? "Reading live records…" : `Updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`} · CV baseline: October 2026</span></footer>
     </section>
