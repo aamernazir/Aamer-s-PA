@@ -371,25 +371,24 @@ function StatusPill({ tone, children }) {
 }
 
 function publicationTrend(outputs, years) {
-  const totals = new Map(years.map(year => [year, { journal: 0, conference: 0 }]));
+  const totals = new Map(years.map(year => [year, { journal: 0, conference: 0, journalTitles: [], conferenceTitles: [] }]));
   const seen = new Set();
-  (outputs || []).forEach((item) => {
-    const type = String(item?.type || "").trim();
-    const kind = type === "Journal Paper" ? "journal" : type === "Conference Paper" ? "conference" : null;
+  (Array.isArray(outputs) ? outputs : []).forEach(item => {
+    const type = String(item?.type || "").trim().toLowerCase();
+    const kind = type === "journal paper" ? "journal" : type === "conference paper" ? "conference" : null;
     const year = Number(item?.year);
     if (!kind || !totals.has(year)) return;
-    // Conference records must include evidence of a published proceedings paper.
-    // A generic conference label, presentation, or attendance record is insufficient.
-    if (kind === "conference") {
-      const publicationStatus = String(item?.publicationStatus || item?.status || "").toLowerCase();
-      const publicationEvidence = [item?.proceedingsTitle, item?.proceedings, item?.proceedingsDoi, item?.publicationDoi, item?.publishedProceedingsUrl].some(value => String(value || "").trim());
-      const explicitPublished = /published/.test(publicationStatus) && !/unpublished|not published/.test(publicationStatus);
-      if (!publicationEvidence && !explicitPublished) return;
-    }
-    const key = String(item?.doi || item?.DOI || item?.id || [item?.title, year, kind].join("|")).trim().toLowerCase();
+    const status = String(item?.publicationStatus || item?.status || "").toLowerCase();
+    const subtype = String(item?.subtype || "").toLowerCase();
+    if (kind === "conference" && (/unpublished|not published|withdrawn|rejected/.test(status) || /attendance|participation|conference service|organizing|presentation only|abstract only/.test(subtype))) return;
+    const title = String(item?.title || "").trim();
+    const doi = String(item?.doi || item?.DOI || "").trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//,"");
+    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+    const key = doi ? "doi:" + doi : normalizedTitle ? kind + ":" + year + ":" + normalizedTitle : "id:" + String(item?.id || "");
     if (seen.has(key)) return;
     seen.add(key);
     totals.get(year)[kind] += 1;
+    totals.get(year)[kind + "Titles"].push(title || "(Untitled archive record)");
   });
   return totals;
 }
@@ -406,17 +405,26 @@ function CombinedBarChart({ activePeriod, outputs }) {
     {[0, 0.5, 1].map(ratio => { const y = top + chartHeight - chartHeight * ratio; return <line key={ratio} x1={left} x2={width-8} y1={y} y2={y} stroke="#E7EAF0" strokeWidth="1" />; })}
     {years.map((year, index) => {
       const x = left + index*slot + slot/2;
-      const {journal,conference} = publications.get(year);
+      const {journal,conference,journalTitles,conferenceTitles} = publications.get(year);
       const project = GRANT_TREND.find(point => point.year === year)?.value || 0;
       const journalHeight = journal/max*chartHeight, conferenceHeight = conference/max*chartHeight, projectHeight = project/max*chartHeight;
       return <g key={year} opacity={activePeriod === "career" || String(year) === activePeriod ? 1 : 0.48}>
-        <rect x={x-barWidth-3} y={top+chartHeight-journalHeight} width={barWidth} height={journalHeight} rx="1.5" fill={BLUE}><title>{year}: {journal} journal papers</title></rect>
-        <rect x={x-barWidth-3} y={top+chartHeight-journalHeight-conferenceHeight} width={barWidth} height={conferenceHeight} rx="1.5" fill="#4BA9C5"><title>{year}: {conference} conference papers</title></rect>
+        <rect x={x-barWidth-3} y={top+chartHeight-journalHeight} width={barWidth} height={journalHeight} rx="1.5" fill={BLUE}><title>{year}: {journal} journal papers{"\\n"}{journalTitles.join("\\n")}</title></rect>
+        <rect x={x-barWidth-3} y={top+chartHeight-journalHeight-conferenceHeight} width={barWidth} height={conferenceHeight} rx="1.5" fill="#4BA9C5"><title>{year}: {conference} conference papers{"\\n"}{conferenceTitles.join("\\n")}</title></rect>
         <rect x={x+3} y={top+chartHeight-projectHeight} width={barWidth} height={projectHeight} rx="1.5" fill={GOLD}><title>{year}: {project} approved projects (historical baseline)</title></rect>
         <text x={x} y={height-8} textAnchor="middle" fontSize="11" fill="#687386">{String(year).slice(2)}</text>
       </g>;
     })}
   </svg></div>;
+}
+
+function ProductIllustration({ name }) {
+  const label = String(name || "").toLowerCase();
+  const base = { viewBox:"0 0 80 60", width:56, height:44, role:"img", "aria-label":"Illustrative product diagram" };
+  if (/insole|foot/.test(label)) return <svg {...base}><path d="M28 5 C42 1 48 16 46 25 C43 34 55 39 50 49 C44 60 21 56 18 43 C15 31 16 15 28 5Z" fill="#b8e5ec" stroke="#1F5C8B" strokeWidth="2"/><path d="M28 11 Q20 28 27 46 M36 10 Q31 29 38 48" stroke="#1F5C8B" strokeWidth="1.5" strokeDasharray="3 3" fill="none"/><circle cx="32" cy="26" r="4" fill="#087f5b"/><circle cx="35" cy="39" r="3" fill="#087f5b"/></svg>;
+  if (/implant|hip|femoral/.test(label)) return <svg {...base}><circle cx="30" cy="12" r="9" fill="#a7d4e5" stroke="#1F5C8B" strokeWidth="2"/><path d="M34 19 L47 28 L42 38 L35 52 L27 49 L34 34 L24 26Z" fill="#b8dce9" stroke="#1F5C8B" strokeWidth="2"/><path d="M31 29 L42 33 M29 36 L39 40 M27 44 L36 47" stroke="#1F5C8B" strokeWidth="1.3"/></svg>;
+  if (/crawler|pipe|robot/.test(label)) return <svg {...base}><ellipse cx="40" cy="30" rx="34" ry="23" fill="#d7e9f3" stroke="#8bb7ce" strokeWidth="2"/><rect x="19" y="22" width="43" height="16" rx="6" fill="#1F5C8B"/><rect x="13" y="17" width="53" height="8" rx="4" fill="#344b63"/><rect x="13" y="35" width="53" height="8" rx="4" fill="#344b63"/><circle cx="27" cy="21" r="2" fill="#b9e3ec"/><circle cx="52" cy="39" r="2" fill="#b9e3ec"/><circle cx="41" cy="30" r="5" fill="#55b4cb"/></svg>;
+  return <svg {...base}><path d="M12 40 L28 18 L44 40 L60 18 L68 40" fill="none" stroke="#1F5C8B" strokeWidth="7" strokeLinejoin="round"/><path d="M12 40 L28 18 L44 40 L60 18 L68 40" fill="none" stroke="#a9d7e8" strokeWidth="3" strokeLinejoin="round"/><circle cx="28" cy="18" r="5" fill="#087f5b"/><circle cx="60" cy="18" r="5" fill="#087f5b"/></svg>;
 }
 
 function ResearchProducts({ products }) {
@@ -427,7 +435,7 @@ function ResearchProducts({ products }) {
       const image = product.imageUrl || product.image || product.thumbnailUrl || product.thumbnail;
       const safeImage = typeof image === "string" && (/^https:\/\//i.test(image) || /^data:image\/(png|jpeg|webp);base64,/i.test(image));
       return <div className="nyx-research-product" key={String(product.projectTitle || "") + ":" + String(product.name || index)}>
-        <div className="nyx-research-product-image">{safeImage ? <img src={image} alt="" loading="lazy" /> : <Package size={19} aria-hidden="true" />}</div>
+        <div className="nyx-research-product-image">{safeImage ? <img src={image} alt={product.name} loading="lazy" onError={event => {event.currentTarget.style.display="none";}} /> : <ProductIllustration name={product.name} />}</div>
         <span title={product.name}>{product.shortLabel || product.name}</span>
       </div>;
     })}</div> : <p>No research products recorded in active projects.</p>}
