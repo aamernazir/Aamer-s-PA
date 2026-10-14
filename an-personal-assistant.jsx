@@ -6,6 +6,7 @@ import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
+import * as mammoth from "mammoth/mammoth.browser";
 import {
   AlertTriangle, Award, BarChart3, BookOpen, Check, CheckSquare, ChevronDown, ChevronLeft, Clock, Clock3, Compass, Copy, DollarSign, Download, ExternalLink, Eye, FileText, FlaskConical, FolderKanban, GraduationCap, HeartHandshake, Inbox, Lightbulb, Loader2, MapPinned, Medal, Newspaper, Pencil, Plus, Presentation, Quote, Receipt, RefreshCw, Search, Shield, Sparkles, Square, Target, Trash2, TrendingUp, Upload, User, Users, Video, Wallet, X,
   Info,
@@ -307,6 +308,32 @@ function fileToBase64(file) {
     r.onerror = () => reject(new Error("Could not read file"));
     r.readAsDataURL(file);
   });
+}
+
+// Browsers (and mobile upload pickers in particular) do not always preserve a
+// useful MIME type. Use the filename as a fallback so a valid PDF/DOCX is not
+// incorrectly rejected before it reaches its appropriate reader.
+function hasFileExtension(file, extension) {
+  return String(file?.name || "").toLowerCase().endsWith(extension);
+}
+
+function isPdfFile(file) {
+  return file?.type === "application/pdf" || hasFileExtension(file, ".pdf");
+}
+
+function isDocxFile(file) {
+  return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || hasFileExtension(file, ".docx");
+}
+
+function isReadableProjectFile(file) {
+  return isPdfFile(file) || isDocxFile(file) || String(file?.type || "").startsWith("image/");
+}
+
+async function extractDocxText(file) {
+  const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  const text = String(result.value || "").trim();
+  if (!text) throw new Error(file.name + " contains no readable text. If it is a scanned document, export it as an OCR PDF first.");
+  return text;
 }
 
 async function claudeExtractJSON(content) {
@@ -654,11 +681,12 @@ function App() {
   }
 
   async function handleProposalFile(e) {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const supported = file.type === "application/pdf" || file.type.startsWith("image/");
-    if (!supported) {
-      setExtractProposalError("That file type can't be auto-read here — upload the proposal as a PDF (or scan/screenshot as an image). For Word files, paste the content to Claude in chat and it'll be seeded that way instead.");
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const unsupported = files.filter((file) => !isReadableProjectFile(file));
+    if (unsupported.length) {
+      setExtractProposalError(`Unsupported file${unsupported.length === 1 ? "" : "s"}: ${unsupported.map((file) => file.name).join(", ")}. Upload PDF, DOCX, or image files.`);
+      if (proposalFileInputRef.current) proposalFileInputRef.current.value = "";
       return;
     }
     setExtractingProposal(true);
@@ -671,10 +699,17 @@ function App() {
       let remaining = 80000;
       for (const file of files) {
         setExtractPhase("Reading " + file.name + "…");
-        if (file.type === "application/pdf") {
+        if (isPdfFile(file)) {
           const bytes = new Uint8Array(await file.arrayBuffer());
           const extracted = await extractPdfText(bytes, { maxPages: 80, maxCharacters: 30000 });
           if (!extracted) throw new Error(file.name + " is scanned/image-only and contains no selectable text. Upload readable page images or an OCR PDF.");
+          const excerpt = extracted.slice(0, remaining);
+          if (!excerpt) throw new Error("The combined files exceed the 80,000-character extraction budget. Please split the documents into smaller groups.");
+          if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
+          docBlocks.push({ type: "text", text: "SOURCE FILE: " + file.name + "\\n" + excerpt });
+          remaining -= excerpt.length;
+        } else if (isDocxFile(file)) {
+          const extracted = await extractDocxText(file);
           const excerpt = extracted.slice(0, remaining);
           if (!excerpt) throw new Error("The combined files exceed the 80,000-character extraction budget. Please split the documents into smaller groups.");
           if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
@@ -848,7 +883,7 @@ function App() {
               <button onClick={() => setShowNewProject(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
             </div>
 
-            <input ref={proposalFileInputRef} type="file" multiple accept="application/pdf,image/*" onChange={handleProposalFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+            <input ref={proposalFileInputRef} type="file" multiple accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={handleProposalFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <button
               onClick={() => proposalFileInputRef.current && proposalFileInputRef.current.click()}
               disabled={extractingProposal}
@@ -891,7 +926,7 @@ function App() {
               Create project
             </button>
             <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 10, lineHeight: 1.5 }}>
-              Proposal upload reads PDFs and images. For Word/PowerPoint proposals, paste the content to Claude in chat and it'll be seeded the same way.
+              Upload multiple PDFs, Word (.docx), and image files together. Nyx reads them as one project proposal and preserves each file's provenance.
             </div>
           </div>
         </div>
