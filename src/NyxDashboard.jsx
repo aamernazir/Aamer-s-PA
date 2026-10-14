@@ -440,13 +440,13 @@ function countryPoint(country) {
 // prevents adjacent countries (especially in Europe) from printing over each other.
 function footprintLabelPositions(countries) {
   const occupied = [];
-  const points = [{ country: "Saudi Arabia", outputs: 0 }, ...countries];
+  const points = [{ country: "Saudi Arabia", outputs: 0 }, ...countries.filter((item) => !/^(saudi arabia|ksa|kingdom of saudi arabia)$/i.test(String(item.country || "").trim()))];
   return points.map(({ country, outputs }) => {
     const pin = countryPoint(country);
     if (!pin) return null;
-    const width = Math.min(21, Math.max(10, country.length * 0.88 + 3));
-    const height = 5;
-    const offsets = [[3,-6],[3,3],[-width-3,-6],[-width-3,3],[3,-13],[-width-3,-13],[3,10],[-width-3,10],[0,-19],[0,17],[12,-3],[-width-12,-3]];
+    const width = Math.min(19, Math.max(8, country.length * 0.66 + 2));
+    const height = 4;
+    const offsets = [[2,-4],[2,3],[-width-2,-4],[-width-2,3],[2,-10],[-width-2,-10],[2,9],[-width-2,9],[0,-16],[0,15],[11,-2],[-width-11,-2]];
     let selected = null;
     let lowest = Infinity;
     for (const [dx,dy] of offsets) {
@@ -473,7 +473,7 @@ function AffiliationFootprint({ outputs, period }) {
       </svg>
       {labels.map(label => <div key={label.country}>
         <span title={label.country} style={{position:"absolute",left:label.pin.x+"%",top:label.pin.y+"%",transform:"translate(-50%,-50%)",width:label.home?13:9,height:label.home?13:9,background:label.home?"#087f5b":"#1F5C8B",border:"2px solid white",borderRadius:"50%",boxShadow:"0 1px 4px #33415566",zIndex:2}} />
-        <span title={label.home?"Home base · Saudi Arabia":label.country+" · "+label.outputs+" publication records"} style={{position:"absolute",left:label.x+"%",top:label.y+"%",width:label.width+"%",minHeight:label.height+"%",boxSizing:"border-box",padding:"2px 3px",borderRadius:3,background:"rgba(255,255,255,0.92)",color:label.home?"#064e3b":"#1F5C8B",fontSize:10,fontWeight:700,lineHeight:1.15,textAlign:"center",zIndex:3,overflowWrap:"normal",whiteSpace:"normal"}}>{label.country}</span>
+        <span title={label.home?"Home base · Saudi Arabia":label.country+" · "+label.outputs+" publication records"} style={{position:"absolute",left:label.x+"%",top:label.y+"%",width:label.width+"%",minHeight:label.height+"%",boxSizing:"border-box",padding:"0",borderRadius:3,background:"transparent",color:label.home?"#064e3b":"#1F5C8B",fontSize:10,fontWeight:700,textShadow:"0 1px 2px #fff, 0 -1px 2px #fff, 1px 0 2px #fff, -1px 0 2px #fff",lineHeight:1.15,textAlign:"center",zIndex:3,overflowWrap:"normal",whiteSpace:"normal"}}>{label.country}</span>
       </div>)}
     </div>
     {!countries.length && <div className="nyx-map-data-note" style={{ position: "static", padding: "8px 0", fontSize: 11 }}>No international co-author countries verified from the currently stored affiliations.</div>}
