@@ -436,21 +436,47 @@ function countryPoint(country) {
   return { x: (point[0] + 180) / 360 * 100, y: (90 - point[1]) / 180 * 100 };
 }
 
+// Position map labels independently of their geographic pins. Deterministic placement
+// prevents adjacent countries (especially in Europe) from printing over each other.
+function footprintLabelPositions(countries) {
+  const occupied = [];
+  const points = [{ country: "Saudi Arabia", outputs: 0 }, ...countries];
+  return points.map(({ country, outputs }) => {
+    const pin = countryPoint(country);
+    if (!pin) return null;
+    const width = Math.min(21, Math.max(10, country.length * 0.88 + 3));
+    const height = 5;
+    const offsets = [[3,-6],[3,3],[-width-3,-6],[-width-3,3],[3,-13],[-width-3,-13],[3,10],[-width-3,10],[0,-19],[0,17],[12,-3],[-width-12,-3]];
+    let selected = null;
+    let lowest = Infinity;
+    for (const [dx,dy] of offsets) {
+      const x = Math.max(1, Math.min(99-width, pin.x+dx));
+      const y = Math.max(2, Math.min(96-height, pin.y+dy));
+      const overlap = occupied.reduce((sum, box) => sum + Math.max(0,Math.min(x+width,box.x+box.width)-Math.max(x,box.x))*Math.max(0,Math.min(y+height,box.y+box.height)-Math.max(y,box.y)),0);
+      const score = overlap*100 + Math.abs(dx)*0.08 + Math.abs(dy)*0.08;
+      if (score < lowest) { lowest = score; selected = {x,y,width,height}; }
+      if (!overlap) break;
+    }
+    occupied.push(selected);
+    return {country,outputs,pin,...selected,home:country==="Saudi Arabia"};
+  }).filter(Boolean);
+}
+
 function AffiliationFootprint({ outputs, period }) {
   const countries = affiliationCountries(outputs, period);
-  const base = countryPoint("Saudi Arabia");
+  const labels = footprintLabelPositions(countries);
   return <article className="nyx-panel nyx-footprint-panel">
     <header><div><h2>International co-author footprint</h2><div className="nyx-source-chip"><Boxes size={11} />Research Intelligence · verified co-author countries</div></div></header>
-    <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map with Saudi Arabia as home base and international co-author countries">
-      {base && <div title="Home research base · Saudi Arabia" style={{ position: "absolute", left: base.x + "%", top: base.y + "%", transform: "translate(-50%, -50%)", zIndex: 3, display: "flex", alignItems: "center", gap: 4, color: "#064e3b", fontSize: 10, fontWeight: 700, textShadow: "0 1px 2px white" }}><span style={{ width: 14, height: 14, background: "#087f5b", border: "3px solid white", borderRadius: "50%", boxShadow: "0 0 0 2px #087f5b", flexShrink: 0 }} />Saudi Arabia · Home</div>}
-      {countries.map(({country, outputs: count}) => {
-        const point = countryPoint(country);
-        if (!point) return null;
-        return <div key={country} title={country + " · " + count + " publication records"} style={{ position: "absolute", left: point.x + "%", top: point.y + "%", transform: "translate(-50%, -50%)", display: "flex", alignItems: "center", gap: 3, zIndex: 2, color: "#1F5C8B", fontSize: 9, fontWeight: 700, textShadow: "0 1px 2px white" }}><span style={{ width: Math.min(15, 7 + Math.sqrt(count) * 2), height: Math.min(15, 7 + Math.sqrt(count) * 2), background: "#1F5C8B", border: "2px solid white", borderRadius: "50%", boxShadow: "0 1px 5px #1F5C8B99", flexShrink: 0 }} />{country}</div>;
-      })}
+    <div className="nyx-map-canvas" style={{ backgroundImage: `url(${worldMap})` }} aria-label="World map with Saudi Arabia and international co-author countries">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}}>
+        {labels.map(label => <line key={label.country} x1={label.pin.x} y1={label.pin.y} x2={label.x+label.width/2} y2={label.y+label.height/2} stroke={label.home?"#087f5b":"#1F5C8B"} strokeWidth="0.22" opacity="0.6" />)}
+      </svg>
+      {labels.map(label => <div key={label.country}>
+        <span title={label.country} style={{position:"absolute",left:label.pin.x+"%",top:label.pin.y+"%",transform:"translate(-50%,-50%)",width:label.home?13:9,height:label.home?13:9,background:label.home?"#087f5b":"#1F5C8B",border:"2px solid white",borderRadius:"50%",boxShadow:"0 1px 4px #33415566",zIndex:2}} />
+        <span title={label.home?"Home base · Saudi Arabia":label.country+" · "+label.outputs+" publication records"} style={{position:"absolute",left:label.x+"%",top:label.y+"%",width:label.width+"%",minHeight:label.height+"%",boxSizing:"border-box",padding:"2px 3px",borderRadius:3,background:"rgba(255,255,255,0.92)",color:label.home?"#064e3b":"#1F5C8B",fontSize:10,fontWeight:700,lineHeight:1.15,textAlign:"center",zIndex:3,overflowWrap:"normal",whiteSpace:"normal"}}>{label.country}</span>
+      </div>)}
     </div>
-    {countries.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", fontSize: 11, padding: "7px 0", color: "#236353" }}>{countries.map(({country, outputs: count}) => <span key={country}>{country} ({count})</span>)}</div> : <div className="nyx-map-data-note" style={{ position: "static", padding: "8px 0", fontSize: 11 }}>No international co-author countries verified from the currently stored affiliations. Add country-level co-author affiliations in Research Intelligence.</div>}
-    <footer><i /><span>Saudi Arabia is the home base · other pins represent countries verified from co-author affiliation records</span></footer>
+    {!countries.length && <div className="nyx-map-data-note" style={{ position: "static", padding: "8px 0", fontSize: 11 }}>No international co-author countries verified from the currently stored affiliations.</div>}
   </article>;
 }
 
