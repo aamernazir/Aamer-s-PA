@@ -374,10 +374,18 @@ function publicationTrend(outputs, years) {
   const totals = new Map(years.map(year => [year, { journal: 0, conference: 0 }]));
   const seen = new Set();
   (outputs || []).forEach((item) => {
-    const type = String(item?.type || "").trim().toLowerCase();
-    const kind = /journal/.test(type) ? "journal" : /conference/.test(type) ? "conference" : null;
+    const type = String(item?.type || "").trim();
+    const kind = type === "Journal Paper" ? "journal" : type === "Conference Paper" ? "conference" : null;
     const year = Number(item?.year);
     if (!kind || !totals.has(year)) return;
+    // Conference records must include evidence of a published proceedings paper.
+    // A generic conference label, presentation, or attendance record is insufficient.
+    if (kind === "conference") {
+      const publicationStatus = String(item?.publicationStatus || item?.status || "").toLowerCase();
+      const publicationEvidence = [item?.proceedingsTitle, item?.proceedings, item?.proceedingsDoi, item?.publicationDoi, item?.publishedProceedingsUrl].some(value => String(value || "").trim());
+      const explicitPublished = /published/.test(publicationStatus) && !/unpublished|not published/.test(publicationStatus);
+      if (!publicationEvidence && !explicitPublished) return;
+    }
     const key = String(item?.doi || item?.DOI || item?.id || [item?.title, year, kind].join("|")).trim().toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
