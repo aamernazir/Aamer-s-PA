@@ -1,3 +1,4 @@
+import { extractPdfText } from "./src/pdf-text.js";
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
 import { collectActiveWorkload, hasProjectNumber, isCoIProject } from "./src/project-workload.js";
@@ -663,11 +664,29 @@ function App() {
     setExtractingProposal(true);
     setExtractProposalError("");
     try {
-      const base64 = await fileToBase64(file);
-      const isPdf = file.type === "application/pdf";
-      const docBlock = isPdf
-        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
-        : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } };
+      // Extract PDF text in-browser, avoiding large base64 PDF API payloads.
+      // All files contribute to one project; preserve provenance per document.
+      const docBlocks = [];
+      const notices = [];
+      let remaining = 80000;
+      for (const file of files) {
+        setExtractPhase("Reading " + file.name + "…");
+        if (file.type === "application/pdf") {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const extracted = await extractPdfText(bytes, { maxPages: 80, maxCharacters: 30000 });
+          if (!extracted) throw new Error(file.name + " is scanned/image-only and contains no selectable text. Upload readable page images or an OCR PDF.");
+          const excerpt = extracted.slice(0, remaining);
+          if (!excerpt) throw new Error("The combined files exceed the 80,000-character extraction budget. Please split the documents into smaller groups.");
+          if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
+          docBlocks.push({ type: "text", text: "SOURCE FILE: " + file.name + "\\n" + excerpt });
+          remaining -= excerpt.length;
+        } else {
+          if (file.size > 8 * 1024 * 1024) throw new Error(file.name + " exceeds the 8 MB image limit. Compress the image before uploading.");
+          docBlocks.push({ type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: await fileToBase64(file) } });
+          docBlocks.push({ type: "text", text: "SOURCE IMAGE: " + file.name });
+        }
+      }
+      if (notices.length) setExtractProposalError("Extraction warning: " + notices.join(" "));
       const commonRules =
         "Do not fabricate information that isn't in the document; use empty string/array/0 where something isn't stated. " +
         "Respond with ONLY raw JSON, no markdown fences, no preamble. ";
@@ -675,7 +694,7 @@ function App() {
       // Phase 1 of 4 — title, program, PI, duration, team, budget
       setExtractPhase("Phase 1 of 4 — project details, team & budget…");
       const p1 = await claudeExtractJSON([
-        docBlock,
+        ...docBlocks,
         {
           type: "text",
           text: commonRules +
@@ -689,7 +708,7 @@ function App() {
       // Phase 2 of 4 — objectives & risks
       setExtractPhase("Phase 2 of 4 — objectives & risks…");
       const p2 = await claudeExtractJSON([
-        docBlock,
+        ...docBlocks,
         {
           type: "text",
           text: commonRules +
@@ -705,7 +724,7 @@ function App() {
       // Phase 3 of 4 — work package structure
       setExtractPhase("Phase 3 of 4 — work package structure…");
       const p3 = await claudeExtractJSON([
-        docBlock,
+        ...docBlocks,
         {
           type: "text",
           text: commonRules +
@@ -723,7 +742,7 @@ function App() {
       setExtractPhase("Phase 4 of 4 — tasks, deliverables & KPIs…");
       const p4 = wpSkeleton.length
         ? await claudeExtractJSON([
-            docBlock,
+            ...docBlocks,
             {
               type: "text",
               text: commonRules +
@@ -756,7 +775,7 @@ function App() {
 
       const newProject = {
         id: Date.now().toString(),
-        title: p1.title || file.name,
+        title: p1.title || files[0].name,
         projectNumber: p1.projectNumber || "",
         program: p1.program || "",
         pi: p1.pi || "",
@@ -784,7 +803,7 @@ function App() {
       setShowNewProject(false);
       setActiveId(newProject.id);
     } catch (err) {
-      setExtractProposalError("Could not fully read that proposal automatically. Fill in the fields below manually, or try uploading again.");
+      setExtractProposalError("Could not extract the project: " + (err.message || "Unknown error") + ". Existing projects were not changed.");
     } finally {
       setExtractingProposal(false);
       setExtractPhase("");
@@ -829,13 +848,13 @@ function App() {
               <button onClick={() => setShowNewProject(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
             </div>
 
-            <input ref={proposalFileInputRef} type="file" accept="application/pdf,image/*" onChange={handleProposalFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+            <input ref={proposalFileInputRef} type="file" multiple accept="application/pdf,image/*" onChange={handleProposalFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <button
               onClick={() => proposalFileInputRef.current && proposalFileInputRef.current.click()}
               disabled={extractingProposal}
               style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: extractingProposal ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "12px 0", fontSize: 14, fontWeight: 600, cursor: extractingProposal ? "default" : "pointer", marginBottom: 14 }}
             >
-              {extractingProposal ? <Loader2 size={16} className="pd-spin" /> : <Upload size={16} />} {extractingProposal ? (extractPhase || "Reading proposal…") : "Upload proposal (auto-fill everything)"}
+              {extractingProposal ? <Loader2 size={16} className="pd-spin" /> : <Upload size={16} />} {extractingProposal ? (extractPhase || "Reading proposal…") : "Upload project files (multiple)"}
             </button>
             {extractProposalError && (
               <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 14 }}>{extractProposalError}</div>
