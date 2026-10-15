@@ -45,8 +45,8 @@ const STORAGE_KEYS = {
   mailboxScan: "an2r-gmail-deadlines-v1",
 };
 
-// This is a verified CV baseline. Individual live counts supersede it where
-// Research Intelligence has a matching archive record.
+// The CV is Nyx's authoritative career record. Live module records link
+// evidence to CV entries; they never replace, reduce, or discard a CV entry.
 const JOURNAL_TREND = [
   { year: 2019, value: 5 }, { year: 2020, value: 7 },
   { year: 2021, value: 9 }, { year: 2022, value: 7 },
@@ -98,10 +98,6 @@ function countArrays(value) {
 
 function archivedTypeCount(outputs, type) {
   return outputs.filter((item) => item?.type === type).length;
-}
-
-function selectedArchivedTypeCount(outputs, type, period) {
-  return outputs.filter((item) => item?.type === type && yearInPeriod(item.year, period)).length;
 }
 
 function periodJournalCount(period) {
@@ -185,8 +181,14 @@ function affiliationCountries(outputs, period) {
   return [...tally.entries()].map(([country, outputs]) => ({ country, outputs })).sort((a, b) => b.outputs - a.outputs || a.country.localeCompare(b.country));
 }
 
-function liveOrBaseline(live, baseline) {
-  return live ? `${live} archived · ${baseline} in CV` : `${baseline} in CV`;
+function evidenceStatus(linked, total) {
+  if (!linked) return { label: "Evidence pending", tone: "warn" };
+  if (linked < total) return { label: `${linked} evidence linked`, tone: "info" };
+  return { label: "Evidence linked", tone: "good" };
+}
+
+function cvRecordLabel(total, linked, noun = "records") {
+  return `${total} in CV · ${linked ? `${linked} evidence linked` : "evidence pending"} ${noun}`;
 }
 
 function workPackageProgress(workPackage) {
@@ -236,16 +238,16 @@ function makeSections(raw, period, activeProjects) {
   return [
     {
       id: "funding", rank: "01", title: "Research Grants and Funding", icon: FolderKanban, tone: "gold",
-      lead: hasOperationalProjects ? `${activeFundedProjects.length} active funded · ${fundedProjects.length} funded` : "17 approved awards in CV", moduleId: "projects",
+      lead: hasOperationalProjects ? `${activeFundedProjects.length} active funded · ${fundedProjects.length} evidence-linked` : "17 approved awards in CV", moduleId: "projects",
       rows: [
-        { label: "Research grants", selected: hasOperationalProjects ? plural(activeFundedProjects.length, "active funded project") : (period === "2026" ? "5 active" : "—"), career: hasOperationalProjects ? `${fundedProjects.length} funded record${fundedProjects.length === 1 ? "" : "s"} · 15 in CV` : "15 approved in CV", status: "Live", tone: "good" },
+        { label: "Research grants", selected: hasOperationalProjects ? plural(activeFundedProjects.length, "active funded project") : (period === "2026" ? "5 active" : "—"), career: `15 approved in CV · ${fundedProjects.length} linked project record${fundedProjects.length === 1 ? "" : "s"}`, status: evidenceStatus(fundedProjects.length, 15).label, tone: evidenceStatus(fundedProjects.length, 15).tone },
         { label: "Undergraduate research projects", selected: period === "career" ? 2 : "—", career: "2 approved", status: "Documented", tone: "info" },
         { label: "Academic grants", selected: period === "2026" ? 1 : period === "career" ? 1 : "—", career: "1 proposal listed", status: "Not awarded", tone: "quiet" },
         { label: "Principal-investigator leadership", selected: "Current portfolio", career: "Multiple institutions", status: "Established", tone: "good" },
         { label: "Project-linked outputs", selected: linkedOutputs || "—", career: "Auto-linked by grant code", status: linkedOutputs ? "Linked" : "Monitor", tone: linkedOutputs ? "good" : "warn" },
       ],
-      suggestions: ["Resolve the duplicated project code IN26080 before using automatic funding totals.", "Add an official project number only after funding is awarded; a blank number keeps a project out of CV funding.", "Use funded project records rather than manually written funding headlines in future CV updates."],
-      basis: "Funding and CV figures use projects with an official project number. Active workload and products monitor both funded and not-funded projects.",
+      suggestions: ["Keep every CV funding entry in the career record, even before its proposal or award letter is uploaded.", "Upload evidence for entries marked Evidence pending; Nyx should link it to the matching CV entry, never replace that entry.", "Add an official project number only after funding is awarded; a blank number keeps a project out of CV funding."],
+      basis: "The CV is the complete funding record. Project records provide operational detail and evidence coverage only.",
     },
     {
       id: "interests", rank: "02", title: "Research Interests", icon: Target, tone: "green", lead: "14 research themes", moduleId: "archive",
@@ -261,25 +263,25 @@ function makeSections(raw, period, activeProjects) {
       basis: "Theme status becomes evidence-led as Research Intelligence and Project Dashboard records are linked.",
     },
     {
-      id: "publications", rank: "03", title: "Publications", icon: BookOpen, tone: "blue", lead: liveOrBaseline(journalLive, 64), moduleId: "archive",
+      id: "publications", rank: "03", title: "Publications", icon: BookOpen, tone: "blue", lead: cvRecordLabel(64, journalLive, "journal articles"), moduleId: "archive",
       rows: [
-        { label: "Journal articles", selected: journalLive ? selectedArchivedTypeCount(outputs, "Journal Paper", period) : periodJournalCount(period), career: liveOrBaseline(journalLive, 64), status: "Active", tone: "good" },
-        { label: "Patents", selected: patentLive ? selectedArchivedTypeCount(outputs, "Patent", period) : (period === "career" ? 9 : "—"), career: liveOrBaseline(patentLive, 9), status: "Reconcile", tone: "warn" },
-        { label: "Books and book chapters", selected: chapterLive ? selectedArchivedTypeCount(outputs, "Book Chapter", period) : (period === "career" ? 5 : "—"), career: liveOrBaseline(chapterLive, 5), status: "Documented", tone: "info" },
+        { label: "Journal articles", selected: periodJournalCount(period), career: cvRecordLabel(64, journalLive, "journal articles"), status: evidenceStatus(journalLive, 64).label, tone: evidenceStatus(journalLive, 64).tone },
+        { label: "Patents", selected: period === "career" ? 10 : "—", career: cvRecordLabel(10, patentLive, "patents"), status: evidenceStatus(patentLive, 10).label, tone: evidenceStatus(patentLive, 10).tone },
+        { label: "Books and book chapters", selected: period === "career" ? 5 : "—", career: cvRecordLabel(5, chapterLive, "chapters"), status: evidenceStatus(chapterLive, 5).label, tone: evidenceStatus(chapterLive, 5).tone },
       ],
-      suggestions: ["Reconcile the CV patent headline of 10 with the nine detailed records before formal use.", "Archive missing research outputs to replace baseline counts with verified live records.", "Retain acknowledgement project numbers so publications share automatically with the correct project evidence log."],
-      basis: "The graph and CV baseline remain explicit until live archive coverage is complete.",
+      suggestions: ["Keep every publication, patent and chapter listed in the CV, whether or not its source file has been uploaded.", "Upload missing PDFs, acceptance letters or patent records for entries marked Evidence pending; Nyx will link evidence to the existing CV entry.", "Retain acknowledgement project numbers so publications share automatically with the correct project evidence log."],
+      basis: "Research Intelligence is an evidence and analytics layer over the complete CV record; it does not set the career total.",
     },
     {
       id: "conferences", rank: "04", title: "Conferences", icon: ClipboardList, tone: "slate", lead: "Presentations, papers and committees", moduleId: "archive",
       rows: [
         { label: "Conference presentations", selected: period === "2026" ? 1 : period === "career" ? 10 : "—", career: "10 in CV", status: "Active", tone: "good" },
-        { label: "Conference papers", selected: conferenceLive ? selectedArchivedTypeCount(outputs, "Conference Paper", period) : (period === "career" ? 4 : "—"), career: liveOrBaseline(conferenceLive, 4), status: "Documented", tone: "info" },
+        { label: "Conference papers", selected: period === "career" ? 4 : "—", career: cvRecordLabel(4, conferenceLive, "conference papers"), status: evidenceStatus(conferenceLive, 4).label, tone: evidenceStatus(conferenceLive, 4).tone },
         { label: "Scientific, technical and organizing committees", selected: period === "2026" ? 3 : period === "career" ? 7 : "—", career: "7 in CV", status: "Strong", tone: "good" },
         { label: "Conference participation", selected: period === "career" ? 4 : "—", career: "4 in CV", status: "Refresh", tone: "warn" },
       ],
       suggestions: ["Keep certificate, event, role and date together when conference evidence arrives through Mailbox.", "Route one conference record to all applicable APS subsections only after individual review.", "Record outcomes such as invitations, papers or collaborations alongside participation."],
-      basis: "Conference items stay distinct from publications so activity, paper and service records are not merged.",
+      basis: "Conference items stay distinct from publications so activity, paper and service records are not merged. CV entries remain present before evidence is uploaded.",
     },
     {
       id: "community", rank: "05", title: "Community Service", icon: HeartHandshake, tone: "green", lead: "160+ peer reviews", moduleId: "aps",
@@ -564,11 +566,14 @@ function attentionFromRaw(raw, activeProjects, dataWarnings) {
   const apsCycle = raw.aps?.activeCycle || "APS27";
   const apsInbox = raw.aps?.cycles?.[apsCycle]?.evidenceInbox?.length || raw.aps?.evidenceInbox?.length || 0;
   const mailboxItems = Array.isArray(raw.mailboxScan?.items) ? raw.mailboxScan.items : [];
+  const researchOutputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
+  const linkedResearchEvidence = researchOutputs.filter((item) => ["Journal Paper", "Patent", "Book Chapter", "Conference Paper"].includes(item?.type)).length;
   const deadlineItems = mailboxItems.filter((item) => Array.isArray(item?.deadlineHints) && item.deadlineHints.length).slice(0, 1);
   const attention = [];
   if (overdue.length) attention.push({ label: plural(overdue.length, "active work package") + " overdue", detail: overdue[0].project?.title || "Open Project Dashboard", moduleId: "projects", tone: "warn" });
   if (apsInbox) attention.push({ label: plural(apsInbox, "APS evidence item") + " awaiting review", detail: `${apsCycle} Evidence Inbox`, moduleId: "aps", tone: "info" });
   if (deadlineItems.length) attention.push({ label: "Mailbox deadline needs review", detail: deadlineItems[0].subject || "Open Mailbox", moduleId: "mailbox", tone: "warn" });
+  if (linkedResearchEvidence < 83) attention.push({ label: "CV evidence coverage needs review", detail: `${linkedResearchEvidence} research records linked · CV remains authoritative`, moduleId: "archive", tone: "info" });
   if (dataWarnings.length) attention.push({ label: plural(dataWarnings.length, "CV data issue") + " to reconcile", detail: "Verify conflicting baseline records", moduleId: "archive", tone: "warn" });
   return attention;
 }
@@ -621,7 +626,9 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const sections = useMemo(() => makeSections(raw, period, activeProjects), [raw, period, activeProjects]);
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const currentYearJournalOutputs = outputs.filter((item) => item?.type === "Journal Paper" && Number(item?.year) === 2026).length;
-  const dataWarnings = ["Project number IN26080 appears against two different KFUPM grants.", "Patent headline (10) differs from nine detailed patent records."];
+  // A shorter linked-record list is evidence coverage information, not a CV
+  // data error. The CV remains complete until the user explicitly changes it.
+  const dataWarnings = [];
   const attentionItems = useMemo(() => attentionFromRaw(raw, activeProjects, dataWarnings), [raw, activeProjects]);
   const activeProgress = activeProjects.length ? Math.round(activeProjects.reduce((sum, project) => sum + projectProgress(project), 0) / activeProjects.length) : 0;
   const projectLeads = activeProjectLeads(activeProjects);
