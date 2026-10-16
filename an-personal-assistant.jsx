@@ -7974,9 +7974,16 @@ function App() {
     let current = null;
     const heading = (line) => line.length < 90 && (/^[A-Z][A-Z\s&/\-(),.]{4,}$/.test(line) || /^(Publications|Patents|Projects|Awards|Teaching|Supervision|Editorial|Professional|Conference)/i.test(line));
     const entryStart = (line) => /^(\d{1,3}[.)]|[-•])\s+/.test(line);
+    // Some professionally formatted CVs use one unnumbered line per paper or
+    // grant. Treat their durable identifiers as entry boundaries as well, so
+    // the evidence queue works without requiring the author to reformat a CV.
+    const hasPublicationIdentifier = (line) => /(?:https?:\/\/|doi\.org\/|\bdoi\s*:|\((?:19|20)\d{2}\))/.test(line);
+    const hasGrantIdentifier = (line) => /\((?:approved|funded|not approved|not retained)\)/i.test(line) || /\b(?:sar|usd|hkd|ntd|gbp)\s*[\d≈]/i.test(line);
+    const allowsUnnumberedEntries = () => /publication|journal|conference|patent|grant|funding|project|award|honou?r|editorial|review/i.test(section);
     for (const line of lines) {
       if (heading(line) && !entryStart(line)) { section = line.replace(/[:.]+$/, ""); current = null; continue; }
-      if (entryStart(line)) {
+      const unnumberedEntry = allowsUnnumberedEntries() && (hasPublicationIdentifier(line) || hasGrantIdentifier(line));
+      if (entryStart(line) || unnumberedEntry) {
         current = { id: `cv-${Date.now()}-${entries.length}-${Math.random().toString(36).slice(2, 7)}`, section, title: line.replace(/^(\d{1,3}[.)]|[-•])\s+/, ""), type: typeForCvSection(section), importedAt: new Date().toISOString() };
         entries.push(current);
       } else if (current) current.title += " " + line;
@@ -7993,7 +8000,7 @@ function App() {
     try {
       const sourceText = await extractDocxUploadText(file);
       const entries = parseCvEntries(sourceText);
-      if (!entries.length) throw new Error("Nyx could not identify numbered CV entries. Please use the current CV Word file with its sections and lists intact.");
+      if (!entries.length) throw new Error("Nyx could not identify recognizable CV entries. Please use the current CV Word file with its sections and lists intact.");
       setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries } }));
       setSyncMessage(`CV master list imported: ${entries.length} entries. Nyx has kept the complete text and will now show only entries without an Intelligence record.`);
     } catch (error) { setExtractError(error.message || "Could not import the CV."); }
