@@ -7769,6 +7769,7 @@ function App() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("archive");
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
+  const [otherNyxRecords, setOtherNyxRecords] = useState([]);
 
   const [dragActive, setDragActive] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -7827,6 +7828,31 @@ function App() {
         setData(SEED_DATA);
       } finally {
         setLoaded(true);
+      }
+    })();
+  }, []);
+
+  // CV reconciliation is cross-module: a CV item already represented in the
+  // Project Dashboard or APS is part of Nyx (A), even if it is not duplicated
+  // in the Research Intelligence archive.
+  useEffect(() => {
+    (async () => {
+      try {
+        const results = await Promise.all([
+          window.storage.get(PROJECTS_STORAGE_KEY).catch(() => null),
+          window.storage.get("am2r-aps-v1").catch(() => null),
+        ]);
+        setOtherNyxRecords(results.flatMap((result) => {
+          if (!result?.value) return [];
+          try {
+            const parsed = JSON.parse(result.value);
+            return Array.isArray(parsed) ? parsed : [parsed];
+          } catch (e) {
+            return [];
+          }
+        }));
+      } catch (e) {
+        setOtherNyxRecords([]);
       }
     })();
   }, []);
@@ -8007,12 +8033,79 @@ function App() {
     finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
   }
 
-  function outputMatchesCvEntry(output, entry) {
-    return output?.cvEntryId === entry.id || (!!normalizeTitle(output?.title) && normalizeTitle(output.title) === normalizeTitle(entry.title));
+  const CV_MATCH_STOP_WORDS = new Set([
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "using", "via", "with",
+  ]);
+
+  function searchableRecordText(record) {
+    const values = [];
+    const visit = (value) => {
+      if (typeof value === "string" || typeof value === "number") values.push(String(value));
+      else if (Array.isArray(value)) value.forEach(visit);
+      else if (value && typeof value === "object") Object.values(value).forEach(visit);
+    };
+    visit(record);
+    return values.join(" ");
+  }
+
+  function extractDois(value) {
+    return new Set((String(value || "").match(/\b10\.\d{4,9}\/[\w.()/:;-]+/gi) || []).map((doi) => doi.toLowerCase().replace(/[).,;]+$/, "")));
+  }
+
+  function extractReferenceIds(value) {
+    return new Set((String(value || "").toUpperCase().match(/\b(?=[A-Z0-9-]{5,24}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)*\b/g) || [])
+      .filter((id) => !/^DOI\d/i.test(id) && !/^(?:VOL|ISSN|ISBN)\d/i.test(id))
+      .map((id) => id.replace(/-/g, "")));
+  }
+
+  function meaningfulTitleTokens(value) {
+    return normalizeTitle(value).split(" ").filter((token) => token.length > 2 && !CV_MATCH_STOP_WORDS.has(token) && !/^(?:19|20)\d{2}$/.test(token));
+  }
+
+  function titleMatchesCvCitation(recordTitle, cvCitation) {
+    const recordNorm = normalizeTitle(recordTitle);
+    const citationNorm = normalizeTitle(cvCitation);
+    if (!recordNorm || !citationNorm) return false;
+    if (recordNorm === citationNorm) return true;
+    // A clean Nyx title normally appears inside the longer CV citation.
+    if (recordNorm.length >= 18 && citationNorm.includes(recordNorm)) return true;
+    const recordTokens = [...new Set(meaningfulTitleTokens(recordTitle))];
+    const citationTokens = new Set(meaningfulTitleTokens(cvCitation));
+    if (recordTokens.length < 4) return false;
+    const shared = recordTokens.filter((token) => citationTokens.has(token)).length;
+    return shared >= 4 && shared / recordTokens.length >= 0.82;
+  }
+
+  function collectRecordCandidates(records) {
+    const candidates = [];
+    const visit = (value) => {
+      if (Array.isArray(value)) { value.forEach(visit); return; }
+      if (!value || typeof value !== "object") return;
+      if (value.title || value.name || value.projectNumber || value.doi || value.url || value.cvEntryId || value.referencedEntityTitle) candidates.push(value);
+      Object.values(value).forEach((child) => {
+        if (child && typeof child === "object") visit(child);
+      });
+    };
+    visit(records);
+    return candidates;
+  }
+
+  function nyxRecordMatchesCvEntry(record, entry) {
+    if (record?.cvEntryId && record.cvEntryId === entry.id) return true;
+    const recordText = searchableRecordText(record);
+    const entryText = `${entry.title || ""} ${entry.section || ""}`;
+    const entryDois = extractDois(entryText);
+    if (entryDois.size && [...extractDois(recordText)].some((doi) => entryDois.has(doi))) return true;
+    const entryIds = extractReferenceIds(entryText);
+    if (entryIds.size && [...extractReferenceIds(recordText)].some((id) => entryIds.has(id))) return true;
+    return [record?.title, record?.referencedEntityTitle, record?.name]
+      .filter(Boolean)
+      .some((title) => titleMatchesCvCitation(title, entry.title));
   }
 
   const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
-  const pendingCvEntries = cvEntries.filter((entry) => !data.outputs.some((output) => outputMatchesCvEntry(output, entry)));
+  const nyxRecordCandidates = collectRecordCandidates([data.outputs, otherNyxRecords]);
+  const pendingCvEntries = cvEntries.filter((entry) => !nyxRecordCandidates.some((record) => nyxRecordMatchesCvEntry(record, entry)));
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
   const pendingCvByType = pendingCvEntries.reduce((groups, entry) => {
