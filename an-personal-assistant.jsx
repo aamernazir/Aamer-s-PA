@@ -333,15 +333,15 @@ function isPdfFile(file) {
   return file?.type === "application/pdf" || hasFileExtension(file, ".pdf");
 }
 
-function isDocxFile(file) {
+function isDocxUpload(file) {
   return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || hasFileExtension(file, ".docx");
 }
 
 function isReadableProjectFile(file) {
-  return isPdfFile(file) || isDocxFile(file) || String(file?.type || "").startsWith("image/");
+  return isPdfFile(file) || isDocxUpload(file) || String(file?.type || "").startsWith("image/");
 }
 
-async function extractDocxText(file) {
+async function extractDocxUploadText(file) {
   const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
   const text = String(result.value || "").trim();
   if (!text) throw new Error(file.name + " contains no readable text. If it is a scanned document, export it as an OCR PDF first.");
@@ -720,8 +720,8 @@ function App() {
           if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
           docBlocks.push({ type: "text", text: "SOURCE FILE: " + file.name + "\\n" + excerpt });
           remaining -= excerpt.length;
-        } else if (isDocxFile(file)) {
-          const extracted = await extractDocxText(file);
+        } else if (isDocxUpload(file)) {
+          const extracted = await extractDocxUploadText(file);
           const excerpt = extracted.slice(0, remaining);
           if (!excerpt) throw new Error("The combined files exceed the 80,000-character extraction budget. Please split the documents into smaller groups.");
           if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
@@ -7875,13 +7875,13 @@ function App() {
 
   // ---------- Bulk extraction ----------
   async function processOneFile(file, cvEntry) {
-    const supported = isPdfFile(file) || isDocxFile(file) || file.type.startsWith("image/");
+    const supported = isPdfFile(file) || isDocxUpload(file) || file.type.startsWith("image/");
     if (!supported) return { skipped: true, name: file.name };
     try {
       const isPdf = isPdfFile(file);
-      const isDocx = isDocxFile(file);
+      const isDocx = isDocxUpload(file);
       const base64 = isDocx ? null : await fileToBase64(file);
-      const docxText = isDocx ? await extractDocxText(file) : "";
+      const docxText = isDocx ? await extractDocxUploadText(file) : "";
       const content = [
         isDocx
           ? { type: "text", text: "Evidence document text:\n\n" + docxText.slice(0, 120000) }
@@ -7987,11 +7987,11 @@ function App() {
   async function importCv(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!isDocxFile(file)) { setExtractError("Please upload the CV Word (.docx) file. This keeps the full CV text as the private master record."); return; }
+    if (!isDocxUpload(file)) { setExtractError("Please upload the CV Word (.docx) file. This keeps the full CV text as the private master record."); return; }
     setImportingCv(true);
     setExtractError("");
     try {
-      const sourceText = await extractDocxText(file);
+      const sourceText = await extractDocxUploadText(file);
       const entries = parseCvEntries(sourceText);
       if (!entries.length) throw new Error("Nyx could not identify numbered CV entries. Please use the current CV Word file with its sections and lists intact.");
       setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries } }));
