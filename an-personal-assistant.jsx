@@ -8,7 +8,7 @@ import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import * as mammoth from "mammoth/mammoth.browser";
 import {
-  AlertTriangle, Award, BarChart3, BookOpen, Check, CheckSquare, ChevronDown, ChevronLeft, Clock, Clock3, Compass, Copy, DollarSign, Download, ExternalLink, Eye, FileText, FlaskConical, FolderKanban, GraduationCap, HeartHandshake, Inbox, Lightbulb, Loader2, MapPinned, Medal, Newspaper, Pencil, Plus, Presentation, Quote, Receipt, RefreshCw, Search, Shield, Sparkles, Square, Target, Trash2, TrendingUp, Upload, User, Users, Video, Wallet, X,
+  AlertTriangle, Award, BarChart3, BookOpen, Check, CheckSquare, ChevronDown, ChevronLeft, Clock, Clock3, Compass, Copy, DollarSign, Download, ExternalLink, Eye, FileCheck, FileText, FlaskConical, FolderKanban, GraduationCap, HeartHandshake, Inbox, Lightbulb, Loader2, MapPinned, Medal, Newspaper, Pencil, Plus, Presentation, Quote, Receipt, RefreshCw, Search, Shield, Sparkles, Square, Target, Trash2, TrendingUp, Upload, User, Users, Video, Wallet, X,
   Info,
 } from "lucide-react";
 
@@ -7774,6 +7774,10 @@ function App() {
   const [syncingProjects, setSyncingProjects] = useState(false);
   const [syncingAffiliations, setSyncingAffiliations] = useState(false);
   const fileInputRef = useRef(null);
+  const cvInputRef = useRef(null);
+  const evidenceInputRef = useRef(null);
+  const [evidenceTarget, setEvidenceTarget] = useState(null);
+  const [importingCv, setImportingCv] = useState(false);
 
   const [expandedId, setExpandedId] = useState(null);
   const [reprocessingId, setReprocessingId] = useState(null);
@@ -7815,6 +7819,14 @@ function App() {
     })();
   }, []);
 
+  // The dashboard can send the user straight to the actionable CV queue.
+  useEffect(() => {
+    if (sessionStorage.getItem("nyx:archive-route") === "cv-evidence") {
+      setTab("cv-evidence");
+      sessionStorage.removeItem("nyx:archive-route");
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -7850,14 +7862,18 @@ function App() {
   const citationSignals = Object.values(latestCitationBySource).sort((a, b) => String(a.source).localeCompare(String(b.source)));
 
   // ---------- Bulk extraction ----------
-  async function processOneFile(file) {
-    const supported = file.type === "application/pdf" || file.type.startsWith("image/");
+  async function processOneFile(file, cvEntry) {
+    const supported = isPdfFile(file) || isDocxFile(file) || file.type.startsWith("image/");
     if (!supported) return { skipped: true, name: file.name };
     try {
-      const base64 = await fileToBase64(file);
-      const isPdf = file.type === "application/pdf";
+      const isPdf = isPdfFile(file);
+      const isDocx = isDocxFile(file);
+      const base64 = isDocx ? null : await fileToBase64(file);
+      const docxText = isDocx ? await extractDocxText(file) : "";
       const content = [
-        isPdf
+        isDocx
+          ? { type: "text", text: "Evidence document text:\n\n" + docxText.slice(0, 120000) }
+          : isPdf
           ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
           : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } },
         {
@@ -7881,8 +7897,8 @@ function App() {
         skipped: false,
         entry: {
           id: Date.now().toString() + Math.random().toString(36).slice(2),
-          title: parsed.title || file.name,
-          type: OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other",
+          title: cvEntry?.title || parsed.title || file.name,
+          type: cvEntry?.type || (OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other"),
           subtype: parsed.subtype || "",
           recognitionDetails: parsed.recognitionDetails || "",
           referencedEntityTitle: parsed.referencedEntityTitle || "",
@@ -7905,6 +7921,9 @@ function App() {
           qRank: "",
           sourceFile: file.name,
           sourceFileSize: file.size,
+          cvEntryId: cvEntry?.id || "",
+          cvSection: cvEntry?.section || "",
+          evidenceStatus: cvEntry ? "linked" : "",
           addedAt: new Date().toISOString(),
         },
       };
@@ -7921,6 +7940,78 @@ function App() {
     const norm = normalizeTitle(title);
     if (!norm) return null;
     return existingList.find((o) => normalizeTitle(o.title) === norm) || null;
+  }
+
+  function typeForCvSection(section) {
+    const label = String(section || "").toLowerCase();
+    if (label.includes("patent")) return "Patent";
+    if (label.includes("book chapter")) return "Book Chapter";
+    if (label.includes("conference")) return "Conference Paper";
+    if (label.includes("journal") || label.includes("publication") || label.includes("paper")) return "Journal Paper";
+    if (label.includes("project") || label.includes("grant")) return "Project / Grant Evidence";
+    if (label.includes("award") || label.includes("honour") || label.includes("honor")) return "Award / Certificate";
+    if (label.includes("review") || label.includes("editorial")) return "Editorial / Reviewer Service";
+    if (label.includes("teaching") || label.includes("supervision")) return "Teaching / Supervision Evidence";
+    return "Other";
+  }
+
+  function parseCvEntries(text) {
+    const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    let section = "CV record";
+    const entries = [];
+    let current = null;
+    const heading = (line) => line.length < 90 && (/^[A-Z][A-Z\s&/\-(),.]{4,}$/.test(line) || /^(Publications|Patents|Projects|Awards|Teaching|Supervision|Editorial|Professional|Conference)/i.test(line));
+    const entryStart = (line) => /^(\d{1,3}[.)]|[-•])\s+/.test(line);
+    for (const line of lines) {
+      if (heading(line) && !entryStart(line)) { section = line.replace(/[:.]+$/, ""); current = null; continue; }
+      if (entryStart(line)) {
+        current = { id: `cv-${Date.now()}-${entries.length}-${Math.random().toString(36).slice(2, 7)}`, section, title: line.replace(/^(\d{1,3}[.)]|[-•])\s+/, ""), type: typeForCvSection(section), importedAt: new Date().toISOString() };
+        entries.push(current);
+      } else if (current) current.title += " " + line;
+    }
+    return entries.filter((entry) => entry.title.length > 8);
+  }
+
+  async function importCv(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!isDocxFile(file)) { setExtractError("Please upload the CV Word (.docx) file. This keeps the full CV text as the private master record."); return; }
+    setImportingCv(true);
+    setExtractError("");
+    try {
+      const sourceText = await extractDocxText(file);
+      const entries = parseCvEntries(sourceText);
+      if (!entries.length) throw new Error("Nyx could not identify numbered CV entries. Please use the current CV Word file with its sections and lists intact.");
+      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries } }));
+      setSyncMessage(`CV master list imported: ${entries.length} entries. Nyx has kept the complete text and will now show only entries without an Intelligence record.`);
+    } catch (error) { setExtractError(error.message || "Could not import the CV."); }
+    finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
+  }
+
+  function outputMatchesCvEntry(output, entry) {
+    return output?.cvEntryId === entry.id || (!!normalizeTitle(output?.title) && normalizeTitle(output.title) === normalizeTitle(entry.title));
+  }
+
+  const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
+  const pendingCvEntries = cvEntries.filter((entry) => !data.outputs.some((output) => outputMatchesCvEntry(output, entry)));
+
+  function requestEvidenceUpload(entry) {
+    setEvidenceTarget(entry);
+    setTimeout(() => evidenceInputRef.current?.click(), 0);
+  }
+
+  async function uploadEvidenceForCvEntry(e) {
+    const file = e.target.files?.[0];
+    const target = evidenceTarget;
+    if (!file || !target) return;
+    setExtracting(true); setExtractError("");
+    try {
+      const result = await processOneFile(file, target);
+      if (result.skipped) throw new Error(result.error || "This file could not be read.");
+      setData((previous) => ({ ...previous, outputs: [result.entry, ...previous.outputs], cvRegistry: { ...previous.cvRegistry, entries: (previous.cvRegistry?.entries || []).map((entry) => entry.id === target.id ? { ...entry, evidenceStatus: "linked", linkedOutputId: result.entry.id, evidenceFile: file.name, evidenceLinkedAt: new Date().toISOString() } : entry) } }));
+      setSyncMessage(`Evidence linked to the CV entry: ${target.title}`);
+    } catch (error) { setExtractError(error.message || "Could not link this evidence."); }
+    finally { setExtracting(false); setEvidenceTarget(null); if (evidenceInputRef.current) evidenceInputRef.current.value = ""; }
   }
 
   // Free pre-check, before any API call: catches the same file being re-uploaded (same name + size),
@@ -8610,12 +8701,29 @@ function App() {
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
-          {[["archive", "Archive", FileText], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
+          {[["archive", "Archive", FileText], ["cv-evidence", "CV Evidence", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)} style={{ display: "flex", alignItems: "center", gap: 6, background: tab === id ? INK : "#fff", color: tab === id ? "#fff" : INK, border: "1px solid " + (tab === id ? INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
               <Icon size={13} /> {label}
             </button>
           ))}
         </div>
+
+        {tab === "cv-evidence" && (
+          <div>
+            <input ref={cvInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={importCv} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+            <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+            <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "18px 20px", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>CV evidence queue</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>Your CV is the master record. Nyx lists only CV entries that do not yet have a matching record in Research Intelligence. Uploading evidence creates and links the missing record; it never removes or changes the CV entry.</div></div>
+                <button onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ display: "flex", alignItems: "center", gap: 6, background: importingCv ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: importingCv ? "default" : "pointer", flexShrink: 0 }}>{importingCv ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />}{importingCv ? "Importing CV…" : data.cvRegistry ? "Refresh CV master list" : "Import CV Word file"}</button>
+              </div>
+              {data.cvRegistry && <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #EAECF0", fontSize: 12, color: MUTED }}>Master source: <strong style={{ color: INK }}>{data.cvRegistry.sourceFile}</strong> · {cvEntries.length} CV entries retained · {pendingCvEntries.length} pending evidence</div>}
+            </div>
+            {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}
+            {syncMessage && <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{syncMessage}</div>}
+            {!data.cvRegistry ? <EmptyState text="Import the CV Word file once to build this evidence queue. Nyx stores its full text privately as the master record." /> : pendingCvEntries.length === 0 ? <EmptyState text="All imported CV entries have matching Research Intelligence records." /> : <div>{pendingCvEntries.map((entry) => <div key={entry.id} className="pa-card" style={{ background: "#fff", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", marginBottom: 9, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}><div><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}><span className="pa-mono" style={{ fontSize: 10.5, background: "#FFF4D7", color: "#8A5B00", padding: "3px 7px", borderRadius: 10, fontWeight: 700 }}>PENDING EVIDENCE</span><span style={{ fontSize: 11.5, color: MUTED }}>{entry.section}</span></div><div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.45 }}>{entry.title}</div><div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{entry.type}</div></div><button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer", flexShrink: 0 }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button></div>)}</div>}
+          </div>
+        )}
 
         {tab === "archive" && (
           <div>
@@ -8624,7 +8732,7 @@ function App() {
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-              <input ref={fileInputRef} type="file" accept="application/pdf,image/*" multiple onChange={handleFileInput} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
+              <input ref={fileInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" multiple onChange={handleFileInput} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: extracting ? "default" : "pointer" }}>
                 {extracting ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />} {extracting ? (batchProgress ? `Reading ${batchProgress.current} of ${batchProgress.total}…` : "Reading…") : "Upload files (multiple)"}
               </button>
