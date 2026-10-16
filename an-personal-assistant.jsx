@@ -6711,14 +6711,14 @@ function SummaryStat({ label, value }) {
 
 const PublicationArchiveModule = (function() {
 const STORAGE_KEY = "am2r-publication-archive-v1";
-const CV_PARSER_VERSION = 2;
+const CV_PARSER_VERSION = 3;
 
 
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
 const RED = "#B3392C";
 
 const OUTPUT_TYPES = [
-  "Journal Paper", "Patent", "Conference Paper", "Book Chapter", "Report",
+  "Journal Paper", "Patent", "Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service", "Book Chapter", "Report",
   "Professional Recognition / Ranking", "Award / Certificate",
   "Editorial / Reviewer Service", "Conference / Professional Service",
   "Project / Grant Evidence", "Teaching / Supervision Evidence",
@@ -6726,8 +6726,8 @@ const OUTPUT_TYPES = [
   "Other"
 ];
 const Q_RANKS = ["Q1 (Top 10%)", "Q1", "Q2", "Q3", "Q4"];
-const TYPE_ICON = { "Journal Paper": FileText, "Conference Paper": Presentation, "Patent": Award, "Book Chapter": BookOpen, "Report": FileText, "Professional Recognition / Ranking": Medal, "Award / Certificate": Award, "Editorial / Reviewer Service": Quote, "Conference / Professional Service": Presentation, "Project / Grant Evidence": FolderKanban, "Teaching / Supervision Evidence": GraduationCap, "Membership / Professional Appointment": Users, "Media / Outreach": Newspaper, "Other": FileText };
-const TYPE_COLOR = { "Journal Paper": TEAL, "Conference Paper": "#6B4FA0", "Patent": AMBER, "Book Chapter": GREEN, "Report": MUTED, "Professional Recognition / Ranking": AMBER, "Award / Certificate": AMBER, "Editorial / Reviewer Service": "#6B4FA0", "Conference / Professional Service": TEAL, "Project / Grant Evidence": GREEN, "Teaching / Supervision Evidence": "#4E6FAE", "Membership / Professional Appointment": "#6B4FA0", "Media / Outreach": TEAL, "Other": MUTED };
+const TYPE_ICON = { "Journal Paper": FileText, "Conference Paper": Presentation, "Conference Presentation": Presentation, "Conference Participation": Users, "Conference Committee Service": Users, "Patent": Award, "Book Chapter": BookOpen, "Report": FileText, "Professional Recognition / Ranking": Medal, "Award / Certificate": Award, "Editorial / Reviewer Service": Quote, "Conference / Professional Service": Presentation, "Project / Grant Evidence": FolderKanban, "Teaching / Supervision Evidence": GraduationCap, "Membership / Professional Appointment": Users, "Media / Outreach": Newspaper, "Other": FileText };
+const TYPE_COLOR = { "Journal Paper": TEAL, "Conference Paper": "#6B4FA0", "Conference Presentation": "#6B4FA0", "Conference Participation": TEAL, "Conference Committee Service": GREEN, "Patent": AMBER, "Book Chapter": GREEN, "Report": MUTED, "Professional Recognition / Ranking": AMBER, "Award / Certificate": AMBER, "Editorial / Reviewer Service": "#6B4FA0", "Conference / Professional Service": TEAL, "Project / Grant Evidence": GREEN, "Teaching / Supervision Evidence": "#4E6FAE", "Membership / Professional Appointment": "#6B4FA0", "Media / Outreach": TEAL, "Other": MUTED };
 const CITATION_SOURCE_COLOR = { Pure: TEAL, "Google Scholar": "#4285F4", Scopus: "#E9711C", ORCID: GREEN, Manual: MUTED };
 const DEFAULT_CITATION_SNAPSHOTS = [
   { id: "seed-pure-1", date: new Date().toISOString().slice(0, 10), source: "Pure", citations: 2754, hIndex: 25, publicationCount: 68 },
@@ -7770,7 +7770,7 @@ function App() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("archive");
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
-  const [otherNyxRecords, setOtherNyxRecords] = useState([]);
+  const [otherNyxRecords, setOtherNyxRecords] = useState(null);
 
   const [dragActive, setDragActive] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -7791,6 +7791,7 @@ function App() {
   const cvInputRef = useRef(null);
   const evidenceInputRef = useRef(null);
   const [evidenceTarget, setEvidenceTarget] = useState(null);
+  const [confirmRemoveCvKey, setConfirmRemoveCvKey] = useState(null);
   const [importingCv, setImportingCv] = useState(false);
 
   const [expandedId, setExpandedId] = useState(null);
@@ -7832,6 +7833,16 @@ function App() {
             reparsedAt: new Date().toISOString(),
           };
         }
+        // Correct only CV-linked records created with the old, overly broad
+        // conference categories. Preserve any later manual reclassification.
+        loadedData.outputs = loadedData.outputs.map((output) => {
+          if (!output.cvEntryId || !output.cvSection) return output;
+          const correctedType = typeForCvSection(output.cvSection);
+          if (output.type === "Conference Paper" && correctedType === "Conference Presentation") return { ...output, type: correctedType };
+          if (output.type === "Conference / Professional Service" && ["Conference Participation", "Conference Committee Service"].includes(correctedType)) return { ...output, type: correctedType };
+          if (output.type === "Conference Paper" && !output.publicationStatus && /accepted[^)]*to be published/i.test(output.title || "")) return { ...output, publicationStatus: "Accepted, to be published" };
+          return output;
+        });
         setData(loadedData);
       } catch (e) {
         setData(SEED_DATA);
@@ -7993,7 +8004,9 @@ function App() {
     const label = String(section || "").toLowerCase();
     if (label.includes("patent")) return "Patent";
     if (label.includes("book") && label.includes("chapter")) return "Book Chapter";
-    if (label.includes("organizing committee") || label.includes("participation")) return "Conference / Professional Service";
+    if (label.includes("organizing committee") || label.includes("scientific/technical") || label.includes("scientific / technical")) return "Conference Committee Service";
+    if (label.includes("participation")) return "Conference Participation";
+    if (label.includes("presentation")) return "Conference Presentation";
     if (label.includes("conference") || label.includes("conf.")) return "Conference Paper";
     if (label.includes("journal") || label.includes("publication") || label.includes("paper")) return "Journal Paper";
     if (label.includes("project") || label.includes("grant")) return "Project / Grant Evidence";
@@ -8008,7 +8021,7 @@ function App() {
     let section = "CV record";
     const entries = [];
     let current = null;
-    const namedHeading = /^(?:Research Grants?|Academic Grants?|Undergraduate Research Projects?|Journal Articles?|Patents?|Books?\s*\/\s*Chapters?|Book Chapters?|Conferences?|Conf\.\s*(?:Presentations?|Papers?|Participation)|Scientific\s*\/\s*Technical\s*\/\s*Organizing Committee member|Editorial Roles?|Reviewer of (?:Books?|Journals?|Book\/Research Proposals))\s*:? *$/i;
+    const namedHeading = /^(?:Research Grants?|Academic Grants?|Undergraduate Research Projects?|Journal Articles?|Patents?|Books?\s*\/\s*Chapters?|Book Chapters?|Conferences?|Conf\.\s*(?:Presentations?|Papers?|Participation)|Scientific\s*\/\s*Technical\s*\/\s*Organizing Committee member|Editorial Roles?|Reviewer of (?:Books?|Journals?|Book\/Research Proposals))\s*:?\s*$/i;
     const heading = (line) => line.length < 100 && (/^[A-Z][A-Z\s&/\-(),.]{4,}$/.test(line) || namedHeading.test(line));
     const entryStart = (line) => /^(\d{1,3}[.)]|[-•])\s+/.test(line);
     // Some professionally formatted CVs use one unnumbered line per paper or
@@ -8024,7 +8037,7 @@ function App() {
       return lead.split(/\s+/).length <= 6 && /^[A-Z][\p{L}.'’*\-]*(?:\s+[A-Z][\p{L}.'’*\-]*){0,5}$/u.test(lead);
     };
     const hasExplicitCatalogLead = (line) => /^(?:Authors?\s*:|Book (?:Title|Chapter)\s*:)/i.test(line);
-    const allowsUnnumberedEntries = () => /publication|journal|conference|conf\.|patent|book|chapter|grant|funding|project|award|honou?r|editorial|review/i.test(section);
+    const allowsUnnumberedEntries = () => /publication|journal|conference|conf\.|committee|patent|book|chapter|grant|funding|project|award|honou?r|editorial|review/i.test(section);
     for (const line of lines) {
       if (heading(line) && !entryStart(line)) { section = line.replace(/[:.]+$/, ""); current = null; continue; }
       const isPublicationSection = /publication|journal/i.test(section);
@@ -8032,6 +8045,7 @@ function App() {
       const isPatentSection = /patent/i.test(section);
       const isBookSection = /book|chapter/i.test(section);
       const isEditorialSection = /editorial|review/i.test(section);
+      const isCommitteeSection = /scientific\s*\/\s*technical\s*\/\s*organizing committee/i.test(section);
       const unnumberedEntry = allowsUnnumberedEntries() && (
         hasPublicationIdentifier(line) ||
         hasGrantIdentifier(line) ||
@@ -8039,6 +8053,7 @@ function App() {
         (isConferenceSection && (hasAuthorLead(line) || /\b(?:19|20)\d{2}\b/.test(line))) ||
         (isPatentSection && hasPatentIdentifier(line)) ||
         (isBookSection && (hasExplicitCatalogLead(line) || hasAuthorLead(line))) ||
+        (isCommitteeSection && /(?:19|20)\d{2}|committee|reviewer/i.test(line)) ||
         (isEditorialSection && (/\b(?:19|20)\d{2}\b/.test(line) || /^(?:Editorial|Special Collection|Topic|Review|Reviewer|Reviewed)/i.test(line)))
       );
       if (entryStart(line) || unnumberedEntry) {
@@ -8062,7 +8077,7 @@ function App() {
       const sourceText = await extractDocxUploadText(file);
       const entries = parseCvEntries(sourceText);
       if (!entries.length) throw new Error("Nyx could not identify recognizable CV entries. Please use the current CV Word file with its sections and lists intact.");
-      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries, parserVersion: CV_PARSER_VERSION } }));
+      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries, dismissedEntries: previous.cvRegistry?.dismissedEntries || [], parserVersion: CV_PARSER_VERSION } }));
       setSyncMessage(`CV master list imported: ${entries.length} entries. Nyx has kept the complete text and will now show only entries without an Intelligence record.`);
     } catch (error) { setExtractError(error.message || "Could not import the CV."); }
     finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
@@ -8126,6 +8141,12 @@ function App() {
   }
 
   function nyxRecordMatchesCvEntry(record, entry) {
+    // A talk and a proceedings paper are separate career records even when
+    // they share a title. Likewise, repeat talks at different events count.
+    if (record?.type && entry.type && record.type !== entry.type) {
+      const conferenceKinds = ["Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service"];
+      if (conferenceKinds.includes(record.type) || conferenceKinds.includes(entry.type)) return false;
+    }
     if (record?.cvEntryId && record.cvEntryId === entry.id) return true;
     const recordText = searchableRecordText(record);
     const entryText = `${entry.title || ""} ${entry.section || ""}`;
@@ -8133,14 +8154,34 @@ function App() {
     if (entryDois.size && [...extractDois(recordText)].some((doi) => entryDois.has(doi))) return true;
     const entryIds = extractReferenceIds(entryText);
     if (entryIds.size && [...extractReferenceIds(recordText)].some((id) => entryIds.has(id))) return true;
+    if (entry.type === "Conference Presentation" && record?.year) {
+      const citationYears = new Set((entry.title.match(/\b(?:19|20)\d{2}\b/g) || []));
+      if (citationYears.size && !citationYears.has(String(record.year))) return false;
+    }
     return [record?.title, record?.referencedEntityTitle, record?.name]
       .filter(Boolean)
       .some((title) => titleMatchesCvCitation(title, entry.title));
   }
 
   const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
+  const cvEntryKey = (entry) => `${entry.type || "Other"}|${normalizeTitle(entry.title)}`;
+  const dismissedCvEntries = Array.isArray(data.cvRegistry?.dismissedEntries) ? data.cvRegistry.dismissedEntries : [];
+  const dismissedCvKeys = new Set(dismissedCvEntries.map((entry) => entry.key));
   const nyxRecordCandidates = collectRecordCandidates([data.outputs, otherNyxRecords]);
-  const pendingCvEntries = cvEntries.filter((entry) => !nyxRecordCandidates.some((record) => nyxRecordMatchesCvEntry(record, entry)));
+  const seenCvKeys = new Set();
+  const seenCvDois = new Set();
+  const pendingCvEntries = otherNyxRecords === null ? [] : cvEntries.filter((entry) => {
+    const key = cvEntryKey(entry);
+    if (dismissedCvKeys.has(key) || seenCvKeys.has(key)) return false;
+    seenCvKeys.add(key);
+    // A repeated DOI within the same publication category is a duplicate;
+    // a conference talk and its paper must remain distinct.
+    const doi = [...extractDois(entry.title)][0];
+    const doiKey = doi && [entry.type, doi].join("|");
+    if (doiKey && seenCvDois.has(doiKey)) return false;
+    if (doiKey) seenCvDois.add(doiKey);
+    return !nyxRecordCandidates.some((record) => nyxRecordMatchesCvEntry(record, entry));
+  });
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
   const pendingCvByType = pendingCvEntries.reduce((groups, entry) => {
@@ -8150,8 +8191,9 @@ function App() {
   }, {});
 
   function renderPendingCvCard(entry) {
-    return <div key={entry.id} className="pa-card" style={{ background: "#FFFDF8", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
-      <div>
+    const key = cvEntryKey(entry);
+    return <div key={entry.id} className="pa-card" style={{ background: "#FFFDF8", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
+      <div style={{ flex: "1 1 260px", minWidth: 0 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
           <span className="pa-mono" style={{ fontSize: 10.5, background: "#FFF4D7", color: "#8A5B00", padding: "3px 7px", borderRadius: 10, fontWeight: 700 }}>PENDING EVIDENCE</span>
           <span style={{ fontSize: 11.5, color: MUTED }}>From CV · {entry.section}</span>
@@ -8159,11 +8201,28 @@ function App() {
         <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.45 }}>{entry.title}</div>
         <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{entry.type}</div>
       </div>
-      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
-        <button onClick={() => approveCvEntry(entry)} disabled={extracting} title="Add this CV entry to Nyx without uploading evidence" style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: GREEN, border: "1px solid #9CC9AA", borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer" }}><Check size={13} />Approve & add</button>
-        <button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer" }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {confirmRemoveCvKey === key ? <div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ fontSize: 11, color: MUTED }}>Remove from queue?</span><button onClick={() => removePendingCvEntry(entry)} style={{ background: "#FFF4F1", color: RED, border: "1px solid #D9A69E", borderRadius: 4, padding: "6px 8px", cursor: "pointer" }}>Confirm</button><button onClick={() => setConfirmRemoveCvKey(null)} style={{ background: "#fff", border: "1px solid #C7CCD3", borderRadius: 4, padding: "6px 8px", cursor: "pointer" }}>Cancel</button></div> : <>
+          <button onClick={() => approveCvEntry(entry)} disabled={extracting} title="Add this CV entry to Nyx without uploading evidence" style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: GREEN, border: "1px solid #9CC9AA", borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer" }}><Check size={13} />Approve & add</button>
+          <button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer" }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button>
+          <button onClick={() => setConfirmRemoveCvKey(key)} disabled={extracting} title="Remove this item from the pending queue; restore it from CV master" style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: MUTED, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 9px", fontSize: 12, cursor: extracting ? "default" : "pointer" }}><X size={13} />Remove</button>
+        </>}
       </div>
     </div>;
+  }
+
+  function removePendingCvEntry(entry) {
+    const key = cvEntryKey(entry);
+    setData((previous) => ({
+      ...previous,
+      cvRegistry: { ...previous.cvRegistry, dismissedEntries: [...(previous.cvRegistry?.dismissedEntries || []).filter((item) => item.key !== key), { key, title: entry.title, type: entry.type, removedAt: new Date().toISOString() }] },
+    }));
+    setConfirmRemoveCvKey(null);
+    setSyncMessage("Removed from the pending queue. The CV source is unchanged; restore this item from CV master if needed.");
+  }
+
+  function restorePendingCvEntry(key) {
+    setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, dismissedEntries: (previous.cvRegistry?.dismissedEntries || []).filter((item) => item.key !== key) } }));
   }
 
   async function approveCvEntry(entry) {
@@ -8173,6 +8232,7 @@ function App() {
       id: Date.now().toString() + Math.random().toString(36).slice(2),
       title: entry.title,
       type: entry.type || "Other",
+      publicationStatus: entry.type === "Conference Paper" && /accepted[^)]*to be published/i.test(entry.title) ? "Accepted, to be published" : "",
       venue: "",
       year,
       authors: "",
@@ -8204,8 +8264,8 @@ function App() {
     setSyncMessage(`Approved and added to Nyx without uploaded evidence: ${entry.title}${syncResult.added > 0 ? ` · also linked to ${syncResult.added} matching project${syncResult.added === 1 ? "" : "s"}` : ""}`);
   }
 
-  function requestEvidenceUpload(entry) {
-    setEvidenceTarget(entry);
+  function requestEvidenceUpload(entry, linkedOutputId = "") {
+    setEvidenceTarget({ ...entry, linkedOutputId });
     setTimeout(() => evidenceInputRef.current?.click(), 0);
   }
 
@@ -8215,9 +8275,20 @@ function App() {
     if (!file || !target) return;
     setExtracting(true); setExtractError("");
     try {
+      const duplicateFile = findPreCheckDuplicate(file, data.outputs);
+      if (duplicateFile && duplicateFile.id !== target.linkedOutputId) throw new Error(`This file is already linked to "${duplicateFile.title}". Review that record instead of adding a duplicate.`);
       const result = await processOneFile(file, target);
       if (result.skipped) throw new Error(result.error || "This file could not be read.");
-      setData((previous) => ({ ...previous, outputs: [result.entry, ...previous.outputs], cvRegistry: { ...previous.cvRegistry, entries: (previous.cvRegistry?.entries || []).map((entry) => entry.id === target.id ? { ...entry, evidenceStatus: "linked", linkedOutputId: result.entry.id, evidenceFile: file.name, evidenceLinkedAt: new Date().toISOString() } : entry) } }));
+      const linkedAt = new Date().toISOString();
+      setData((previous) => {
+        const existing = previous.outputs.find((output) => output.id === target.linkedOutputId);
+        const output = existing ? { ...existing, ...result.entry, id: existing.id, approvedAt: existing.approvedAt, approvalSource: existing.approvalSource } : result.entry;
+        return {
+          ...previous,
+          outputs: existing ? previous.outputs.map((item) => item.id === existing.id ? output : item) : [output, ...previous.outputs],
+          cvRegistry: { ...previous.cvRegistry, entries: (previous.cvRegistry?.entries || []).map((entry) => entry.id === target.id ? { ...entry, evidenceStatus: "linked", linkedOutputId: output.id, evidenceFile: file.name, evidenceLinkedAt: linkedAt } : entry) },
+        };
+      });
       setSyncMessage(`Evidence linked to the CV entry: ${target.title}`);
     } catch (error) { setExtractError(error.message || "Could not link this evidence."); }
     finally { setExtracting(false); setEvidenceTarget(null); if (evidenceInputRef.current) evidenceInputRef.current.value = ""; }
@@ -8809,6 +8880,7 @@ function App() {
               )}
             </div>
             {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
+            {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>Approved from CV · no file uploaded</div>}
             {o.referencedEntityTitle && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}><strong>Recognized work:</strong> {o.referencedEntityTitle}{o.referencedEntityDoi ? ` · DOI ${o.referencedEntityDoi}` : ""}</div>}
             {o.recognitionSource && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}><strong>Recognition source:</strong> {o.recognitionSource}</div>}
             {o.authors && <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 2, fontStyle: "italic" }}>{o.authors}</div>}
@@ -8822,6 +8894,7 @@ function App() {
             {o.fundingProjectNumber && <div style={{ fontSize: 11, color: TEAL, marginTop: 3 }}>Acknowledgement project: <span className="pa-mono">{o.fundingProjectNumber}</span></div>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            {o.evidenceStatus === "approved_without_evidence" && <button onClick={(event) => { event.stopPropagation(); requestEvidenceUpload(cvEntries.find((entry) => entry.id === o.cvEntryId) || { id: o.cvEntryId, title: o.title, type: o.type, section: o.cvSection }, o.id); }} disabled={extracting} title="Link evidence to this approved record without creating a duplicate" style={{ background: "#EFF5EF", color: GREEN, border: "1px solid #9CC9AA", borderRadius: 4, padding: "5px 8px", fontSize: 11, cursor: extracting ? "default" : "pointer" }}>Upload evidence</button>}
             <button onClick={(e) => { e.stopPropagation(); reprocessOutput(o); }} disabled={!!reprocessingId} title="Reprocess classification and review before saving" style={{ background: "none", border: "none", cursor: reprocessingId ? "wait" : "pointer", padding: 2 }}>{reprocessingId === o.id ? <Loader2 size={13} className="pa-spin" /> : <RefreshCw size={13} color={TEAL} />}</button>
             <button onClick={(e) => { e.stopPropagation(); openEdit(o); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pencil size={13} color="#9AA2AF" /></button>
             <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(confirmDelete === o.id ? null : o.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={13} color="#9AA2AF" /></button>
@@ -8927,11 +9000,12 @@ function App() {
                 <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>CV master record</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>The CV is used only to compare against Research Intelligence. Any CV entry not yet in Research Intelligence appears directly under its matching research-record category as <strong>Pending evidence</strong>.</div></div>
                 <button onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ display: "flex", alignItems: "center", gap: 6, background: importingCv ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: importingCv ? "default" : "pointer", flexShrink: 0 }}>{importingCv ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />}{importingCv ? "Importing CV…" : data.cvRegistry ? "Refresh CV master list" : "Import CV Word file"}</button>
               </div>
-              {data.cvRegistry && <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #EAECF0", fontSize: 12, color: MUTED }}>Master source: <strong style={{ color: INK }}>{data.cvRegistry.sourceFile}</strong> · {cvEntries.length} CV entries retained · {pendingCvEntries.length} pending evidence</div>}
+              {data.cvRegistry && <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #EAECF0", fontSize: 12, color: MUTED }}>Master source: <strong style={{ color: INK }}>{data.cvRegistry.sourceFile}</strong> · {cvEntries.length} CV entries retained · {pendingCvEntries.length} pending evidence · {dismissedCvEntries.length} removed from queue</div>}
             </div>
             {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}
             {syncMessage && <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{syncMessage}</div>}
-            {!data.cvRegistry ? <EmptyState text="Import the CV Word file once. Nyx will compare it with Research Intelligence and place missing entries in their matching record categories." /> : <div className="pa-card" style={{ background: pendingCvEntries.length ? "#FFFDF8" : "#EFF5EF", border: `1px solid ${pendingCvEntries.length ? "#E5C97A" : GREEN}`, borderRadius: 6, padding: "16px 18px", fontSize: 13, color: pendingCvEntries.length ? "#6B5015" : GREEN }}>{pendingCvEntries.length ? `${pendingCvEntries.length} CV entries are not yet Research Intelligence records. Open Research records to review them in their relevant categories and upload evidence directly there.` : "All imported CV entries have matching Research Intelligence records."}</div>}
+            {!data.cvRegistry ? <EmptyState text="Import the CV Word file once. Nyx will compare it with Research Intelligence and place missing entries in their matching record categories." /> : <div className="pa-card" style={{ background: pendingCvEntries.length ? "#FFFDF8" : "#EFF5EF", border: `1px solid ${pendingCvEntries.length ? "#E5C97A" : GREEN}`, borderRadius: 6, padding: "16px 18px", fontSize: 13, color: pendingCvEntries.length ? "#6B5015" : GREEN }}>{otherNyxRecords === null ? "Checking other Nyx modules for existing entries…" : pendingCvEntries.length ? `${pendingCvEntries.length} CV entries still need a decision. Open Research records to approve them, upload evidence, or remove them from the queue.` : "No CV entries remain in the pending queue."}</div>}
+            {dismissedCvEntries.length > 0 && <div style={{ marginTop: 16 }}><h3 style={{ color: INK, fontSize: 15, marginBottom: 8 }}>Removed from pending queue</h3><div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>These entries remain in the CV master source and can be restored here.</div>{dismissedCvEntries.map((entry) => <div key={entry.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "#fff", border: "1px solid " + LINE, borderRadius: 5, padding: "9px 12px", marginBottom: 7 }}><span style={{ fontSize: 12, color: INK }}>{entry.title}</span><button onClick={() => restorePendingCvEntry(entry.key)} style={{ background: "#fff", color: TEAL, border: "1px solid #B9D8E8", borderRadius: 4, padding: "6px 9px", cursor: "pointer", flexShrink: 0 }}>Restore</button></div>)}</div>}
           </div>
         )}
 
@@ -8939,7 +9013,7 @@ function App() {
           <div>
             <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
-              Verified research records and CV gaps are shown together by category. A CV-only item is marked <strong>Pending evidence</strong>; upload its evidence directly on that card to create and link the Research Intelligence record.
+              Nyx records and CV-only gaps are shown by category. On a pending card, approve it without a file, upload evidence, or remove it from the queue. Conference presentations, proceedings papers, committee service and attendance have separate sections.
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
@@ -9072,9 +9146,9 @@ function App() {
                 <div key={group.type} style={{ marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid " + TYPE_COLOR[group.type] }}>
                     <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type}s</span>
-                    <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} verified{group.pending.length ? ` · ${group.pending.length} pending evidence` : ""}</span>
+                    <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(480px, 1fr))", gap: 12, alignItems: "start" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 480px), 1fr))", gap: 12, alignItems: "start" }}>
                     {group.pending.map((entry) => renderPendingCvCard(entry))}
                     {group.items.map((o) => renderOutputCard(o))}
                   </div>

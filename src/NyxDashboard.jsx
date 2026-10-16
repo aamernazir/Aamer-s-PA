@@ -231,6 +231,9 @@ function makeSections(raw, period, activeProjects) {
   const patentLive = archivedTypeCount(outputs, "Patent");
   const chapterLive = archivedTypeCount(outputs, "Book Chapter");
   const conferenceLive = archivedTypeCount(outputs, "Conference Paper");
+  const presentationLive = archivedTypeCount(outputs, "Conference Presentation");
+  const committeeLive = archivedTypeCount(outputs, "Conference Committee Service");
+  const participationLive = archivedTypeCount(outputs, "Conference Participation");
   const linkedOutputs = outputs.filter((item) => item?.fundingProjectNumber).length;
 
   // Exact CV hierarchy, excluding the top Summary. Education is intentionally
@@ -275,10 +278,10 @@ function makeSections(raw, period, activeProjects) {
     {
       id: "conferences", rank: "04", title: "Conferences", icon: ClipboardList, tone: "slate", lead: "Presentations, papers and committees", moduleId: "archive",
       rows: [
-        { label: "Conference presentations", selected: period === "2026" ? 1 : period === "career" ? 10 : "—", career: "10 in CV", status: "Active", tone: "good" },
+        { label: "Conference presentations", selected: period === "2026" ? 1 : period === "career" ? 10 : "—", career: cvRecordLabel(10, presentationLive, "presentations"), status: evidenceStatus(presentationLive, 10).label, tone: evidenceStatus(presentationLive, 10).tone },
         { label: "Conference papers", selected: period === "career" ? 4 : "—", career: cvRecordLabel(4, conferenceLive, "conference papers"), status: evidenceStatus(conferenceLive, 4).label, tone: evidenceStatus(conferenceLive, 4).tone },
-        { label: "Scientific, technical and organizing committees", selected: period === "2026" ? 3 : period === "career" ? 7 : "—", career: "7 in CV", status: "Strong", tone: "good" },
-        { label: "Conference participation", selected: period === "career" ? 4 : "—", career: "4 in CV", status: "Refresh", tone: "warn" },
+        { label: "Scientific, technical and organizing committees", selected: period === "2026" ? 3 : period === "career" ? 7 : "—", career: cvRecordLabel(7, committeeLive, "committee roles"), status: evidenceStatus(committeeLive, 7).label, tone: evidenceStatus(committeeLive, 7).tone },
+        { label: "Conference participation", selected: period === "career" ? 4 : "—", career: cvRecordLabel(4, participationLive, "participations"), status: evidenceStatus(participationLive, 4).label, tone: evidenceStatus(participationLive, 4).tone },
       ],
       suggestions: ["Keep certificate, event, role and date together when conference evidence arrives through Mailbox.", "Route one conference record to all applicable APS subsections only after individual review.", "Record outcomes such as invitations, papers or collaborations alongside participation."],
       basis: "Conference items stay distinct from publications so activity, paper and service records are not merged. CV entries remain present before evidence is uploaded.",
@@ -382,7 +385,7 @@ function publicationTrend(outputs, years) {
     if (!kind || !totals.has(year)) return;
     const status = String(item?.publicationStatus || item?.status || "").toLowerCase();
     const subtype = String(item?.subtype || "").toLowerCase();
-    if (kind === "conference" && (/unpublished|not published|withdrawn|rejected/.test(status) || /attendance|participation|conference service|organizing|presentation only|abstract only/.test(subtype))) return;
+    if (kind === "conference" && (/unpublished|not published|withdrawn|rejected|accepted.*to be published/.test(status) || /attendance|participation|conference service|organizing|presentation only|abstract only/.test(subtype))) return;
     const title = String(item?.title || "").trim();
     const doi = String(item?.doi || item?.DOI || "").trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//,"");
     const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
@@ -569,7 +572,41 @@ function attentionFromRaw(raw, activeProjects, dataWarnings) {
   const researchOutputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
   const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const cvPending = cvEntries.filter((entry) => !researchOutputs.some((item) => item?.cvEntryId === entry.id || (normalize(item?.title) && normalize(item.title) === normalize(entry.title))));
+  const doiOf = (value) => String(value || "").match(/\b10\.\d{4,9}\/[\w.()/:;-]+/i)?.[0]?.toLowerCase().replace(/[).,;]+$/, "") || "";
+  const dismissedKeys = new Set((raw.archive?.cvRegistry?.dismissedEntries || []).map((entry) => entry.key));
+  const records = [];
+  const visit = (value) => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!value || typeof value !== "object") return;
+    if (value.title || value.name || value.doi || value.cvEntryId || value.referencedEntityTitle) records.push(value);
+    Object.values(value).forEach((child) => { if (child && typeof child === "object") visit(child); });
+  };
+  visit([researchOutputs, raw.projects, raw.aps]);
+  const seenKeys = new Set(), seenDois = new Set();
+  const cvPending = cvEntries.filter((entry) => {
+    const key = `${entry.type || "Other"}|${normalize(entry.title)}`;
+    if (dismissedKeys.has(key) || seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    const doi = doiOf(entry.title);
+    const doiKey = doi && `${entry.type}|${doi}`;
+    if (doiKey && seenDois.has(doiKey)) return false;
+    if (doiKey) seenDois.add(doiKey);
+    return !records.some((record) => {
+      const conferenceKinds = ["Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service"];
+      if (record.type && record.type !== entry.type && (conferenceKinds.includes(record.type) || conferenceKinds.includes(entry.type))) return false;
+      if (record.cvEntryId === entry.id) return true;
+      const recordDoi = doiOf([record.title, record.doi, record.url, record.referencedEntityDoi].filter(Boolean).join(" "));
+      if (doi && recordDoi === doi) return true;
+      if (entry.type === "Conference Presentation" && record.year) {
+        const years = entry.title.match(/\b(?:19|20)\d{2}\b/g) || [];
+        if (years.length && !years.includes(String(record.year))) return false;
+      }
+      return [record.title, record.name, record.referencedEntityTitle].some((title) => {
+        const short = normalize(title), citation = normalize(entry.title);
+        return short.length >= 18 && (short === citation || citation.includes(short));
+      });
+    });
+  });
   const deadlineItems = mailboxItems.filter((item) => Array.isArray(item?.deadlineHints) && item.deadlineHints.length).slice(0, 1);
   const attention = [];
   if (overdue.length) attention.push({ label: plural(overdue.length, "active work package") + " overdue", detail: overdue[0].project?.title || "Open Project Dashboard", moduleId: "projects", tone: "warn" });
