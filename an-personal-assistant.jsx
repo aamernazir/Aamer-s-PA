@@ -8013,6 +8013,17 @@ function App() {
 
   const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
   const pendingCvEntries = cvEntries.filter((entry) => !data.outputs.some((output) => outputMatchesCvEntry(output, entry)));
+  // The CV is only the comparison source. A missing CV record is displayed
+  // beside its verified peers in Research Intelligence, never in a separate inbox.
+  const pendingCvByType = pendingCvEntries.reduce((groups, entry) => {
+    const type = entry.type || "Other";
+    (groups[type] ||= []).push(entry);
+    return groups;
+  }, {});
+
+  function renderPendingCvCard(entry) {
+    return <div key={entry.id} className="pa-card" style={{ background: "#FFFDF8", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}><div><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}><span className="pa-mono" style={{ fontSize: 10.5, background: "#FFF4D7", color: "#8A5B00", padding: "3px 7px", borderRadius: 10, fontWeight: 700 }}>PENDING EVIDENCE</span><span style={{ fontSize: 11.5, color: MUTED }}>From CV · {entry.section}</span></div><div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.45 }}>{entry.title}</div><div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{entry.type}</div></div><button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer", flexShrink: 0 }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button></div>;
+  }
 
   function requestEvidenceUpload(entry) {
     setEvidenceTarget(entry);
@@ -8582,7 +8593,8 @@ function App() {
   const groupedOutputs = OUTPUT_TYPES.map((type) => ({
     type,
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
-  })).filter((g) => g.items.length > 0);
+    pending: pendingCvByType[type] || [],
+  })).filter((g) => g.items.length > 0 || g.pending.length > 0);
 
   const journalPapers = data.outputs.filter((o) => o.type === "Journal Paper");
   const qRankCounts = Q_RANKS.reduce((acc, q) => ({ ...acc, [q]: journalPapers.filter((p) => p.qRank === q).length }), {});
@@ -8720,7 +8732,7 @@ function App() {
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
-          {[["archive", "Archive", FileText], ["cv-evidence", "CV Evidence", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
+          {[["archive", "Research records", FileText], ["cv-evidence", "CV master", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)} style={{ display: "flex", alignItems: "center", gap: 6, background: tab === id ? INK : "#fff", color: tab === id ? "#fff" : INK, border: "1px solid " + (tab === id ? INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
               <Icon size={13} /> {label}
             </button>
@@ -8733,21 +8745,22 @@ function App() {
             <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "18px 20px", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>CV evidence queue</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>Your CV is the master record. Nyx lists only CV entries that do not yet have a matching record in Research Intelligence. Uploading evidence creates and links the missing record; it never removes or changes the CV entry.</div></div>
+                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>CV master record</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>The CV is used only to compare against Research Intelligence. Any CV entry not yet in Research Intelligence appears directly under its matching research-record category as <strong>Pending evidence</strong>.</div></div>
                 <button onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ display: "flex", alignItems: "center", gap: 6, background: importingCv ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: importingCv ? "default" : "pointer", flexShrink: 0 }}>{importingCv ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />}{importingCv ? "Importing CV…" : data.cvRegistry ? "Refresh CV master list" : "Import CV Word file"}</button>
               </div>
               {data.cvRegistry && <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #EAECF0", fontSize: 12, color: MUTED }}>Master source: <strong style={{ color: INK }}>{data.cvRegistry.sourceFile}</strong> · {cvEntries.length} CV entries retained · {pendingCvEntries.length} pending evidence</div>}
             </div>
             {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}
             {syncMessage && <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{syncMessage}</div>}
-            {!data.cvRegistry ? <EmptyState text="Import the CV Word file once to build this evidence queue. Nyx stores its full text privately as the master record." /> : pendingCvEntries.length === 0 ? <EmptyState text="All imported CV entries have matching Research Intelligence records." /> : <div>{pendingCvEntries.map((entry) => <div key={entry.id} className="pa-card" style={{ background: "#fff", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", marginBottom: 9, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}><div><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}><span className="pa-mono" style={{ fontSize: 10.5, background: "#FFF4D7", color: "#8A5B00", padding: "3px 7px", borderRadius: 10, fontWeight: 700 }}>PENDING EVIDENCE</span><span style={{ fontSize: 11.5, color: MUTED }}>{entry.section}</span></div><div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.45 }}>{entry.title}</div><div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{entry.type}</div></div><button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer", flexShrink: 0 }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button></div>)}</div>}
+            {!data.cvRegistry ? <EmptyState text="Import the CV Word file once. Nyx will compare it with Research Intelligence and place missing entries in their matching record categories." /> : <div className="pa-card" style={{ background: pendingCvEntries.length ? "#FFFDF8" : "#EFF5EF", border: `1px solid ${pendingCvEntries.length ? "#E5C97A" : GREEN}`, borderRadius: 6, padding: "16px 18px", fontSize: 13, color: pendingCvEntries.length ? "#6B5015" : GREEN }}>{pendingCvEntries.length ? `${pendingCvEntries.length} CV entries are not yet Research Intelligence records. Open Research records to review them in their relevant categories and upload evidence directly there.` : "All imported CV entries have matching Research Intelligence records."}</div>}
           </div>
         )}
 
         {tab === "archive" && (
           <div>
+            <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
-              Dump everything — papers, conference proceedings, patents, book chapters. Drop several files at once; each gets read individually and added with real detail (summary, methods, keywords), not just a title.
+              Verified research records and CV gaps are shown together by category. A CV-only item is marked <strong>Pending evidence</strong>; upload its evidence directly on that card to create and link the Research Intelligence record.
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
@@ -8874,15 +8887,16 @@ function App() {
             </div>
 
             {groupedOutputs.length === 0 ? (
-              <EmptyState text="Nothing archived yet." />
+              <EmptyState text="No Research Intelligence records or CV gaps yet." />
             ) : (
               groupedOutputs.map((group) => (
                 <div key={group.type} style={{ marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid " + TYPE_COLOR[group.type] }}>
                     <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type}s</span>
-                    <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>({group.items.length})</span>
+                    <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} verified{group.pending.length ? ` · ${group.pending.length} pending evidence` : ""}</span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(480px, 1fr))", gap: 12, alignItems: "start" }}>
+                    {group.pending.map((entry) => renderPendingCvCard(entry))}
                     {group.items.map((o) => renderOutputCard(o))}
                   </div>
                 </div>
