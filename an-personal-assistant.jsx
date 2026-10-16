@@ -6711,6 +6711,7 @@ function SummaryStat({ label, value }) {
 
 const PublicationArchiveModule = (function() {
 const STORAGE_KEY = "am2r-publication-archive-v1";
+const CV_PARSER_VERSION = 2;
 
 
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
@@ -7823,6 +7824,14 @@ function App() {
           ...(parsed && typeof parsed === "object" ? parsed : {}),
           outputs: Array.isArray(parsed?.outputs) ? parsed.outputs : [],
         };
+        if (loadedData.cvRegistry?.sourceText && loadedData.cvRegistry.parserVersion !== CV_PARSER_VERSION) {
+          loadedData.cvRegistry = {
+            ...loadedData.cvRegistry,
+            entries: parseCvEntries(loadedData.cvRegistry.sourceText),
+            parserVersion: CV_PARSER_VERSION,
+            reparsedAt: new Date().toISOString(),
+          };
+        }
         setData(loadedData);
       } catch (e) {
         setData(SEED_DATA);
@@ -7983,8 +7992,9 @@ function App() {
   function typeForCvSection(section) {
     const label = String(section || "").toLowerCase();
     if (label.includes("patent")) return "Patent";
-    if (label.includes("book chapter")) return "Book Chapter";
-    if (label.includes("conference")) return "Conference Paper";
+    if (label.includes("book") && label.includes("chapter")) return "Book Chapter";
+    if (label.includes("organizing committee") || label.includes("participation")) return "Conference / Professional Service";
+    if (label.includes("conference") || label.includes("conf.")) return "Conference Paper";
     if (label.includes("journal") || label.includes("publication") || label.includes("paper")) return "Journal Paper";
     if (label.includes("project") || label.includes("grant")) return "Project / Grant Evidence";
     if (label.includes("award") || label.includes("honour") || label.includes("honor")) return "Award / Certificate";
@@ -7998,19 +8008,44 @@ function App() {
     let section = "CV record";
     const entries = [];
     let current = null;
-    const heading = (line) => line.length < 90 && (/^[A-Z][A-Z\s&/\-(),.]{4,}$/.test(line) || /^(Publications|Patents|Projects|Awards|Teaching|Supervision|Editorial|Professional|Conference)/i.test(line));
+    const namedHeading = /^(?:Research Grants?|Academic Grants?|Undergraduate Research Projects?|Journal Articles?|Patents?|Books?\s*\/\s*Chapters?|Book Chapters?|Conferences?|Conf\.\s*(?:Presentations?|Papers?|Participation)|Scientific\s*\/\s*Technical\s*\/\s*Organizing Committee member|Editorial Roles?|Reviewer of (?:Books?|Journals?|Book\/Research Proposals))\s*:? *$/i;
+    const heading = (line) => line.length < 100 && (/^[A-Z][A-Z\s&/\-(),.]{4,}$/.test(line) || namedHeading.test(line));
     const entryStart = (line) => /^(\d{1,3}[.)]|[-•])\s+/.test(line);
     // Some professionally formatted CVs use one unnumbered line per paper or
     // grant. Treat their durable identifiers as entry boundaries as well, so
     // the evidence queue works without requiring the author to reformat a CV.
     const hasPublicationIdentifier = (line) => /(?:https?:\/\/|doi\.org\/|\bdoi\s*:|\((?:19|20)\d{2}\))/.test(line);
-    const hasGrantIdentifier = (line) => /\((?:approved|funded|not approved|not retained)\)/i.test(line) || /\b(?:sar|usd|hkd|ntd|gbp)\s*[\d≈]/i.test(line);
-    const allowsUnnumberedEntries = () => /publication|journal|conference|patent|grant|funding|project|award|honou?r|editorial|review/i.test(section);
+    const hasGrantIdentifier = (line) => /\((?:approved|funded|not approved|not retained)(?:[,)]|\s)/i.test(line);
+    const hasPatentIdentifier = (line) => /\b(?=[A-Z0-9-]{6,24}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)*\b/i.test(line) || /patent|filing/i.test(line);
+    const hasAuthorLead = (line) => {
+      const firstComma = line.indexOf(",");
+      if (firstComma < 2 || firstComma > 80 || (line.match(/,/g) || []).length < 2) return false;
+      const lead = line.slice(0, firstComma).trim();
+      return lead.split(/\s+/).length <= 6 && /^[A-Z][\p{L}.'’*\-]*(?:\s+[A-Z][\p{L}.'’*\-]*){0,5}$/u.test(lead);
+    };
+    const hasExplicitCatalogLead = (line) => /^(?:Authors?\s*:|Book (?:Title|Chapter)\s*:)/i.test(line);
+    const allowsUnnumberedEntries = () => /publication|journal|conference|conf\.|patent|book|chapter|grant|funding|project|award|honou?r|editorial|review/i.test(section);
     for (const line of lines) {
       if (heading(line) && !entryStart(line)) { section = line.replace(/[:.]+$/, ""); current = null; continue; }
-      const unnumberedEntry = allowsUnnumberedEntries() && (hasPublicationIdentifier(line) || hasGrantIdentifier(line));
+      const isPublicationSection = /publication|journal/i.test(section);
+      const isConferenceSection = /conference|conf\./i.test(section);
+      const isPatentSection = /patent/i.test(section);
+      const isBookSection = /book|chapter/i.test(section);
+      const isEditorialSection = /editorial|review/i.test(section);
+      const unnumberedEntry = allowsUnnumberedEntries() && (
+        hasPublicationIdentifier(line) ||
+        hasGrantIdentifier(line) ||
+        (isPublicationSection && hasAuthorLead(line)) ||
+        (isConferenceSection && (hasAuthorLead(line) || /\b(?:19|20)\d{2}\b/.test(line))) ||
+        (isPatentSection && hasPatentIdentifier(line)) ||
+        (isBookSection && (hasExplicitCatalogLead(line) || hasAuthorLead(line))) ||
+        (isEditorialSection && (/\b(?:19|20)\d{2}\b/.test(line) || /^(?:Editorial|Special Collection|Topic|Review|Reviewer|Reviewed)/i.test(line)))
+      );
       if (entryStart(line) || unnumberedEntry) {
-        current = { id: `cv-${Date.now()}-${entries.length}-${Math.random().toString(36).slice(2, 7)}`, section, title: line.replace(/^(\d{1,3}[.)]|[-•])\s+/, ""), type: typeForCvSection(section), importedAt: new Date().toISOString() };
+        const title = line.replace(/^(\d{1,3}[.)]|[-•])\s+/, "");
+        let hash = 0;
+        for (const character of `${section}|${title}`) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+        current = { id: `cv-${entries.length}-${Math.abs(hash).toString(36)}`, section, title, type: typeForCvSection(section), importedAt: new Date().toISOString() };
         entries.push(current);
       } else if (current) current.title += " " + line;
     }
@@ -8027,7 +8062,7 @@ function App() {
       const sourceText = await extractDocxUploadText(file);
       const entries = parseCvEntries(sourceText);
       if (!entries.length) throw new Error("Nyx could not identify recognizable CV entries. Please use the current CV Word file with its sections and lists intact.");
-      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries } }));
+      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries, parserVersion: CV_PARSER_VERSION } }));
       setSyncMessage(`CV master list imported: ${entries.length} entries. Nyx has kept the complete text and will now show only entries without an Intelligence record.`);
     } catch (error) { setExtractError(error.message || "Could not import the CV."); }
     finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
