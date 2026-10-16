@@ -1,4 +1,16 @@
 import { extractPdfText } from "./src/pdf-text.js";
+
+function isDocxUpload(file) {
+  return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || String(file?.name || "").toLowerCase().endsWith(".docx");
+}
+
+async function extractDocxUploadText(file) {
+  const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  const text = String(result.value || "").trim();
+  if (!text) throw new Error(file.name + " contains no readable text. If it is a scanned document, export it as an OCR PDF first.");
+  return text;
+}
+
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
 import { collectActiveWorkload, hasProjectNumber, isCoIProject } from "./src/project-workload.js";
@@ -6699,7 +6711,7 @@ function SummaryStat({ label, value }) {
 
 const PublicationArchiveModule = (function() {
 const STORAGE_KEY = "am2r-publication-archive-v1";
-const IMPACT_STORAGE_KEY = "am2r-research-impact-v1";
+
 
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
 const RED = "#B3392C";
