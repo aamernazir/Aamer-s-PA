@@ -8150,7 +8150,58 @@ function App() {
   }, {});
 
   function renderPendingCvCard(entry) {
-    return <div key={entry.id} className="pa-card" style={{ background: "#FFFDF8", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}><div><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}><span className="pa-mono" style={{ fontSize: 10.5, background: "#FFF4D7", color: "#8A5B00", padding: "3px 7px", borderRadius: 10, fontWeight: 700 }}>PENDING EVIDENCE</span><span style={{ fontSize: 11.5, color: MUTED }}>From CV · {entry.section}</span></div><div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.45 }}>{entry.title}</div><div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{entry.type}</div></div><button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer", flexShrink: 0 }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button></div>;
+    return <div key={entry.id} className="pa-card" style={{ background: "#FFFDF8", border: "1px solid #E5C97A", borderRadius: 6, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
+      <div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+          <span className="pa-mono" style={{ fontSize: 10.5, background: "#FFF4D7", color: "#8A5B00", padding: "3px 7px", borderRadius: 10, fontWeight: 700 }}>PENDING EVIDENCE</span>
+          <span style={{ fontSize: 11.5, color: MUTED }}>From CV · {entry.section}</span>
+        </div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.45 }}>{entry.title}</div>
+        <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{entry.type}</div>
+      </div>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
+        <button onClick={() => approveCvEntry(entry)} disabled={extracting} title="Add this CV entry to Nyx without uploading evidence" style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: GREEN, border: "1px solid #9CC9AA", borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer" }}><Check size={13} />Approve & add</button>
+        <button onClick={() => requestEvidenceUpload(entry)} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", fontSize: 12, fontWeight: 600, cursor: extracting ? "default" : "pointer" }}>{extracting && evidenceTarget?.id === entry.id ? <Loader2 size={13} className="pa-spin" /> : <Upload size={13} />}{extracting && evidenceTarget?.id === entry.id ? "Linking…" : "Upload evidence"}</button>
+      </div>
+    </div>;
+  }
+
+  async function approveCvEntry(entry) {
+    const approvedAt = new Date().toISOString();
+    const year = entry.title.match(/\b((?:19|20)\d{2})\b/)?.[1] || "";
+    const approvedOutput = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      title: entry.title,
+      type: entry.type || "Other",
+      venue: "",
+      year,
+      authors: "",
+      authorAffiliations: "",
+      correspondingAuthors: "",
+      isOwnerCorresponding: false,
+      summary: "Approved from the CV master list without uploaded evidence.",
+      methods: "",
+      keywords: [],
+      fundingProjectNumber: "",
+      qRank: "",
+      cvEntryId: entry.id,
+      cvSection: entry.section || "",
+      evidenceStatus: "approved_without_evidence",
+      approvalSource: "CV master list",
+      approvedAt,
+      addedAt: approvedAt,
+    };
+    const nextOutputs = [approvedOutput, ...data.outputs];
+    setData((previous) => ({
+      ...previous,
+      outputs: previous.outputs.some((output) => output.cvEntryId === entry.id) ? previous.outputs : [approvedOutput, ...previous.outputs],
+      cvRegistry: {
+        ...previous.cvRegistry,
+        entries: (previous.cvRegistry?.entries || []).map((cvEntry) => cvEntry.id === entry.id ? { ...cvEntry, evidenceStatus: "approved_without_evidence", linkedOutputId: approvedOutput.id, approvedAt } : cvEntry),
+      },
+    }));
+    const syncResult = await syncNewOutputsToProjects(nextOutputs);
+    setSyncMessage(`Approved and added to Nyx without uploaded evidence: ${entry.title}${syncResult.added > 0 ? ` · also linked to ${syncResult.added} matching project${syncResult.added === 1 ? "" : "s"}` : ""}`);
   }
 
   function requestEvidenceUpload(entry) {
