@@ -8136,7 +8136,7 @@ function App() {
           <button onClick={() => setConfirmRemoveCvKey(key)} disabled={extracting} title="Remove this item from the pending queue; restore it from CV master" style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: MUTED, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 9px", fontSize: 12, cursor: extracting ? "default" : "pointer" }}><X size={13} />Remove</button>
         </>}
       </div>
-      {evidenceFeedback?.id === entry.id && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ flexBasis: "100%", fontSize: 12, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL }}>{evidenceFeedback.message}</div>}
+      {evidenceFeedback && evidenceFeedback.id === entry.id && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ flexBasis: "100%", fontSize: 12, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL }}>{evidenceFeedback.message}</div>}
     </div>;
   }
 
@@ -8845,7 +8845,7 @@ function App() {
             {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>Approved from CV · no file uploaded</div>}
             {o.evidenceStatus === "linked" && o.sourceFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 3 }}>Processed: {o.sourceFile} · extracted details saved, original file not stored</div>}
-            {evidenceFeedback?.id === o.cvEntryId && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ fontSize: 11.5, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL, marginTop: 4 }}>{evidenceFeedback.message}</div>}
+            {evidenceFeedback && evidenceFeedback.id === o.cvEntryId && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ fontSize: 11.5, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL, marginTop: 4 }}>{evidenceFeedback.message}</div>}
             {o.referencedEntityTitle && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}><strong>Recognized work:</strong> {o.referencedEntityTitle}{o.referencedEntityDoi ? ` · DOI ${o.referencedEntityDoi}` : ""}</div>}
             {o.recognitionSource && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}><strong>Recognition source:</strong> {o.recognitionSource}</div>}
             {o.authors && <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 2, fontStyle: "italic" }}>{o.authors}</div>}
