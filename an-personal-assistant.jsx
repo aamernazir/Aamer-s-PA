@@ -7791,7 +7791,9 @@ function App() {
   const fileInputRef = useRef(null);
   const cvInputRef = useRef(null);
   const evidenceInputRef = useRef(null);
+  const evidenceTargetRef = useRef(null);
   const [evidenceTarget, setEvidenceTarget] = useState(null);
+  const [evidenceFeedback, setEvidenceFeedback] = useState(null);
   const [confirmRemoveCvKey, setConfirmRemoveCvKey] = useState(null);
   const [importingCv, setImportingCv] = useState(false);
 
@@ -7952,12 +7954,17 @@ function App() {
         },
       ];
       const parsed = await claudeExtractJSON(content);
+      if (!parsed || ![parsed.title, parsed.summary, parsed.venue, parsed.authors, parsed.recognitionDetails].some((value) => String(value || "").trim())) {
+        throw new Error("The evidence processor returned no usable details. Please retry the file.");
+      }
       return {
         skipped: false,
         entry: {
           id: Date.now().toString() + Math.random().toString(36).slice(2),
           title: cvEntry?.title || parsed.title || file.name,
           type: cvEntry?.type || (OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other"),
+          extractedTitle: parsed.title || "",
+          extractedType: OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other",
           subtype: parsed.subtype || "",
           recognitionDetails: parsed.recognitionDetails || "",
           referencedEntityTitle: parsed.referencedEntityTitle || "",
@@ -8113,6 +8120,7 @@ function App() {
           <button onClick={() => setConfirmRemoveCvKey(key)} disabled={extracting} title="Remove this item from the pending queue; restore it from CV master" style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: MUTED, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 9px", fontSize: 12, cursor: extracting ? "default" : "pointer" }}><X size={13} />Remove</button>
         </>}
       </div>
+      {evidenceFeedback?.id === entry.id && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ flexBasis: "100%", fontSize: 12, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL }}>{evidenceFeedback.message}</div>}
     </div>;
   }
 
@@ -8170,33 +8178,67 @@ function App() {
   }
 
   function requestEvidenceUpload(entry, linkedOutputId = "") {
-    setEvidenceTarget({ ...entry, linkedOutputId });
-    setTimeout(() => evidenceInputRef.current?.click(), 0);
+    const input = evidenceInputRef.current;
+    if (!input) {
+      setEvidenceFeedback({ id: entry.id, kind: "error", message: "The file picker is unavailable. Reload Nyx and try again." });
+      return;
+    }
+    const target = { ...entry, linkedOutputId };
+    evidenceTargetRef.current = target;
+    setEvidenceTarget(target);
+    setEvidenceFeedback({ id: entry.id, kind: "progress", message: "Choose a PDF, Word file, or image to extract and link." });
+    input.value = "";
+    // The file picker must open in the button's own click gesture.
+    input.click();
   }
 
   async function uploadEvidenceForCvEntry(e) {
     const file = e.target.files?.[0];
-    const target = evidenceTarget;
+    const target = evidenceTargetRef.current;
     if (!file || !target) return;
     setExtracting(true); setExtractError("");
+    setEvidenceFeedback({ id: target.id, kind: "progress", message: `Reading and extracting ${file.name}…` });
     try {
       const duplicateFile = findPreCheckDuplicate(file, data.outputs);
       if (duplicateFile && duplicateFile.id !== target.linkedOutputId) throw new Error(`This file is already linked to "${duplicateFile.title}". Review that record instead of adding a duplicate.`);
       const result = await processOneFile(file, target);
       if (result.skipped) throw new Error(result.error || "This file could not be read.");
       const linkedAt = new Date().toISOString();
-      setData((previous) => {
-        const existing = previous.outputs.find((output) => output.id === target.linkedOutputId);
-        const output = existing ? { ...existing, ...result.entry, id: existing.id, approvedAt: existing.approvedAt, approvalSource: existing.approvalSource } : result.entry;
-        return {
-          ...previous,
-          outputs: existing ? previous.outputs.map((item) => item.id === existing.id ? output : item) : [output, ...previous.outputs],
-          cvRegistry: { ...previous.cvRegistry, entries: (previous.cvRegistry?.entries || []).map((entry) => entry.id === target.id ? { ...entry, evidenceStatus: "linked", linkedOutputId: output.id, evidenceFile: file.name, evidenceLinkedAt: linkedAt } : entry) },
-        };
-      });
-      setSyncMessage(`Evidence linked to the CV entry: ${target.title}`);
-    } catch (error) { setExtractError(error.message || "Could not link this evidence."); }
-    finally { setExtracting(false); setEvidenceTarget(null); if (evidenceInputRef.current) evidenceInputRef.current.value = ""; }
+      const existing = data.outputs.find((output) => output.id === target.linkedOutputId);
+      const output = existing ? { ...existing, ...result.entry, id: existing.id, qRank: existing.qRank || result.entry.qRank, approvedAt: existing.approvedAt, approvalSource: existing.approvalSource } : result.entry;
+      const nextOutputs = existing ? data.outputs.map((item) => item.id === existing.id ? output : item) : [output, ...data.outputs];
+      const nextData = {
+        ...data,
+        outputs: nextOutputs,
+        cvRegistry: { ...data.cvRegistry, entries: (data.cvRegistry?.entries || []).map((entry) => entry.id === target.id ? { ...entry, evidenceStatus: "linked", linkedOutputId: output.id, evidenceFile: file.name, evidenceLinkedAt: linkedAt } : entry) },
+      };
+      await window.storage.set(STORAGE_KEY, JSON.stringify(nextData));
+      setData(nextData);
+      setEvidenceFeedback({ id: target.id, kind: "progress", message: "Evidence extracted and saved. Linking related project and APS records…" });
+      const projectResult = await syncNewOutputsToProjects(nextOutputs);
+      const apsResult = await syncNewOutputsToAPS([output]);
+      const links = [projectResult.added > 0 ? `${projectResult.added} project link${projectResult.added === 1 ? "" : "s"}` : "", apsResult.matched > 0 ? `${apsResult.matched} APS link${apsResult.matched === 1 ? "" : "s"}` : ""].filter(Boolean);
+      const warnings = [projectResult.error ? "Project linking needs a retry" : "", apsResult.error ? "APS linking needs a retry" : ""].filter(Boolean);
+      const message = `Evidence extracted and saved for ${target.title}${links.length ? ` · ${links.join(" · ")}` : ""}${warnings.length ? ` · ${warnings.join("; ")}` : ""}.`;
+      setEvidenceFeedback({ id: target.id, kind: warnings.length ? "info" : "success", message });
+      setSyncMessage(message);
+    } catch (error) {
+      const message = error.message || "Could not process this evidence.";
+      setExtractError(message);
+      setEvidenceFeedback({ id: target.id, kind: "error", message });
+    } finally {
+      setExtracting(false);
+      setEvidenceTarget(null);
+      evidenceTargetRef.current = null;
+      if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+    }
+  }
+
+  function cancelEvidenceSelection() {
+    if (!evidenceTargetRef.current) return;
+    setEvidenceFeedback({ id: evidenceTargetRef.current.id, kind: "info", message: "No file selected. Choose Upload evidence to try again." });
+    evidenceTargetRef.current = null;
+    setEvidenceTarget(null);
   }
 
   // Free pre-check, before any API call: catches the same file being re-uploaded (same name + size),
@@ -8786,6 +8828,8 @@ function App() {
             </div>
             {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>Approved from CV · no file uploaded</div>}
+            {o.evidenceStatus === "linked" && o.sourceFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 3 }}>Evidence processed: {o.sourceFile}</div>}
+            {evidenceFeedback?.id === o.cvEntryId && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ fontSize: 11.5, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL, marginTop: 4 }}>{evidenceFeedback.message}</div>}
             {o.referencedEntityTitle && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}><strong>Recognized work:</strong> {o.referencedEntityTitle}{o.referencedEntityDoi ? ` · DOI ${o.referencedEntityDoi}` : ""}</div>}
             {o.recognitionSource && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}><strong>Recognition source:</strong> {o.recognitionSource}</div>}
             {o.authors && <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 2, fontStyle: "italic" }}>{o.authors}</div>}
@@ -8808,6 +8852,8 @@ function App() {
         </div>
         {isOpen && (
           <div style={{ padding: "0 18px 16px 60px", fontSize: 13, color: "#2E3742" }}>
+            {o.extractedTitle && o.extractedTitle !== o.title && <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}><strong>Extracted document title:</strong> {o.extractedTitle}</div>}
+            {o.extractedType && o.extractedType !== o.type && <div style={{ fontSize: 12, color: AMBER, marginBottom: 6 }}><strong>Evidence classified as:</strong> {o.extractedType} · review this category</div>}
             {o.summary && <div style={{ marginBottom: 8 }}>{o.summary}</div>}
             {o.methods && <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}><strong>Methods:</strong> {o.methods}</div>}
             {o.keywords && o.keywords.length > 0 && (
@@ -8876,6 +8922,7 @@ function App() {
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
       <GlobalStyle />
+      <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} onCancel={cancelEvidenceSelection} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 80px" }}>
 
         <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
@@ -8899,7 +8946,6 @@ function App() {
         {tab === "cv-evidence" && (
           <div>
             <input ref={cvInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={importCv} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
-            <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "18px 20px", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
                 <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>CV master record</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>The CV is used only to compare against Research Intelligence. Any CV entry not yet in Research Intelligence appears directly under its matching research-record category as <strong>Pending evidence</strong>.</div></div>
@@ -8916,7 +8962,6 @@ function App() {
 
         {tab === "archive" && (
           <div>
-            <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
               Nyx records and CV-only gaps are shown by category. On a pending card, approve it without a file, upload evidence, or remove it from the queue. Conference presentations, proceedings papers, committee service and attendance have separate sections.
             </div>
