@@ -29,6 +29,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { hasProjectNumber, projectIsActiveForWorkload } from "./project-workload.js";
+import { pendingCvEntries } from "./cv-matching.js";
 import worldMap from "./assets/nyx-world-map.jpg";
 import "./nyx-dashboard.css";
 
@@ -571,42 +572,7 @@ function attentionFromRaw(raw, activeProjects, dataWarnings) {
   const mailboxItems = Array.isArray(raw.mailboxScan?.items) ? raw.mailboxScan.items : [];
   const researchOutputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
-  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const doiOf = (value) => String(value || "").match(/\b10\.\d{4,9}\/[\w.()/:;-]+/i)?.[0]?.toLowerCase().replace(/[).,;]+$/, "") || "";
-  const dismissedKeys = new Set((raw.archive?.cvRegistry?.dismissedEntries || []).map((entry) => entry.key));
-  const records = [];
-  const visit = (value) => {
-    if (Array.isArray(value)) { value.forEach(visit); return; }
-    if (!value || typeof value !== "object") return;
-    if (value.title || value.name || value.doi || value.cvEntryId || value.referencedEntityTitle) records.push(value);
-    Object.values(value).forEach((child) => { if (child && typeof child === "object") visit(child); });
-  };
-  visit([researchOutputs, raw.projects, raw.aps]);
-  const seenKeys = new Set(), seenDois = new Set();
-  const cvPending = cvEntries.filter((entry) => {
-    const key = `${entry.type || "Other"}|${normalize(entry.title)}`;
-    if (dismissedKeys.has(key) || seenKeys.has(key)) return false;
-    seenKeys.add(key);
-    const doi = doiOf(entry.title);
-    const doiKey = doi && `${entry.type}|${doi}`;
-    if (doiKey && seenDois.has(doiKey)) return false;
-    if (doiKey) seenDois.add(doiKey);
-    return !records.some((record) => {
-      const conferenceKinds = ["Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service"];
-      if (record.type && record.type !== entry.type && (conferenceKinds.includes(record.type) || conferenceKinds.includes(entry.type))) return false;
-      if (record.cvEntryId === entry.id) return true;
-      const recordDoi = doiOf([record.title, record.doi, record.url, record.referencedEntityDoi].filter(Boolean).join(" "));
-      if (doi && recordDoi === doi) return true;
-      if (entry.type === "Conference Presentation" && record.year) {
-        const years = entry.title.match(/\b(?:19|20)\d{2}\b/g) || [];
-        if (years.length && !years.includes(String(record.year))) return false;
-      }
-      return [record.title, record.name, record.referencedEntityTitle].some((title) => {
-        const short = normalize(title), citation = normalize(entry.title);
-        return short.length >= 18 && (short === citation || citation.includes(short));
-      });
-    });
-  });
+  const cvPending = pendingCvEntries(cvEntries, [researchOutputs, raw.projects, raw.aps], raw.archive?.cvRegistry?.dismissedEntries || []);
   const deadlineItems = mailboxItems.filter((item) => Array.isArray(item?.deadlineHints) && item.deadlineHints.length).slice(0, 1);
   const attention = [];
   if (overdue.length) attention.push({ label: plural(overdue.length, "active work package") + " overdue", detail: overdue[0].project?.title || "Open Project Dashboard", moduleId: "projects", tone: "warn" });

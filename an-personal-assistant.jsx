@@ -1,4 +1,5 @@
 import { extractPdfText } from "./src/pdf-text.js";
+import { cvEntryKey, pendingCvEntries as findPendingCvEntries } from "./src/cv-matching.js";
 
 function isDocxUpload(file) {
   return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || String(file?.name || "").toLowerCase().endsWith(".docx");
@@ -8083,105 +8084,9 @@ function App() {
     finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
   }
 
-  const CV_MATCH_STOP_WORDS = new Set([
-    "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "using", "via", "with",
-  ]);
-
-  function searchableRecordText(record) {
-    const values = [];
-    const visit = (value) => {
-      if (typeof value === "string" || typeof value === "number") values.push(String(value));
-      else if (Array.isArray(value)) value.forEach(visit);
-      else if (value && typeof value === "object") Object.values(value).forEach(visit);
-    };
-    visit(record);
-    return values.join(" ");
-  }
-
-  function extractDois(value) {
-    return new Set((String(value || "").match(/\b10\.\d{4,9}\/[\w.()/:;-]+/gi) || []).map((doi) => doi.toLowerCase().replace(/[).,;]+$/, "")));
-  }
-
-  function extractReferenceIds(value) {
-    return new Set((String(value || "").toUpperCase().match(/\b(?=[A-Z0-9-]{5,24}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)*\b/g) || [])
-      .filter((id) => !/^DOI\d/i.test(id) && !/^(?:VOL|ISSN|ISBN)\d/i.test(id))
-      .map((id) => id.replace(/-/g, "")));
-  }
-
-  function meaningfulTitleTokens(value) {
-    return normalizeTitle(value).split(" ").filter((token) => token.length > 2 && !CV_MATCH_STOP_WORDS.has(token) && !/^(?:19|20)\d{2}$/.test(token));
-  }
-
-  function titleMatchesCvCitation(recordTitle, cvCitation) {
-    const recordNorm = normalizeTitle(recordTitle);
-    const citationNorm = normalizeTitle(cvCitation);
-    if (!recordNorm || !citationNorm) return false;
-    if (recordNorm === citationNorm) return true;
-    // A clean Nyx title normally appears inside the longer CV citation.
-    if (recordNorm.length >= 18 && citationNorm.includes(recordNorm)) return true;
-    const recordTokens = [...new Set(meaningfulTitleTokens(recordTitle))];
-    const citationTokens = new Set(meaningfulTitleTokens(cvCitation));
-    if (recordTokens.length < 4) return false;
-    const shared = recordTokens.filter((token) => citationTokens.has(token)).length;
-    return shared >= 4 && shared / recordTokens.length >= 0.82;
-  }
-
-  function collectRecordCandidates(records) {
-    const candidates = [];
-    const visit = (value) => {
-      if (Array.isArray(value)) { value.forEach(visit); return; }
-      if (!value || typeof value !== "object") return;
-      if (value.title || value.name || value.projectNumber || value.doi || value.url || value.cvEntryId || value.referencedEntityTitle) candidates.push(value);
-      Object.values(value).forEach((child) => {
-        if (child && typeof child === "object") visit(child);
-      });
-    };
-    visit(records);
-    return candidates;
-  }
-
-  function nyxRecordMatchesCvEntry(record, entry) {
-    // A talk and a proceedings paper are separate career records even when
-    // they share a title. Likewise, repeat talks at different events count.
-    if (record?.type && entry.type && record.type !== entry.type) {
-      const conferenceKinds = ["Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service"];
-      if (conferenceKinds.includes(record.type) || conferenceKinds.includes(entry.type)) return false;
-    }
-    if (record?.cvEntryId && record.cvEntryId === entry.id) return true;
-    const recordText = searchableRecordText(record);
-    const entryText = `${entry.title || ""} ${entry.section || ""}`;
-    const entryDois = extractDois(entryText);
-    if (entryDois.size && [...extractDois(recordText)].some((doi) => entryDois.has(doi))) return true;
-    const entryIds = extractReferenceIds(entryText);
-    if (entryIds.size && [...extractReferenceIds(recordText)].some((id) => entryIds.has(id))) return true;
-    if (entry.type === "Conference Presentation" && record?.year) {
-      const citationYears = new Set((entry.title.match(/\b(?:19|20)\d{2}\b/g) || []));
-      if (citationYears.size && !citationYears.has(String(record.year))) return false;
-    }
-    return [record?.title, record?.referencedEntityTitle, record?.name]
-      .filter(Boolean)
-      .some((title) => titleMatchesCvCitation(title, entry.title));
-  }
-
   const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
-  const cvEntryKey = (entry) => `${entry.type || "Other"}|${normalizeTitle(entry.title)}`;
   const dismissedCvEntries = Array.isArray(data.cvRegistry?.dismissedEntries) ? data.cvRegistry.dismissedEntries : [];
-  const dismissedCvKeys = new Set(dismissedCvEntries.map((entry) => entry.key));
-  const nyxRecordCandidates = collectRecordCandidates([data.outputs, otherNyxRecords]);
-  const seenCvKeys = new Set();
-  const seenCvDois = new Set();
-  const pendingCvEntries = otherNyxRecords === null ? [] : cvEntries.filter((entry) => {
-    const key = cvEntryKey(entry);
-    if (dismissedCvKeys.has(key) || seenCvKeys.has(key)) return false;
-    seenCvKeys.add(key);
-    // A repeated DOI within the same publication category is a duplicate;
-    // a conference talk and its paper must remain distinct.
-    const doi = [...extractDois(entry.title)][0];
-    const doiKey = doi && [entry.type, doi].join("|");
-    if (doiKey && seenCvDois.has(doiKey)) return false;
-    if (doiKey) seenCvDois.add(doiKey);
-    return !nyxRecordCandidates.some((record) => nyxRecordMatchesCvEntry(record, entry));
-  });
+  const pendingCvEntries = otherNyxRecords === null ? [] : findPendingCvEntries(cvEntries, [data.outputs, otherNyxRecords], dismissedCvEntries);
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
   const pendingCvByType = pendingCvEntries.reduce((groups, entry) => {
