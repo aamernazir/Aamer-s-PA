@@ -7838,7 +7838,8 @@ function App() {
         }
         // Correct only CV-linked records created with the old, overly broad
         // conference categories. Preserve any later manual reclassification.
-        loadedData.outputs = loadedData.outputs.map((output) => {
+        loadedData.outputs = loadedData.outputs.filter((output) => output && typeof output === "object").map((output) => {
+          output = normalizeOutputFields(output);
           if (!output.cvEntryId || !output.cvSection) return output;
           const correctedType = typeForCvSection(output.cvSection);
           if (output.type === "Conference Paper" && correctedType === "Conference Presentation") return { ...output, type: correctedType };
@@ -7923,6 +7924,21 @@ function App() {
   const citationSignals = Object.values(latestCitationBySource).sort((a, b) => String(a.source).localeCompare(String(b.source)));
 
   // ---------- Bulk extraction ----------
+  function asEvidenceText(value) {
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (Array.isArray(value)) return value.map(asEvidenceText).filter(Boolean).join(", ");
+    return "";
+  }
+
+  function normalizeOutputFields(output) {
+    const textFields = ["title", "type", "extractedTitle", "extractedType", "subtype", "recognitionDetails", "referencedEntityTitle", "referencedEntityType", "referencedEntityDoi", "recognitionSource", "venue", "year", "authors", "authorAffiliations", "correspondingAuthors", "summary", "methods", "fundingProjectNumber", "writingStyleNotes", "rigorNotes", "depthDiscussionNotes", "sourceFile"];
+    const normalized = { ...output };
+    for (const field of textFields) normalized[field] = asEvidenceText(output[field]);
+    normalized.keywords = Array.isArray(output.keywords) ? output.keywords.map(asEvidenceText).filter(Boolean) : [];
+    return normalized;
+  }
+
   async function processOneFile(file, cvEntry) {
     const supported = isPdfFile(file) || isDocxUpload(file) || file.type.startsWith("image/");
     if (!supported) return { skipped: true, name: file.name };
@@ -7954,14 +7970,14 @@ function App() {
         },
       ];
       const parsed = await claudeExtractJSON(content);
-      if (!parsed || ![parsed.title, parsed.summary, parsed.venue, parsed.authors, parsed.recognitionDetails].some((value) => String(value || "").trim())) {
+      if (!parsed || ![parsed.title, parsed.summary, parsed.venue, parsed.authors, parsed.recognitionDetails].some((value) => asEvidenceText(value).trim())) {
         throw new Error("The evidence processor returned no usable details. Please retry the file.");
       }
       return {
         skipped: false,
-        entry: {
+        entry: normalizeOutputFields({
           id: Date.now().toString() + Math.random().toString(36).slice(2),
-          title: cvEntry?.title || parsed.title || file.name,
+          title: cvEntry?.title || asEvidenceText(parsed.title) || file.name,
           type: cvEntry?.type || (OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other"),
           extractedTitle: parsed.title || "",
           extractedType: OUTPUT_TYPES.includes(parsed.type) ? parsed.type : "Other",
@@ -7991,7 +8007,7 @@ function App() {
           cvSection: cvEntry?.section || "",
           evidenceStatus: cvEntry ? "linked" : "",
           addedAt: new Date().toISOString(),
-        },
+        }),
       };
     } catch (e) {
       return { skipped: true, name: file.name, error: e.message };

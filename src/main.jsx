@@ -8,6 +8,26 @@ import { cloudStorage } from "./cloud-storage.js";
 const nativeFetch = window.fetch.bind(window);
 installAiFallback(nativeFetch);
 
+class ModuleErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error("Nyx module render failed", error, info); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <main role="alert" style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#F7F8FA", color: "#1F2937", fontFamily: "Inter, Arial, sans-serif" }}>
+      <section style={{ maxWidth: 520, background: "#fff", border: "1px solid #D9E1EA", borderRadius: 12, padding: 28 }}>
+        <h1 style={{ marginTop: 0 }}>Nyx could not display this view</h1>
+        <p>Your saved records remain available. Reload to try again. If it recurs, share the error below so we can fix the exact record or view.</p>
+        <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, color: "#9A3412" }}>{this.state.error.message || String(this.state.error)}</pre>
+        <button onClick={() => window.location.reload()} style={{ border: 0, borderRadius: 6, background: "#1F5C8B", color: "#fff", padding: "10px 14px", cursor: "pointer" }}>Reload Nyx</button>
+      </section>
+    </main>;
+  }
+}
+
 // All modules use the same account-scoped, durable persistence layer.
 window.storage = {
   get: (...args) => cloudStorage.get(...args),
@@ -120,7 +140,7 @@ function AccessGate() {
     </div>}
     {status.sync?.blocked
       ? <p role="alert" style={{ padding: 24 }}>This module could not load safely. Reconnect, then choose Reload data. Existing cloud records have not been replaced with sample data.</p>
-      : <App key={status.user.uid} />}
+      : <ModuleErrorBoundary key={status.user.uid}><App /></ModuleErrorBoundary>}
   </React.Fragment>;
 }
 
