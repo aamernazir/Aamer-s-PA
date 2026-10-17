@@ -8214,12 +8214,12 @@ function App() {
       };
       await window.storage.set(STORAGE_KEY, JSON.stringify(nextData));
       setData(nextData);
-      setEvidenceFeedback({ id: target.id, kind: "progress", message: "Evidence extracted and saved. Linking related project and APS records…" });
+      setEvidenceFeedback({ id: target.id, kind: "progress", message: "Extracted details saved. Linking related project and APS records…" });
       const projectResult = await syncNewOutputsToProjects(nextOutputs);
       const apsResult = await syncNewOutputsToAPS([output]);
       const links = [projectResult.added > 0 ? `${projectResult.added} project link${projectResult.added === 1 ? "" : "s"}` : "", apsResult.matched > 0 ? `${apsResult.matched} APS link${apsResult.matched === 1 ? "" : "s"}` : ""].filter(Boolean);
       const warnings = [projectResult.error ? "Project linking needs a retry" : "", apsResult.error ? "APS linking needs a retry" : ""].filter(Boolean);
-      const message = `Evidence extracted and saved for ${target.title}${links.length ? ` · ${links.join(" · ")}` : ""}${warnings.length ? ` · ${warnings.join("; ")}` : ""}.`;
+      const message = `Extracted details saved for ${target.title}${links.length ? ` · ${links.join(" · ")}` : ""}${warnings.length ? ` · ${warnings.join("; ")}` : ""}. Keep the original file; Nyx stores its extracted record and filename.`;
       setEvidenceFeedback({ id: target.id, kind: warnings.length ? "info" : "success", message });
       setSyncMessage(message);
     } catch (error) {
@@ -8828,7 +8828,7 @@ function App() {
             </div>
             {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>Approved from CV · no file uploaded</div>}
-            {o.evidenceStatus === "linked" && o.sourceFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 3 }}>Evidence processed: {o.sourceFile}</div>}
+            {o.evidenceStatus === "linked" && o.sourceFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 3 }}>Processed: {o.sourceFile} · extracted details saved, original file not stored</div>}
             {evidenceFeedback?.id === o.cvEntryId && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ fontSize: 11.5, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL, marginTop: 4 }}>{evidenceFeedback.message}</div>}
             {o.referencedEntityTitle && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}><strong>Recognized work:</strong> {o.referencedEntityTitle}{o.referencedEntityDoi ? ` · DOI ${o.referencedEntityDoi}` : ""}</div>}
             {o.recognitionSource && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}><strong>Recognition source:</strong> {o.recognitionSource}</div>}
