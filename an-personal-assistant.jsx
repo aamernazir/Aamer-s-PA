@@ -6821,6 +6821,10 @@ const GlobalStyle = () => (
     button:focus-visible { outline: 2px solid ${TEAL}; outline-offset: 2px; }
     .pa-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
     .pa-research-shell { width: 100%; padding: 28px clamp(16px, 2vw, 32px) 80px; }
+    .pa-research-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 20px; }
+    .pa-research-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .pa-research-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 10px 12px; }
+    @media (max-width: 1050px) { .pa-research-overview { grid-template-columns: 1fr; } }
     .pa-output-columns { column-count: 2; column-gap: 12px; }
     .pa-output-column-item { display: inline-block; width: 100%; break-inside: avoid; margin-bottom: 12px; vertical-align: top; }
     @media (min-width: 1600px) { .pa-output-columns { column-count: 3; } }
@@ -8975,6 +8979,16 @@ function App() {
     );
   }
 
+  function renderResearchTabs() {
+    return <div className="pa-research-nav">
+      {[["archive", "Research records", FileText], ["cv-evidence", "CV master", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
+        <button key={id} onClick={() => setTab(id)} style={{ display: "flex", alignItems: "center", gap: 5, background: tab === id ? INK : "#fff", color: tab === id ? "#fff" : INK, border: "1px solid " + (tab === id ? INK : "#C7CCD3"), borderRadius: 20, padding: "6px 10px", fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}>
+          <Icon size={12} /> {label}
+        </button>
+      ))}
+    </div>;
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
       <GlobalStyle />
@@ -8991,13 +9005,7 @@ function App() {
 
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
-          {[["archive", "Research records", FileText], ["cv-evidence", "CV master", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
-            <button key={id} onClick={() => setTab(id)} style={{ display: "flex", alignItems: "center", gap: 6, background: tab === id ? INK : "#fff", color: tab === id ? "#fff" : INK, border: "1px solid " + (tab === id ? INK : "#C7CCD3"), borderRadius: 20, padding: "7px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
-              <Icon size={13} /> {label}
-            </button>
-          ))}
-        </div>
+        {tab !== "archive" && renderResearchTabs()}
 
         {tab === "cv-evidence" && (
           <div>
@@ -9018,11 +9026,14 @@ function App() {
 
         {tab === "archive" && (
           <div>
-            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
+            <div className="pa-research-overview">
+            <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 16px" }}>
+            {renderResearchTabs()}
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 12, lineHeight: 1.45 }}>
               Nyx records and CV-only gaps are shown by category. On a pending card, approve it without a file, upload evidence, or remove it from the queue. Conference presentations, proceedings papers, committee service and attendance have separate sections.
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               <input ref={fileInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" multiple onChange={handleFileInput} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: extracting ? "default" : "pointer" }}>
                 {extracting ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />} {extracting ? (batchProgress ? `Processing ${batchProgress.current} of ${batchProgress.total}…` : "Processing…") : "Upload files (multiple)"}
@@ -9045,17 +9056,17 @@ function App() {
               onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
               onDragLeave={() => setDragActive(false)}
               onDrop={handleDrop}
-              style={{ border: `2px dashed ${dragActive ? TEAL : "#C7CCD3"}`, borderRadius: 6, padding: "14px", textAlign: "center", marginBottom: 20, background: dragActive ? "#E7EFF5" : "#fff", transition: "background 0.15s, border-color 0.15s" }}
+              style={{ border: `2px dashed ${dragActive ? TEAL : "#C7CCD3"}`, borderRadius: 6, padding: "10px", textAlign: "center", background: dragActive ? "#E7EFF5" : "#fff", transition: "background 0.15s, border-color 0.15s" }}
             >
               <div style={{ fontSize: 12.5, color: dragActive ? TEAL : MUTED }}>
                 {extracting ? (batchProgress?.message || "Processing dropped files…") : "Or drag and drop multiple files here at once"}
               </div>
             </div>
-            {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}
-            {syncMessage && <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{syncMessage}</div>}
+            {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginTop: 10 }}>{extractError}</div>}
+            {syncMessage && <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginTop: 10 }}>{syncMessage}</div>}
 
             {pendingRetryFiles.length > 0 && (
-              <div className="pa-card" style={{ background: "#fff", border: "1px solid " + AMBER, borderRadius: 6, padding: "14px 18px", marginBottom: 16 }}>
+              <div className="pa-card" style={{ background: "#fff", border: "1px solid " + AMBER, borderRadius: 6, padding: "14px 18px", marginTop: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: INK, marginBottom: 8 }}>
                   {pendingRetryFiles.length} file{pendingRetryFiles.length === 1 ? "" : "s"} waiting to retry
                 </div>
@@ -9078,34 +9089,35 @@ function App() {
               </div>
             )}
 
-            <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "16px 18px", marginBottom: 20 }}>
-              <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 12 }}>Standing at a glance</div>
-              <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: qRankSyncMessage || journalPapers.length > 0 ? 14 : 0 }}>
+            </div>
+            <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 16px" }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 10 }}>Standing at a glance</div>
+              <div className="pa-research-counts" style={{ marginBottom: qRankSyncMessage || journalPapers.length > 0 ? 10 : 0 }}>
                 {OUTPUT_TYPES.map((t) => {
                   const count = data.outputs.filter((o) => o.type === t).length;
                   if (count === 0) return null;
                   return (
                     <div key={t}>
-                      <div className="pa-mono" style={{ fontSize: 22, fontWeight: 700, color: TYPE_COLOR[t] }}>{count}</div>
-                      <div style={{ fontSize: 11, color: MUTED }}>{t}{count === 1 ? "" : "s"}</div>
+                      <div className="pa-mono" style={{ fontSize: 18, fontWeight: 700, color: TYPE_COLOR[t] }}>{count}</div>
+                      <div style={{ fontSize: 10.5, color: MUTED }}>{t}{count === 1 ? "" : "s"}</div>
                     </div>
                   );
                 })}
                 {latestYear && (
                   <div>
-                    <div className="pa-mono" style={{ fontSize: 22, fontWeight: 700, color: INK }}>{latestYearCount}</div>
-                    <div style={{ fontSize: 11, color: MUTED }}>in {latestYear}</div>
+                    <div className="pa-mono" style={{ fontSize: 18, fontWeight: 700, color: INK }}>{latestYearCount}</div>
+                    <div style={{ fontSize: 10.5, color: MUTED }}>in {latestYear}</div>
                   </div>
                 )}
                 {correspondingCount > 0 && (
                   <div>
-                    <div className="pa-mono" style={{ fontSize: 22, fontWeight: 700, color: GREEN }}>{correspondingCount}</div>
-                    <div style={{ fontSize: 11, color: MUTED }}>as corresponding author</div>
+                    <div className="pa-mono" style={{ fontSize: 18, fontWeight: 700, color: GREEN }}>{correspondingCount}</div>
+                    <div style={{ fontSize: 10.5, color: MUTED }}>as corresponding author</div>
                   </div>
                 )}
               </div>
 
-              <div style={{ borderTop: "1px solid #EAECF0", paddingTop: 12, marginTop: 2, marginBottom: journalPapers.length > 0 ? 14 : 0 }}>
+              <div style={{ borderTop: "1px solid #EAECF0", paddingTop: 10, marginTop: 8, marginBottom: journalPapers.length > 0 ? 10 : 0 }}>
                 <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 8 }}>Citation signals</div>
                 {citationSignals.length > 0 ? (
                   <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
@@ -9143,6 +9155,7 @@ function App() {
                   </div>
                 </div>
               )}
+            </div>
             </div>
 
             {groupedOutputs.length === 0 ? (
