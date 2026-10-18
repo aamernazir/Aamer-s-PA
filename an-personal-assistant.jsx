@@ -8244,14 +8244,10 @@ function App() {
       };
       await window.storage.set(STORAGE_KEY, JSON.stringify(nextData));
       setData(nextData);
-      setEvidenceFeedback({ id: target.id, kind: "progress", message: "Extracted details saved. Linking related project and APS records…" });
-      const projectResult = await syncNewOutputsToProjects(nextOutputs);
-      const apsResult = await syncNewOutputsToAPS([output]);
-      const links = [projectResult.added > 0 ? `${projectResult.added} project link${projectResult.added === 1 ? "" : "s"}` : "", apsResult.matched > 0 ? `${apsResult.matched} APS link${apsResult.matched === 1 ? "" : "s"}` : ""].filter(Boolean);
-      const warnings = [projectResult.error ? "Project linking needs a retry" : "", apsResult.error ? "APS linking needs a retry" : ""].filter(Boolean);
-      const message = `Extracted details saved for ${target.title}${links.length ? ` · ${links.join(" · ")}` : ""}${warnings.length ? ` · ${warnings.join("; ")}` : ""}. Keep the original file; Nyx stores its extracted record and filename.`;
-      setEvidenceFeedback({ id: target.id, kind: warnings.length ? "info" : "success", message });
-      setSyncMessage(message);
+      const savedMessage = `Extracted details saved for ${target.title}. Keep the original file; Nyx stores its extracted record and filename. Related project and APS links are checked separately.`;
+      setEvidenceFeedback({ id: target.id, kind: "success", message: savedMessage });
+      setSyncMessage(savedMessage);
+      void linkOutputsInBackground(nextOutputs, [output]);
     } catch (error) {
       const message = error.message || "Could not process this evidence.";
       setExtractError(message);
@@ -8277,6 +8273,18 @@ function App() {
     return existingList.find((o) => o.sourceFile === file.name && o.sourceFileSize === file.size) || null;
   }
 
+  async function linkOutputsInBackground(allOutputs, newOutputs) {
+    try {
+      const projectResult = await syncNewOutputsToProjects(allOutputs);
+      const apsResult = await syncNewOutputsToAPS(newOutputs);
+      const links = [projectResult.added > 0 ? `${projectResult.added} project link${projectResult.added === 1 ? "" : "s"}` : "", apsResult.matched > 0 ? `${apsResult.matched} APS link${apsResult.matched === 1 ? "" : "s"}` : ""].filter(Boolean);
+      const warnings = [projectResult.error ? "Project linking needs a retry" : "", apsResult.error ? "APS linking needs a retry" : ""].filter(Boolean);
+      if (links.length || warnings.length) setSyncMessage(`Related records: ${[...links, ...warnings].join(" · ")}.`);
+    } catch (error) {
+      setSyncMessage(`Research record saved. Related record linking needs a retry: ${error.message || "unknown error"}`);
+    }
+  }
+
   async function processFiles(fileList) {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
@@ -8287,6 +8295,7 @@ function App() {
     const failedFiles = [];
     const duplicates = [];
     const seenInBatch = []; // {name, size} pairs already processed in this same run
+    try {
     for (let i = 0; i < files.length; i++) {
       const existingMatch = findPreCheckDuplicate(files[i], data.outputs);
       const batchMatch = seenInBatch.find((s) => s.name === files[i].name && s.size === files[i].size);
@@ -8309,22 +8318,26 @@ function App() {
       }
     }
     if (added.length > 0) {
-      setData((p) => ({ ...p, outputs: [...added, ...p.outputs] }));
-      const syncResult = await syncNewOutputsToProjects([...added, ...data.outputs]);
-      const apsResult = await syncNewOutputsToAPS(added);
-      const messages = [];
-      if (syncResult.matched > 0) messages.push(`${syncResult.matched} to Project Dashboard (matched by project number)`);
-      if (apsResult.matched > 0) messages.push(`${apsResult.matched} to APS (pending evidence)`);
-      if (messages.length > 0) setSyncMessage(`Also added — ${messages.join("; ")}.`);
+      const nextOutputs = [...added, ...data.outputs];
+      const nextData = { ...data, outputs: nextOutputs };
+      setBatchProgress({ current: files.length, total: files.length, message: "Saving extracted records…" });
+      await window.storage.set(STORAGE_KEY, JSON.stringify(nextData));
+      setData(nextData);
+      setSyncMessage(`Saved ${added.length} extracted record${added.length === 1 ? "" : "s"}. Related project and APS links are checked separately.`);
+      void linkOutputsInBackground(nextOutputs, added);
     }
-    setBatchProgress(null);
-    setExtracting(false);
     setPendingRetryFiles(failedFiles); // replaces any prior retry queue with the current attempt's failures
     const errorParts = [];
     if (duplicates.length > 0) errorParts.push(`${duplicates.length} duplicate${duplicates.length === 1 ? "" : "s"} skipped (already archived): ${duplicates.join(", ")}`);
     if (failed.length > 0) errorParts.push(`Could not read: ${failed.join(", ")}`);
     if (errorParts.length > 0) setExtractError(`Added ${added.length} of ${files.length}. ${errorParts.join(". ")}.`);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (error) {
+      setExtractError(`Could not finish saving the extracted records: ${error.message || "unknown error"}. Keep this tab open and retry after checking cloud sync.`);
+    } finally {
+      setBatchProgress(null);
+      setExtracting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   async function syncMissingAffiliations() {
@@ -8498,6 +8511,9 @@ function App() {
       let matchedCount = 0;
       const evidenceByCycle = new Map();
       for (const o of newOutputs) {
+        // Routine publications belong to APS's publication totals already;
+        // asking AI to tag them as leadership or service delays every upload.
+        if (["Journal Paper", "Conference Paper", "Book Chapter", "Report"].includes(o.type) && !o.recognitionDetails) continue;
         const subsectionList = APS_TAGGABLE_SUBSECTIONS.map(([code, label]) => `${code}: ${label}`).join("\n");
         const prompt =
           `A researcher just archived this output: "${o.title}" (${o.type}, ${o.year}, ${o.venue}). Summary: ${o.summary}\n\n` +
