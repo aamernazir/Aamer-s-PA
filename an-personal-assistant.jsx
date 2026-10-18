@@ -6824,7 +6824,9 @@ const GlobalStyle = () => (
     .pa-research-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 20px; }
     .pa-research-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
     .pa-research-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 10px 12px; }
+    .pa-research-signals { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; border-top: 1px solid #EAECF0; padding-top: 10px; margin-top: 8px; }
     @media (max-width: 1050px) { .pa-research-overview { grid-template-columns: 1fr; } }
+    @media (max-width: 700px) { .pa-research-signals { grid-template-columns: 1fr; } }
     .pa-output-columns { column-count: 2; column-gap: 12px; }
     .pa-output-column-item { display: inline-block; width: 100%; break-inside: avoid; margin-bottom: 12px; vertical-align: top; }
     @media (min-width: 1600px) { .pa-output-columns { column-count: 3; } }
@@ -8995,12 +8997,9 @@ function App() {
       <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} onCancel={cancelEvidenceSelection} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
       <div className="pa-research-shell">
 
-        <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
-          <div className="pa-mono" style={{ width: 40, height: 40, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: "0.14em", color: MUTED, textTransform: "uppercase", marginBottom: 4 }}>AN Personal Assistant · Module 04</div>
-            <h1 className="pa-display" style={{ fontSize: 26, fontWeight: 700, color: INK, margin: 0 }}>Research Intelligence</h1>
-          </div>
+        <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 10, marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="pa-mono" style={{ width: 36, height: 36, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
+          <h1 className="pa-display" style={{ fontSize: 26, fontWeight: 700, color: INK, margin: 0 }}>Research Intelligence</h1>
         </div>
 
         {error && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "10px 14px", borderRadius: 3, fontSize: 13, marginBottom: 20 }}>{error}</div>}
@@ -9117,12 +9116,13 @@ function App() {
                 )}
               </div>
 
-              <div style={{ borderTop: "1px solid #EAECF0", paddingTop: 10, marginTop: 8, marginBottom: journalPapers.length > 0 ? 10 : 0 }}>
+              <div className="pa-research-signals">
+                <div>
                 <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600, marginBottom: 8 }}>Citation signals</div>
                 {citationSignals.length > 0 ? (
-                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                     {citationSignals.map((signal) => (
-                      <div key={signal.source} style={{ minWidth: 118 }}>
+                      <div key={signal.source} style={{ minWidth: 100 }}>
                         <div className="pa-mono" style={{ fontSize: 16, fontWeight: 700, color: CITATION_SOURCE_COLOR[signal.source] || MUTED }}>{Number(signal.citations).toLocaleString()}</div>
                         <div style={{ fontSize: 10.5, color: MUTED }}>{signal.source}{signal.hIndex != null ? ` · h-index ${signal.hIndex}` : ""}</div>
                         <div style={{ fontSize: 9.5, color: "#9AA2AF", marginTop: 2 }}>as of {signal.date || "—"}</div>
@@ -9130,18 +9130,18 @@ function App() {
                     ))}
                   </div>
                 ) : <div style={{ fontSize: 11.5, color: "#9AA2AF" }}>No citation snapshots recorded yet.</div>}
-              </div>
+                </div>
 
               {journalPapers.length > 0 && (
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED, fontWeight: 600 }}>Journal papers by Scopus quartile</div>
-                    <button onClick={syncQRanksFromAPS} disabled={syncingQRanks} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px solid #C7CCD3", color: TEAL, borderRadius: 4, padding: "4px 9px", fontSize: 11, cursor: syncingQRanks ? "default" : "pointer" }}>
-                      {syncingQRanks ? <Loader2 size={11} className="pa-spin" /> : <RefreshCw size={11} />} {syncingQRanks ? "Syncing…" : "Sync Q-ranks from APS"}
+                    <button onClick={syncQRanksFromAPS} disabled={syncingQRanks} aria-label="Sync Q-ranks from APS" title="Sync Q-ranks from APS" style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, background: "none", border: "1px solid #C7CCD3", color: TEAL, borderRadius: 4, padding: "3px 6px", fontSize: 10.5, cursor: syncingQRanks ? "default" : "pointer" }}>
+                      {syncingQRanks ? <Loader2 size={11} className="pa-spin" /> : <RefreshCw size={11} />} {syncingQRanks ? "Syncing…" : "Sync APS"}
                     </button>
                   </div>
                   {qRankSyncMessage && <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>{qRankSyncMessage}</div>}
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     {Q_RANKS.map((q) => (
                       <div key={q}>
                         <div className="pa-mono" style={{ fontSize: 16, fontWeight: 700, color: qRankCounts[q] > 0 ? TEAL : "#C7CCD3" }}>{qRankCounts[q]}</div>
@@ -9155,6 +9155,7 @@ function App() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
             </div>
 
