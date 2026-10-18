@@ -6820,6 +6820,9 @@ const GlobalStyle = () => (
     input:focus, textarea:focus, select:focus { outline: 2px solid ${TEAL}; outline-offset: 1px; }
     button:focus-visible { outline: 2px solid ${TEAL}; outline-offset: 2px; }
     .pa-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
+    .pa-output-columns { column-count: 2; column-gap: 12px; }
+    .pa-output-column-item { display: inline-block; width: 100%; break-inside: avoid; margin-bottom: 12px; vertical-align: top; }
+    @media (max-width: 900px) { .pa-output-columns { column-count: 1; } }
     .pa-spin { animation: pa-spin-anim 0.9s linear infinite; }
     @keyframes pa-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   `}</style>
@@ -8855,8 +8858,8 @@ function App() {
     const Icon = TYPE_ICON[o.type] || FileText;
     const isOpen = expandedId === o.id;
     return (
-      <div key={o.id} className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, marginBottom: 10, overflow: "hidden" }}>
-        <div onClick={() => setExpandedId(isOpen ? null : o.id)} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px", cursor: "pointer" }}>
+      <div key={o.id} className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, overflow: "hidden" }}>
+        <div onClick={() => setExpandedId(isOpen ? null : o.id)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", cursor: "pointer" }}>
           <div style={{ width: 30, height: 30, borderRadius: 5, background: TYPE_COLOR[o.type] + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
             <Icon size={14} color={TYPE_COLOR[o.type]} />
           </div>
@@ -8892,12 +8895,12 @@ function App() {
             )}
             {o.fundingProjectNumber && <div style={{ fontSize: 11, color: TEAL, marginTop: 3 }}>Acknowledgement project: <span className="pa-mono">{o.fundingProjectNumber}</span></div>}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            {o.evidenceStatus === "approved_without_evidence" && <button onClick={(event) => { event.stopPropagation(); requestEvidenceUpload(cvEntries.find((entry) => entry.id === o.cvEntryId) || { id: o.cvEntryId, title: o.title, type: o.type, section: o.cvSection }, o.id); }} disabled={extracting} title="Link evidence to this approved record without creating a duplicate" style={{ background: "#EFF5EF", color: GREEN, border: "1px solid #9CC9AA", borderRadius: 4, padding: "5px 8px", fontSize: 11, cursor: extracting ? "default" : "pointer" }}>Upload evidence</button>}
-            <button onClick={(e) => { e.stopPropagation(); reprocessOutput(o); }} disabled={!!reprocessingId} title="Reprocess classification and review before saving" style={{ background: "none", border: "none", cursor: reprocessingId ? "wait" : "pointer", padding: 2 }}>{reprocessingId === o.id ? <Loader2 size={13} className="pa-spin" /> : <RefreshCw size={13} color={TEAL} />}</button>
-            <button onClick={(e) => { e.stopPropagation(); openEdit(o); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pencil size={13} color="#9AA2AF" /></button>
-            <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(confirmDelete === o.id ? null : o.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={13} color="#9AA2AF" /></button>
-            <ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+          <div aria-label="Record actions" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            {o.evidenceStatus === "approved_without_evidence" && <button onClick={(event) => { event.stopPropagation(); requestEvidenceUpload(cvEntries.find((entry) => entry.id === o.cvEntryId) || { id: o.cvEntryId, title: o.title, type: o.type, section: o.cvSection }, o.id); }} disabled={extracting} aria-label="Upload evidence" title="Link evidence to this approved record without creating a duplicate" style={{ background: "#EFF5EF", color: GREEN, border: "1px solid #9CC9AA", borderRadius: 4, width: 24, height: 24, display: "grid", placeItems: "center", cursor: extracting ? "default" : "pointer" }}><Upload size={13} /></button>}
+            <button onClick={(e) => { e.stopPropagation(); reprocessOutput(o); }} disabled={!!reprocessingId} aria-label="Reprocess record" title="Reprocess classification and review before saving" style={{ background: "none", border: "none", cursor: reprocessingId ? "wait" : "pointer", width: 24, height: 24, display: "grid", placeItems: "center" }}>{reprocessingId === o.id ? <Loader2 size={13} className="pa-spin" /> : <RefreshCw size={13} color={TEAL} />}</button>
+            <button onClick={(e) => { e.stopPropagation(); openEdit(o); }} aria-label="Edit record" title="Edit record" style={{ background: "none", border: "none", cursor: "pointer", width: 24, height: 24, display: "grid", placeItems: "center" }}><Pencil size={13} color="#9AA2AF" /></button>
+            <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(confirmDelete === o.id ? null : o.id); }} aria-label="Delete record" title="Delete record" style={{ background: "none", border: "none", cursor: "pointer", width: 24, height: 24, display: "grid", placeItems: "center" }}><Trash2 size={13} color="#9AA2AF" /></button>
+            <button onClick={(e) => { e.stopPropagation(); setExpandedId(isOpen ? null : o.id); }} aria-label={isOpen ? "Collapse record" : "Expand record"} aria-expanded={isOpen} title={isOpen ? "Collapse details" : "Expand details"} style={{ background: "none", border: "none", cursor: "pointer", width: 24, height: 24, display: "grid", placeItems: "center" }}><ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} /></button>
           </div>
         </div>
         {isOpen && (
@@ -9148,9 +9151,9 @@ function App() {
                     <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type}s</span>
                     <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 480px), 1fr))", gap: 12, alignItems: "start" }}>
-                    {group.pending.map((entry) => renderPendingCvCard(entry))}
-                    {group.items.map((o) => renderOutputCard(o))}
+                  <div className="pa-output-columns">
+                    {group.pending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderPendingCvCard(entry)}</div>)}
+                    {group.items.map((o) => <div key={o.id} className="pa-output-column-item">{renderOutputCard(o)}</div>)}
                   </div>
                 </div>
               ))
