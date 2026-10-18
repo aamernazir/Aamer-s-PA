@@ -5,6 +5,10 @@ function isDocxUpload(file) {
   return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || String(file?.name || "").toLowerCase().endsWith(".docx");
 }
 
+function isPdfUpload(file) {
+  return file?.type === "application/pdf" || String(file?.name || "").toLowerCase().endsWith(".pdf");
+}
+
 async function extractDocxUploadText(file) {
   const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
   const text = String(result.value || "").trim();
@@ -7941,10 +7945,10 @@ function App() {
   }
 
   async function processOneFile(file, cvEntry, onProgress = () => {}) {
-    const supported = isPdfFile(file) || isDocxUpload(file) || file.type.startsWith("image/");
+    const supported = isPdfUpload(file) || isDocxUpload(file) || String(file?.type || "").startsWith("image/");
     if (!supported) return { skipped: true, name: file.name };
     try {
-      const isPdf = isPdfFile(file);
+      const isPdf = isPdfUpload(file);
       const isDocx = isDocxUpload(file);
       onProgress("Reading " + file.name + " locally…");
       // A complete text layer is much faster to send and analyze than an
