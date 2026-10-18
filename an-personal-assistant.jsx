@@ -6820,8 +6820,10 @@ const GlobalStyle = () => (
     input:focus, textarea:focus, select:focus { outline: 2px solid ${TEAL}; outline-offset: 1px; }
     button:focus-visible { outline: 2px solid ${TEAL}; outline-offset: 2px; }
     .pa-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
+    .pa-research-shell { width: 100%; padding: 28px clamp(16px, 2vw, 32px) 80px; }
     .pa-output-columns { column-count: 2; column-gap: 12px; }
     .pa-output-column-item { display: inline-block; width: 100%; break-inside: avoid; margin-bottom: 12px; vertical-align: top; }
+    @media (min-width: 1600px) { .pa-output-columns { column-count: 3; } }
     @media (max-width: 900px) { .pa-output-columns { column-count: 1; } }
     .pa-spin { animation: pa-spin-anim 0.9s linear infinite; }
     @keyframes pa-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -7778,6 +7780,7 @@ function App() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("archive");
+  const [collapsedCategories, setCollapsedCategories] = useState({});
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
   const [otherNyxRecords, setOtherNyxRecords] = useState(null);
 
@@ -8976,7 +8979,7 @@ function App() {
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
       <GlobalStyle />
       <input ref={evidenceInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={uploadEvidenceForCvEntry} onCancel={cancelEvidenceSelection} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 80px" }}>
+      <div className="pa-research-shell">
 
         <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
           <div className="pa-mono" style={{ width: 40, height: 40, border: "1.5px solid " + INK, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: INK, flexShrink: 0 }}>aM²</div>
@@ -9146,15 +9149,16 @@ function App() {
               <EmptyState text="No Research Intelligence records or CV gaps yet." />
             ) : (
               groupedOutputs.map((group) => (
-                <div key={group.type} style={{ marginBottom: 24 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid " + TYPE_COLOR[group.type] }}>
+                <div key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
+                  <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: !previous[group.type] }))} aria-expanded={!collapsedCategories[group.type]} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsedCategories[group.type] ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
                     <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type}s</span>
                     <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
-                  </div>
-                  <div className="pa-output-columns">
+                    <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsedCategories[group.type] ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
+                  </button>
+                  {!collapsedCategories[group.type] && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
                     {group.pending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderPendingCvCard(entry)}</div>)}
                     {group.items.map((o) => <div key={o.id} className="pa-output-column-item">{renderOutputCard(o)}</div>)}
-                  </div>
+                  </div>}
                 </div>
               ))
             )}
