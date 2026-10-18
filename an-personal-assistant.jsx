@@ -6755,6 +6755,7 @@ async function claudeExtractJSON(content) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(120000),
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content }] }),
   });
   const result = await response.json();
@@ -7939,17 +7940,29 @@ function App() {
     return normalized;
   }
 
-  async function processOneFile(file, cvEntry) {
+  async function processOneFile(file, cvEntry, onProgress = () => {}) {
     const supported = isPdfFile(file) || isDocxUpload(file) || file.type.startsWith("image/");
     if (!supported) return { skipped: true, name: file.name };
     try {
       const isPdf = isPdfFile(file);
       const isDocx = isDocxUpload(file);
-      const base64 = isDocx ? null : await fileToBase64(file);
+      onProgress("Reading " + file.name + " locally…");
+      // A complete text layer is much faster to send and analyze than an
+      // embedded PDF. Keep the original PDF route for scans and long papers.
+      let pdfText = "";
+      if (isPdf) {
+        try {
+          pdfText = await extractPdfText(new Uint8Array(await file.arrayBuffer()), { maxPages: 100, maxCharacters: 45001 });
+          if (pdfText.length >= 45001 || pdfText.length < 500) pdfText = "";
+        } catch (error) { pdfText = ""; }
+      }
+      const base64 = (isDocx || pdfText) ? null : await fileToBase64(file);
       const docxText = isDocx ? await extractDocxUploadText(file) : "";
       const content = [
         isDocx
           ? { type: "text", text: "Evidence document text:\n\n" + docxText.slice(0, 120000) }
+          : pdfText
+          ? { type: "text", text: "Full PDF text extracted locally:\n\n" + pdfText }
           : isPdf
           ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
           : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } },
@@ -7969,6 +7982,7 @@ function App() {
             'Respond with ONLY raw JSON, no markdown fences, no preamble. Choose "type" from the allowed classes based on what the evidence proves. For recognition evidence, make title the recognition itself (for example "Highly Cited Paper & Hot Paper Recognition — Web of Science"), not the underlying paper title. Use this shape: {"title":"","type":"","subtype":"","recognitionDetails":"","referencedEntityTitle":"","referencedEntityType":"","referencedEntityDoi":"","recognitionSource":"","venue":"","year":null,"authors":"","authorAffiliations":"","correspondingAuthors":"","isOwnerCorresponding":false,"summary":"","methods":"","keywords":[],"fundingProjectNumber":"","writingStyleNotes":"","rigorNotes":"","depthDiscussionNotes":""}',
         },
       ];
+      onProgress(pdfText ? "Extracting details from the PDF text with AI…" : "Analyzing the full document with AI…");
       const parsed = await claudeExtractJSON(content);
       if (!parsed || ![parsed.title, parsed.summary, parsed.venue, parsed.authors, parsed.recognitionDetails].some((value) => asEvidenceText(value).trim())) {
         throw new Error("The evidence processor returned no usable details. Please retry the file.");
@@ -8217,7 +8231,7 @@ function App() {
     try {
       const duplicateFile = findPreCheckDuplicate(file, data.outputs);
       if (duplicateFile && duplicateFile.id !== target.linkedOutputId) throw new Error(`This file is already linked to "${duplicateFile.title}". Review that record instead of adding a duplicate.`);
-      const result = await processOneFile(file, target);
+      const result = await processOneFile(file, target, (message) => setEvidenceFeedback({ id: target.id, kind: "progress", message }));
       if (result.skipped) throw new Error(result.error || "This file could not be read.");
       const linkedAt = new Date().toISOString();
       const existing = data.outputs.find((output) => output.id === target.linkedOutputId);
@@ -8284,7 +8298,7 @@ function App() {
       }
       seenInBatch.push({ name: files[i].name, size: files[i].size });
       setBatchProgress({ current: i + 1, total: files.length, name: files[i].name });
-      const result = await processOneFile(files[i]);
+      const result = await processOneFile(files[i], null, (message) => setBatchProgress({ current: i + 1, total: files.length, name: files[i].name, message }));
       if (result.skipped) {
         failed.push(result.name);
         failedFiles.push({ file: files[i], name: result.name, error: result.error || "" });
@@ -8985,7 +8999,7 @@ function App() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
               <input ref={fileInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" multiple onChange={handleFileInput} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} disabled={extracting} style={{ display: "flex", alignItems: "center", gap: 6, background: extracting ? "#C7CCD3" : TEAL, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: extracting ? "default" : "pointer" }}>
-                {extracting ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />} {extracting ? (batchProgress ? `Reading ${batchProgress.current} of ${batchProgress.total}…` : "Reading…") : "Upload files (multiple)"}
+                {extracting ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />} {extracting ? (batchProgress ? `Processing ${batchProgress.current} of ${batchProgress.total}…` : "Processing…") : "Upload files (multiple)"}
               </button>
               <button onClick={() => setShowFindPanel(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: GREEN, color: "#fff", border: "none", borderRadius: 4, padding: "9px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}>
                 <Search size={14} /> Find open-access (no download needed)
@@ -9008,7 +9022,7 @@ function App() {
               style={{ border: `2px dashed ${dragActive ? TEAL : "#C7CCD3"}`, borderRadius: 6, padding: "14px", textAlign: "center", marginBottom: 20, background: dragActive ? "#E7EFF5" : "#fff", transition: "background 0.15s, border-color 0.15s" }}
             >
               <div style={{ fontSize: 12.5, color: dragActive ? TEAL : MUTED }}>
-                {extracting ? "Reading dropped files…" : "Or drag and drop multiple files here at once"}
+                {extracting ? (batchProgress?.message || "Processing dropped files…") : "Or drag and drop multiple files here at once"}
               </div>
             </div>
             {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}

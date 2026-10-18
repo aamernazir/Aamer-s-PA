@@ -7,9 +7,9 @@ async function discoverModels(nativeFetch, key) {
   try {
     let pageToken = "";
     const names = [];
-    for (let page = 0; page < 4; page += 1) {
+    for (let page = 0; page < 2; page += 1) {
       const url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=" + encodeURIComponent(key) + (pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : "");
-      const response = await nativeFetch(url);
+      const response = await nativeFetch(url, { signal: AbortSignal.timeout(10000) });
       if (!response.ok) break;
       const json = await response.json();
       for (const model of json.models || []) {
@@ -87,10 +87,14 @@ export function installAiFallback(nativeFetch) {
     const errors = [];
     if (needsWebSearch) return nativeFetch(input, init);
     const models = await discoverModels(nativeFetch, geminiKey);
-    for (const model of models) {
+    // One fast model and one distinct fallback keep an unavailable model from
+    // holding the upload spinner through every model returned by discovery.
+    const selectedModels = init.signal ? [...new Set([models.find((name) => /flash-lite/i.test(name)), models.find((name) => /flash(?!-lite)/i.test(name)), models[0]].filter(Boolean))].slice(0, 2) : models;
+    for (const model of selectedModels) {
+      if (init.signal?.aborted) throw new Error("AI processing exceeded two minutes. Please retry the file.");
       try {
         const response = await nativeFetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(geminiKey), {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody(body)),
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody(body)), signal: init.signal,
         });
         const result = await response.json();
         const answer = (result.candidates || []).flatMap((candidate) => candidate.content?.parts || []).map((part) => part.text || "").join(" ");
@@ -103,7 +107,7 @@ export function installAiFallback(nativeFetch) {
         if (response.status === 429) break;
         if (response.status === 401 || response.status === 403) break;
         if (response.status >= 500) await new Promise((resolve) => setTimeout(resolve, 800));
-      } catch (error) { errors.push(model + ": " + String(error.message).slice(0, 140)); }
+      } catch (error) { if (init.signal?.aborted) throw new Error("AI processing exceeded two minutes. Please retry the file."); errors.push(model + ": " + String(error.message).slice(0, 140)); }
     }
 
     // OpenRouter is optional and configured once. Never interrupt normal use
@@ -111,12 +115,12 @@ export function installAiFallback(nativeFetch) {
     const openRouterKey = localStorage.getItem(RK);
     if (openRouterKey) {
       try {
-        const response = await nativeFetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + openRouterKey }, body: JSON.stringify(openRouterBody(body)) });
+        const response = await nativeFetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + openRouterKey }, body: JSON.stringify(openRouterBody(body)), signal: init.signal });
         const result = await response.json();
         const answer = result.choices?.[0]?.message?.content;
         if (!response.ok || result.error) throw new Error(result.error?.message || ("HTTP " + response.status));
         if (answer?.trim()) return anthropicLikeResponse(answer);
-      } catch (error) { errors.push("OpenRouter: " + error.message); }
+      } catch (error) { if (init.signal?.aborted) throw new Error("AI processing exceeded two minutes. Please retry the file."); errors.push("OpenRouter: " + error.message); }
     }
 
     throw new Error("Nyx AI could not process this item. Check the Gemini API key, model access, or quota, then retry. " + (errors[0] || "No available model").slice(0, 170));
