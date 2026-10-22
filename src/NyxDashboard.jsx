@@ -154,14 +154,21 @@ function activeProducts(projects) {
 
 function affiliationCountries(outputs, period) {
   const tally = new Map();
-  const aliases = { "ksa": "Saudi Arabia", "kingdom of saudi arabia": "Saudi Arabia", "united states of america": "United States", "usa": "United States", "uk": "United Kingdom", "uae": "United Arab Emirates" };
-  const canonical = (value) => {
-    const key = String(value || "").trim().toLowerCase().replace(/^the\\s+/, "").replace(/[.]+$/, "");
-    if (!key) return null;
-    const alias = aliases[key];
-    if (alias) return alias;
-    const matched = Object.keys(COUNTRY_POINTS).find((country) => country === key);
-    return matched ? matched.replace(/\\b\\w/g, (letter) => letter.toUpperCase()) : null;
+  const countryNames = Object.keys(COUNTRY_POINTS);
+  const aliases = { "ksa": "saudi arabia", "kingdom of saudi arabia": "saudi arabia", "united states of america": "united states", "usa": "united states", "uk": "united kingdom", "uae": "united arab emirates" };
+  const titleCase = (name) => name.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const namesByLength = [...countryNames, ...Object.keys(aliases)].sort((a, b) => b.length - a.length);
+  const countriesIn = (value) => {
+    const text = String(value || "").toLowerCase().replace(/[’']/g, "'");
+    const found = new Set();
+    namesByLength.forEach((name) => {
+      const pattern = name.replace(/ /g, "\\s+");
+      if (new RegExp("(^|[^\\p{L}])" + pattern + "($|[^\\p{L}])", "iu").test(text)) {
+        const canonical = aliases[name] || name;
+        found.add(titleCase(canonical));
+      }
+    });
+    return found;
   };
   outputs.filter((output) => period === "career" || !output?.year || yearInPeriod(output?.year, period)).forEach((output) => {
     const structured = Array.isArray(output?.coauthorAffiliations) ? output.coauthorAffiliations : [];
@@ -174,8 +181,10 @@ function affiliationCountries(outputs, period) {
       // Never count the dashboard owner's own affiliations as international co-author locations.
       if (/\\baamer\\s+nazir\\b/i.test(author)) return;
       const explicit = typeof affiliation === "string" ? "" : affiliation?.country;
-      const country = canonical(explicit) || String(text).split(",").map((part) => canonical(part)).find(Boolean);
-      if (country && country !== "Saudi Arabia") countriesForOutput.add(country);
+      const detected = new Set([...countriesIn(explicit), ...countriesIn(text)]);
+      detected.forEach((country) => {
+        if (country !== "Saudi Arabia") countriesForOutput.add(country);
+      });
     });
     countriesForOutput.forEach((country) => tally.set(country, (tally.get(country) || 0) + 1));
   });
