@@ -1,5 +1,6 @@
 import { extractPdfText } from "./src/pdf-text.js";
 import { cvEntryKey, pendingCvEntries as findPendingCvEntries } from "./src/cv-matching.js";
+import { createCvDocx } from "./src/cv-docx.js";
 
 function isDocxUpload(file) {
   return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || String(file?.name || "").toLowerCase().endsWith(".docx");
@@ -7813,6 +7814,9 @@ function App() {
   const [evidenceFeedback, setEvidenceFeedback] = useState(null);
   const [confirmRemoveCvKey, setConfirmRemoveCvKey] = useState(null);
   const [importingCv, setImportingCv] = useState(false);
+  const [editingCvText, setEditingCvText] = useState(false);
+  const [cvDraftText, setCvDraftText] = useState("");
+  const [exportingCv, setExportingCv] = useState(false);
 
   const [expandedId, setExpandedId] = useState(null);
   const [reprocessingId, setReprocessingId] = useState(null);
@@ -8140,6 +8144,10 @@ function App() {
   const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
   const dismissedCvEntries = Array.isArray(data.cvRegistry?.dismissedEntries) ? data.cvRegistry.dismissedEntries : [];
   const pendingCvEntries = otherNyxRecords === null ? [] : findPendingCvEntries(cvEntries, [data.outputs, otherNyxRecords], dismissedCvEntries);
+  const cvSourceText = String(data.cvRegistry?.sourceText || "");
+  const cvSourceLines = cvSourceText.split(/\r?\n/);
+  const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
+  const firstCvLine = cvSourceLines.findIndex((line) => line.trim());
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
   const pendingCvByType = pendingCvEntries.reduce((groups, entry) => {
@@ -8147,6 +8155,37 @@ function App() {
     (groups[type] ||= []).push(entry);
     return groups;
   }, {});
+
+  function saveCvText() {
+    const sourceText = cvDraftText.trim();
+    if (!sourceText) { setExtractError("The CV cannot be empty."); return; }
+    const entries = parseCvEntries(sourceText);
+    if (!entries.length) { setExtractError("Nyx could not identify CV entries. Keep the original section headings and lists, then try again."); return; }
+    setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, sourceText: sourceText.slice(0, 750000), entries, parserVersion: CV_PARSER_VERSION, editedAt: new Date().toISOString() } }));
+    setEditingCvText(false);
+    setExtractError("");
+    setSyncMessage("CV changes saved. The pending-evidence comparison has been refreshed.");
+  }
+
+  async function exportCvAsWord() {
+    const sourceText = String(data.cvRegistry?.sourceText || "");
+    if (!sourceText.trim()) return;
+    setExportingCv(true);
+    setExtractError("");
+    try {
+      const blob = await createCvDocx(sourceText, cvEntries.map((entry) => entry.section));
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const baseName = String(data.cvRegistry?.sourceFile || "Aamer_Nazir_CV").replace(/\.docx$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
+      anchor.href = url;
+      anchor.download = `${baseName || "Aamer_Nazir_CV"}_Nyx.docx`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setSyncMessage("Word CV exported from the current CV master text.");
+    } catch (error) {
+      setExtractError(error?.message || "Could not create the Word CV.");
+    } finally { setExportingCv(false); }
+  }
 
   function renderPendingCvCard(entry) {
     const key = cvEntryKey(entry);
@@ -8983,7 +9022,7 @@ function App() {
 
   function renderResearchTabs() {
     return <div className="pa-research-nav">
-      {[["archive", "Research records", FileText], ["cv-evidence", "CV master", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
+      {[["archive", "Research records", FileText], ["cv-evidence", "Career CV", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
         <button key={id} onClick={() => setTab(id)} style={{ display: "flex", alignItems: "center", gap: 5, background: tab === id ? INK : "#fff", color: tab === id ? "#fff" : INK, border: "1px solid " + (tab === id ? INK : "#C7CCD3"), borderRadius: 20, padding: "6px 10px", fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}>
           <Icon size={12} /> {label}
         </button>
@@ -9011,14 +9050,21 @@ function App() {
             <input ref={cvInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={importCv} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "18px 20px", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>CV master record</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>The CV is used only to compare against Research Intelligence. Any CV entry not yet in Research Intelligence appears directly under its matching research-record category as <strong>Pending evidence</strong>.</div></div>
-                <button onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ display: "flex", alignItems: "center", gap: 6, background: importingCv ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: importingCv ? "default" : "pointer", flexShrink: 0 }}>{importingCv ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />}{importingCv ? "Importing CV…" : data.cvRegistry ? "Refresh CV master list" : "Import CV Word file"}</button>
+                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>Career CV</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>Keep the complete CV here in its original section order. Research records provide linked evidence and analytics; the CV remains the source for job applications and Word exports.</div></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}><button onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ display: "flex", alignItems: "center", gap: 6, background: importingCv ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: importingCv ? "default" : "pointer", flexShrink: 0 }}>{importingCv ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />}{importingCv ? "Importing CV…" : data.cvRegistry ? "Replace CV Word file" : "Import CV Word file"}</button><button onClick={exportCvAsWord} disabled={!data.cvRegistry?.sourceText || exportingCv || editingCvText} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: data.cvRegistry?.sourceText ? TEAL : MUTED, border: "1px solid #C7CCD3", borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: !data.cvRegistry?.sourceText || exportingCv || editingCvText ? "default" : "pointer", flexShrink: 0 }}>{exportingCv ? <Loader2 size={14} className="pa-spin" /> : <Download size={14} />}{exportingCv ? "Preparing Word CV…" : "Export Word CV"}</button></div>
               </div>
               {data.cvRegistry && <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #EAECF0", fontSize: 12, color: MUTED }}>Master source: <strong style={{ color: INK }}>{data.cvRegistry.sourceFile}</strong> · {cvEntries.length} CV entries retained · {pendingCvEntries.length} pending evidence · {dismissedCvEntries.length} removed from queue</div>}
             </div>
             {extractError && <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{extractError}</div>}
             {syncMessage && <div style={{ background: "#EFF5EF", border: "1px solid " + GREEN, color: GREEN, padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 16 }}>{syncMessage}</div>}
-            {!data.cvRegistry ? <EmptyState text="Import the CV Word file once. Nyx will compare it with Research Intelligence and place missing entries in their matching record categories." /> : <div className="pa-card" style={{ background: pendingCvEntries.length ? "#FFFDF8" : "#EFF5EF", border: `1px solid ${pendingCvEntries.length ? "#E5C97A" : GREEN}`, borderRadius: 6, padding: "16px 18px", fontSize: 13, color: pendingCvEntries.length ? "#6B5015" : GREEN }}>{otherNyxRecords === null ? "Checking other Nyx modules for existing entries…" : pendingCvEntries.length ? `${pendingCvEntries.length} CV entries still need a decision. Open Research records to approve them, upload evidence, or remove them from the queue.` : "No CV entries remain in the pending queue."}</div>}
+            {!data.cvRegistry ? <EmptyState text="Import your CV Word file here. Nyx will keep its full text and section order, show the complete career record, and let you export it as a Word document." /> : <div className="pa-card" style={{ background: pendingCvEntries.length ? "#FFFDF8" : "#EFF5EF", border: `1px solid ${pendingCvEntries.length ? "#E5C97A" : GREEN}`, borderRadius: 6, padding: "16px 18px", fontSize: 13, color: pendingCvEntries.length ? "#6B5015" : GREEN }}>{otherNyxRecords === null ? "Checking Nyx modules for entries already represented…" : pendingCvEntries.length ? `${pendingCvEntries.length} CV entries are not yet represented in Nyx. Open Research records to approve them, upload evidence, or remove them from the queue.` : "All parsed CV entries are represented in Nyx or have already been reviewed."}</div>}
+            {data.cvRegistry?.sourceText && <section className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "18px 20px", marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", paddingBottom: 12, borderBottom: "1px solid #EAECF0", marginBottom: 15 }}>
+                <div><h3 className="pa-display" style={{ color: INK, fontSize: 18, margin: 0 }}>CV document</h3><div style={{ color: MUTED, fontSize: 11.5, marginTop: 4 }}>Full imported text · section order retained · {cvEntries.length} parsed entries</div></div>
+                {!editingCvText ? <button onClick={() => { setCvDraftText(cvSourceText); setEditingCvText(true); setExtractError(""); }} style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "7px 10px", cursor: "pointer" }}><Pencil size={13} />Edit CV text</button> : <div style={{ display: "flex", gap: 7 }}><button onClick={saveCvText} style={{ background: GREEN, color: "#fff", border: 0, borderRadius: 4, padding: "7px 11px", cursor: "pointer" }}>Save changes</button><button onClick={() => { setEditingCvText(false); setExtractError(""); }} style={{ background: "#fff", color: MUTED, border: "1px solid #C7CCD3", borderRadius: 4, padding: "7px 11px", cursor: "pointer" }}>Cancel</button></div>}
+              </div>
+              {editingCvText ? <textarea value={cvDraftText} onChange={(event) => setCvDraftText(event.target.value)} aria-label="Edit CV text" style={{ width: "100%", minHeight: 560, resize: "vertical", padding: 14, border: "1px solid #C7CCD3", borderRadius: 4, color: INK, font: "13px/1.65 Georgia, serif" }} /> : <div style={{ maxWidth: 920, margin: "0 auto", padding: "10px clamp(8px, 3vw, 36px)", color: INK, fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 13, lineHeight: 1.55 }}>{cvSourceLines.map((line, index) => { const value = line.trim(); if (!value) return <div key={index} style={{ height: 7 }} />; const normalized = value.replace(/[:.]+$/, "").toLowerCase(); const isHeading = cvSectionNames.has(normalized) || (value.length < 80 && /^[A-Z][A-Z0-9 &/(),.-]{3,}$/.test(value)); return <div key={index} style={index === firstCvLine ? { color: INK, fontSize: 22, fontWeight: 700, margin: "0 0 11px", lineHeight: 1.2 } : isHeading ? { color: TEAL, fontSize: 14, fontWeight: 700, margin: "14px 0 5px", paddingBottom: 3, borderBottom: "1px solid #DCE3E8" } : /^\s*(?:\d+[.)]|[-•])\s/.test(line) ? { paddingLeft: 14, marginBottom: 2 } : { marginBottom: 2 }}>{value}</div>; })}</div>}
+            </section>}
             {dismissedCvEntries.length > 0 && <div style={{ marginTop: 16 }}><h3 style={{ color: INK, fontSize: 15, marginBottom: 8 }}>Removed from pending queue</h3><div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>These entries remain in the CV master source and can be restored here.</div>{dismissedCvEntries.map((entry) => <div key={entry.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "#fff", border: "1px solid " + LINE, borderRadius: 5, padding: "9px 12px", marginBottom: 7 }}><span style={{ fontSize: 12, color: INK }}>{entry.title}</span><button onClick={() => restorePendingCvEntry(entry.key)} style={{ background: "#fff", color: TEAL, border: "1px solid #B9D8E8", borderRadius: 4, padding: "6px 9px", cursor: "pointer", flexShrink: 0 }}>Restore</button></div>)}</div>}
           </div>
         )}
