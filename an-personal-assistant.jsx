@@ -6725,10 +6725,10 @@ const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", G
 const RED = "#B3392C";
 
 const OUTPUT_TYPES = [
-  "Journal Paper", "Patent", "Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service", "Book Chapter", "Report",
+  "Project / Grant Evidence", "Journal Paper", "Patent", "Conference Paper", "Conference Presentation", "Conference Participation", "Conference Committee Service", "Book Chapter", "Report",
   "Professional Recognition / Ranking", "Award / Certificate",
   "Editorial / Reviewer Service", "Conference / Professional Service",
-  "Project / Grant Evidence", "Teaching / Supervision Evidence",
+  "Teaching / Supervision Evidence",
   "Membership / Professional Appointment", "Media / Outreach",
   "Other"
 ];
@@ -7789,6 +7789,7 @@ function App() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("archive");
   const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [collapsedCvSections, setCollapsedCvSections] = useState({ projects: true });
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
   const [otherNyxRecords, setOtherNyxRecords] = useState(null);
 
@@ -8148,6 +8149,7 @@ function App() {
   const cvSourceText = String(data.cvRegistry?.sourceText || "");
   const cvSummaryLines = extractCvSection(cvSourceText, "SUMMARY");
   const cvEducationLines = extractCvSection(cvSourceText, "EDUCATION");
+  const cvProjectLines = extractCvSection(cvSourceText, "RESEARCH GRANTS AND FUNDING");
   const cvSourceLines = cvSourceText.split(/\r?\n/);
   const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
   const firstCvLine = cvSourceLines.findIndex((line) => line.trim());
@@ -8896,6 +8898,8 @@ function App() {
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
     pending: pendingCvByType[type] || [],
   })).filter((g) => g.items.length > 0 || g.pending.length > 0);
+  const projectEvidenceGroup = groupedOutputs.find((group) => group.type === "Project / Grant Evidence") || null;
+  const nonProjectOutputGroups = groupedOutputs.filter((group) => group.type !== "Project / Grant Evidence");
 
   const journalPapers = data.outputs.filter((o) => o.type === "Journal Paper");
   const qRankCounts = Q_RANKS.reduce((acc, q) => ({ ...acc, [q]: journalPapers.filter((p) => p.qRank === q).length }), {});
@@ -9033,6 +9037,44 @@ function App() {
     </div>;
   }
 
+  function renderOutputGroup(group) {
+    return <div key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
+      <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: !previous[group.type] }))} aria-expanded={!collapsedCategories[group.type]} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsedCategories[group.type] ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
+        <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type === "Journal Paper" ? "Papers" : `${group.type}s`}</span>
+        <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
+        <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsedCategories[group.type] ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
+      </button>
+      {!collapsedCategories[group.type] && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
+        {group.pending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderPendingCvCard(entry)}</div>)}
+        {group.items.map((output) => <div key={output.id} className="pa-output-column-item">{renderOutputCard(output)}</div>)}
+      </div>}
+    </div>;
+  }
+
+  function renderImportedCvSection(id, title, lines, empty, extraContent = null) {
+    const collapsed = Boolean(collapsedCvSections[id]);
+    return <section key={id} style={{ marginBottom: 8 }}>
+      <button type="button" onClick={() => setCollapsedCvSections((previous) => ({ ...previous, [id]: !Boolean(previous[id]) }))} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 3px", border: 0, borderBottom: `2px solid ${TEAL}`, background: "transparent", textAlign: "left", cursor: "pointer" }}>
+        <span className="pa-display" style={{ color: INK, fontSize: 19, fontWeight: 700 }}>{title}</span>
+        <span className="pa-mono" style={{ color: MUTED, fontSize: 10.5 }}>{lines.length ? `${lines.length} CV lines` : "CV section"}</span>
+        <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
+      </button>
+      {!collapsed && <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderTop: 0, borderRadius: "0 0 6px 6px", padding: "12px 16px", color: INK, fontSize: 12.5, lineHeight: 1.5 }}>
+        {lines.length ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
+          const cells = line.split("\t").map((part) => part.trim()).filter(Boolean);
+          const parts = cells.length > 1 ? cells : [line];
+          const colonAt = parts.length === 1 ? parts[0].indexOf(":") : -1;
+          const subheading = id === "projects" && ["research grants", "undergraduate research projects"].includes(parts[0].trim().toLowerCase());
+          if (subheading) return <h3 key={`${id}-${index}`} className="pa-display" style={{ color: TEAL, fontSize: 15, margin: "9px 0 3px" }}>{parts[0]}</h3>;
+          return <div key={`${id}-${index}`} style={{ display: "grid", gridTemplateColumns: parts.length > 1 ? "minmax(110px, 0.8fr) minmax(0, 2fr)" : "1fr", gap: "4px 10px", paddingBottom: 4, borderBottom: "1px solid #EEF0F2" }}>
+            {parts.length > 1 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0]}</strong><span>{parts.slice(1).join(" · ")}</span></> : colonAt > 0 && colonAt < 45 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0].slice(0, colonAt + 1)}</strong><span>{parts[0].slice(colonAt + 1).trim()}</span></> : <span>{parts[0]}</span>}
+          </div>;
+        })}</div> : <div style={{ color: MUTED }}>{empty}</div>}
+        {extraContent}
+      </div>}
+    </section>;
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter', sans-serif" }}>
       <GlobalStyle />
@@ -9074,21 +9116,6 @@ function App() {
 
         {tab === "archive" && (
           <div>
-            <section aria-label="CV profile and education" className="pa-research-overview" style={{ marginBottom: 16 }}>
-              {[{ title: "Summary", lines: cvSummaryLines, empty: "Import your CV Word file to show the front-page summary here." }, { title: "Education", lines: cvEducationLines, empty: "Education details will appear here when the CV Word file is imported." }].map((section) => (
-                <article key={section.title} className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderTop: "3px solid " + TEAL, borderRadius: 6, padding: "15px 17px", minWidth: 0 }}>
-                  <h2 className="pa-display" style={{ color: INK, fontSize: 19, margin: "0 0 10px" }}>{section.title}</h2>
-                  {section.lines.length ? <div style={{ display: "grid", gap: 5, color: INK, fontSize: 12.5, lineHeight: 1.5 }}>{section.lines.map((line, index) => {
-                    const cells = line.split("\t").map((part) => part.trim()).filter(Boolean);
-                    const parts = cells.length > 1 ? cells : [line];
-                    const colonAt = parts.length === 1 ? parts[0].indexOf(":") : -1;
-                    return <div key={`${section.title}-${index}`} style={{ display: "grid", gridTemplateColumns: parts.length > 1 ? "minmax(110px, 0.8fr) minmax(0, 2fr)" : "1fr", gap: "4px 10px", paddingBottom: 4, borderBottom: "1px solid #EEF0F2" }}>
-                      {parts.length > 1 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0]}</strong><span>{parts.slice(1).join(" · ")}</span></> : colonAt > 0 && colonAt < 45 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0].slice(0, colonAt + 1)}</strong><span>{parts[0].slice(colonAt + 1).trim()}</span></> : <span>{parts[0]}</span>}
-                    </div>;
-                  })}</div> : <div style={{ color: MUTED, fontSize: 12.5 }}>{section.empty}</div>}
-                </article>
-              ))}
-            </section>
             <div className="pa-research-overview">
             <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 16px" }}>
             {renderResearchTabs()}
@@ -9223,22 +9250,14 @@ function App() {
             </div>
             </div>
 
-            {groupedOutputs.length === 0 ? (
+            {renderImportedCvSection("summary", "Summary", cvSummaryLines, "Import your CV Word file to show the front-page summary here.")}
+            {renderImportedCvSection("education", "Education", cvEducationLines, "Education details will appear here when the CV Word file is imported.")}
+            {renderImportedCvSection("projects", "Projects", cvProjectLines, "Project and grant details will appear here when the CV Word file is imported.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null)}
+
+            {nonProjectOutputGroups.length === 0 ? (
               <EmptyState text="No CV records or CV gaps yet." />
             ) : (
-              groupedOutputs.map((group) => (
-                <div key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
-                  <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: !previous[group.type] }))} aria-expanded={!collapsedCategories[group.type]} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsedCategories[group.type] ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
-                    <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type}s</span>
-                    <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
-                    <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsedCategories[group.type] ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
-                  </button>
-                  {!collapsedCategories[group.type] && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
-                    {group.pending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderPendingCvCard(entry)}</div>)}
-                    {group.items.map((o) => <div key={o.id} className="pa-output-column-item">{renderOutputCard(o)}</div>)}
-                  </div>}
-                </div>
-              ))
+              nonProjectOutputGroups.map(renderOutputGroup)
             )}
           </div>
         )}

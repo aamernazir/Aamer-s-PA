@@ -1,6 +1,7 @@
 const NEXT_CV_SECTIONS = {
   summary: ["education"],
   education: ["research grants and funding", "research grants", "work experience", "professional experience", "research articles", "journal articles", "publications"],
+  "research grants and funding": ["research interests", "journal articles", "publications", "community service", "work experience"],
 };
 
 function normalizeHeading(value) {
