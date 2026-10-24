@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { hasProjectNumber, projectIsActiveForWorkload } from "./project-workload.js";
 import { pendingCvEntries } from "./cv-matching.js";
+import { apsQualityReviewItems, buildCvLiveData, countCvPublications } from "./cv-live.js";
 import worldMap from "./assets/nyx-world-map.jpg";
 import "./nyx-dashboard.css";
 
@@ -44,6 +45,7 @@ const STORAGE_KEYS = {
   skills: "am2r-research-intelligence-skills-v1",
   mailbox: "an2r-mailbox-archive-v1",
   mailboxScan: "an2r-gmail-deadlines-v1",
+  funding: "am2r-funding-pipeline-v1",
 };
 
 // The CV is Nyx's authoritative career record. Live module records link
@@ -413,15 +415,23 @@ function attentionFromRaw(raw, activeProjects, dataWarnings) {
   const attention = [];
   if (overdue.length) attention.push({ label: plural(overdue.length, "active work package") + " overdue", detail: overdue[0].project?.title || "Open Project Dashboard", moduleId: "projects", tone: "warn" });
   if (apsInbox) attention.push({ label: plural(apsInbox, "APS evidence item") + " awaiting review", detail: `${apsCycle} Evidence Inbox`, moduleId: "aps", tone: "info" });
+  apsQualityReviewItems(raw.aps).forEach((item) => attention.push({ label: item.label, detail: item.detail, moduleId: "aps", route: item.section, tone: "warn" }));
   if (deadlineItems.length) attention.push({ label: "Mailbox deadline needs review", detail: deadlineItems[0].subject || "Open Mailbox", moduleId: "mailbox", tone: "warn" });
-  if (cvPending.length) attention.push({ label: "CV evidence coverage needs review", detail: `${cvPending.length} CV entries awaiting evidence`, moduleId: "archive", route: "cv-evidence", tone: "info" });
+  const pendingBySection = cvPending.reduce((sections, entry) => {
+    const section = String(entry.section || "CV section").trim() || "CV section";
+    sections.set(section, (sections.get(section) || 0) + 1);
+    return sections;
+  }, new Map());
+  [...pendingBySection.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).forEach(([section, count]) => {
+    attention.push({ label: `${section}: CV records need review`, detail: `${plural(count, "CV entry")} not yet linked to a live Nyx record`, moduleId: "archive", route: "cv-evidence", tone: "info" });
+  });
   if (dataWarnings.length) attention.push({ label: plural(dataWarnings.length, "CV data issue") + " to reconcile", detail: "Verify conflicting baseline records", moduleId: "archive", tone: "warn" });
   return attention;
 }
 
 export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const [period, setPeriod] = useState("2026");
-  const [raw, setRaw] = useState({ projects: [], aps: null, archive: null, impact: null, skills: null, mailbox: null, mailboxScan: null });
+  const [raw, setRaw] = useState({ projects: [], aps: null, archive: null, impact: null, skills: null, mailbox: null, mailboxScan: null, funding: [] });
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [activeNav, setActiveNav] = useState("home");
@@ -447,7 +457,14 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const activeFundedProjects = useMemo(() => activeProjects.filter(hasProjectNumber), [activeProjects]);
   const activeNotFundedProjects = useMemo(() => activeProjects.filter((project) => !hasProjectNumber(project)), [activeProjects]);
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
-  const currentYearJournalOutputs = outputs.filter((item) => item?.type === "Journal Paper" && Number(item?.year) === 2026).length;
+  const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
+  const cvLive = buildCvLiveData({ projects, aps: raw.aps, outputs, skills: raw.skills, fundingOpportunities: raw.funding });
+  const cvPaperCount = countCvPublications(cvEntries, outputs, cvLive.sections.Papers);
+  const cvContributionCount = cvLive.apsEntries.length + cvLive.counts.professionalDevelopment;
+  const cvCurrentYearPapers = outputs.filter((item) => item?.type === "Journal Paper" && Number(item?.year) === Number(new Date().getFullYear())).length;
+  const latestCitationSnapshots = [...(Array.isArray(raw.impact?.snapshots) ? raw.impact.snapshots : [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const latestCitationsBySource = Object.fromEntries([...new Set(latestCitationSnapshots.map((snapshot) => snapshot.source).filter(Boolean))].map((source) => [source, latestCitationSnapshots.find((snapshot) => snapshot.source === source)]));
+  const citationLabel = ["Pure", "Google Scholar", "Scopus", "ORCID"].filter((source) => latestCitationsBySource[source]?.citations != null).map((source) => `${source === "Google Scholar" ? "Scholar" : source} ${Number(latestCitationsBySource[source].citations).toLocaleString()}`).join(" · ");
   // A shorter linked-record list is evidence coverage information, not a CV
   // data error. The CV remains complete until the user explicitly changes it.
   const dataWarnings = [];
@@ -457,7 +474,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const products = activeProducts(activeProjects);
   const productLabel = products.slice(0, 3).map((product) => product.shortLabel || product.name).join(" · ");
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
-  function openModule(moduleId, route) { if (route && moduleId === "archive") sessionStorage.setItem("nyx:archive-route", route); setActiveNav(moduleId); onOpenModule(moduleId); }
+  function openModule(moduleId, route) { if (route && moduleId === "archive") sessionStorage.setItem("nyx:archive-route", route); if (route && moduleId === "aps") sessionStorage.setItem("nyx:aps-section", route); setActiveNav(moduleId); onOpenModule(moduleId); }
   async function askNyx() {
     const question = chatInput.trim();
     if (!question || chatBusy) return;
@@ -488,7 +505,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
       <header className="nyx-topbar"><div><h1>Welcome back, Aamer.</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><strong>{displayDate}</strong><div><span className={loading ? "is-loading" : "nyx-live-dot"} />{loading ? "Updating data" : `Data updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
       <section style={{ marginBottom: 16 }}><button onClick={() => setChatOpen(true)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", background: "#fff", border: "1px solid #C7D2DC", borderRadius: 8, color: BLUE, cursor: "pointer", textAlign: "left" }}><MessageCircle size={18} /><span style={{ flex: 1, color: "#536273" }}>Ask Nyx about your projects, APS, publications, impact, skills, or mailbox…</span><strong>Ask Nyx</strong></button></section>
       <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
-      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>64</strong><small>{currentYearJournalOutputs ? `${currentYearJournalOutputs} archived (2026)` : "6 listed in 2026"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Active projects</span><strong>{activeProjects.length}</strong><small>{activeProjects.length ? `${activeFundedProjects.length} funded · ${activeNotFundedProjects.length} not-funded` : "No active project records"}</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Users size={29} /><span>Project leads</span><strong>{projectLeads.length}</strong><small>Students & postdocs only</small></article><article className="nyx-kpi nyx-kpi-alert"><Package size={28} /><span>Products & TRL</span><strong>{products.length}</strong><small title={products.map((product) => product.name).join("; ")}>{products.length ? `${productLabel}${products.length > 3 ? ` +${products.length - 3}` : ""} · ${products.filter((product) => product.trl).length} TRL` : "No active product candidates"}</small></article></section>
+      <section className="nyx-kpi-grid" aria-label="Career snapshot"><article className="nyx-kpi nyx-kpi-primary"><FileText size={28} /><span>Journal articles</span><strong>{cvPaperCount}</strong><small>{cvCurrentYearPapers ? `${cvCurrentYearPapers} archived (${new Date().getFullYear()})` : "CV master and archive total"}</small></article><article className="nyx-kpi nyx-project-kpi"><FolderKanban size={28} /><span>Projects</span><strong>{cvLive.counts.projects}</strong><small>{activeProjects.length} active · {cvLive.counts.completedProjects} completed · live-linked</small><div className="nyx-project-progress" aria-label={`${activeProgress}% average active-project work package progress`}><i style={{ width: `${activeProgress}%` }} /></div></article><article className="nyx-kpi nyx-lead-kpi"><Award size={29} /><span>CV achievements</span><strong>{cvLive.counts.achievements}</strong><small>{cvLive.counts.completedProjects} completed · linked live</small></article><article className="nyx-kpi nyx-kpi-alert"><Users size={28} /><span>CV contributions</span><strong>{cvContributionCount}</strong><small>{cvLive.counts.conferences} conferences · {cvLive.counts.community} community · {cvLive.counts.teaching} teaching · {cvLive.counts.mentoring} mentoring</small></article><article className="nyx-kpi nyx-citation-kpi"><TrendingUp size={28} /><span>Citations</span><strong>{latestCitationSnapshots[0]?.citations != null ? Number(latestCitationSnapshots[0].citations).toLocaleString() : "—"}</strong><small title={citationLabel}>{citationLabel || "No citation snapshots recorded"}</small></article></section>
       <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><h2>Needs attention today <span className="nyx-attention-count">{attentionItems.length}</span></h2></div><button onClick={() => attentionItems[0] && openModule(attentionItems[0].moduleId, attentionItems[0].route)}>View all <ChevronRight size={16} /></button></header><div className="nyx-attention-heading"><span>Item</span><span>Type</span><span>Module</span><span>Due date</span><span>Status</span><span>Action</span></div><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item, index) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId, item.route)}><i className={`nyx-attention-dot ${item.tone}`} /><strong>{item.label}</strong><small>{item.detail}</small><span>{item.moduleId === "aps" ? "APS" : item.moduleId === "projects" ? "Project Dashboard" : item.moduleId === "archive" ? "CV" : "Mailbox"}</span><em>{index === 0 ? "Today" : "Upcoming"}</em><StatusPill tone={item.tone === "warn" ? "warn" : "info"}>{item.tone === "warn" ? "Action required" : "In progress"}</StatusPill><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
       <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal papers</span><span><i className="conference" />Conference papers</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} outputs={outputs} /><ResearchProducts products={products} /><footer><TrendingUp size={14} /><span>Publications: CV research records · projects: historical baseline.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
       <section className="nyx-module-pathways"><header><h2>Modules</h2><span>Open a module to review and manage its records.</span></header><div>{modules.map((module) => { const Icon = module.icon; return <button key={module.id} className={`nyx-pathway nyx-pathway-${module.id}`} onClick={() => openModule(module.id)}><Icon size={19} /><span>{module.name}</span><small>Open module</small></button>; })}</div></section>

@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { apsQualityReviewItems, buildCvLiveData, countCvPublications, findCvProjectDuplicates, liveCvApsEntries } from "./cv-live.js";
+
+test("Project Dashboard records become live CV project entries and duplicates collapse", () => {
+  const projects = [
+    { id: "p1", title: "Recycled Polymer Demonstrator", status: "Completed", ownerRole: "PI", projectNumber: "KF-12" },
+    { id: "p2", title: "Recycled Polymer Demonstrator", status: "Completed" },
+    { id: "p3", title: "Cancelled Trial", status: "Cancelled" },
+    { id: "p4", title: "New Materials Study", status: "Active" },
+  ];
+  const live = buildCvLiveData({ projects });
+  assert.equal(live.projects.length, 2);
+  assert.equal(live.projects[0].status, "Completed");
+  assert.equal(live.projects[1].status, "In progress");
+  assert.deepEqual(findCvProjectDuplicates(["Research Grants", "Recycled Polymer Demonstrator — KF-12"], projects).map((item) => item.title), ["New Materials Study"]);
+});
+
+test("APS contributions map to CV subsections and skip projects already listed in Project Dashboard", () => {
+  const aps = {
+    activeCycle: "APS27",
+    cycles: { APS27: {
+      research: { r3Projects: ["Live project", "APS-only interdisciplinary project"], r6Recognitions: ["Research award"], r6Conferences: ["Conference organizer"] },
+      teaching: { t2Advising: ["Advised graduate researchers"] },
+      societal: { s3Outreach: ["Community workshop"] },
+    } },
+  };
+  const entries = liveCvApsEntries(aps, [{ title: "Live project" }]);
+  assert.deepEqual(entries.map((entry) => `${entry.section}:${entry.text}`), [
+    "Achievements:Research award",
+    "Conferences:Conference organizer",
+    "Teaching & Supervision:Advised graduate researchers",
+    "Community Engagement:Community workshop",
+    "Projects:APS-only interdisciplinary project",
+  ]);
+});
+
+test("CV summary highlights include achievements and completed projects without mutating source records", () => {
+  const project = { id: "p1", title: "Finished Study", status: "Completed" };
+  const aps = { research: { r6Recognitions: ["Best paper award"] } };
+  const result = buildCvLiveData({ projects: [project], aps, outputs: [{ id: "a1", title: "Teaching prize", type: "Award / Certificate" }] });
+  assert.deepEqual(result.highlights.map((item) => item.text), ["Best paper award", "Teaching prize", "Completed project: Finished Study"]);
+  assert.deepEqual(project, { id: "p1", title: "Finished Study", status: "Completed" });
+});
+
+test("publication totals combine CV master and archive records without counting the same title twice", () => {
+  assert.equal(countCvPublications(
+    [{ title: "A Paper", type: "Journal Paper" }, { title: "A Talk", type: "Conference Presentation" }],
+    [{ title: "A Paper", type: "Journal Paper" }, { title: "B Paper", type: "Journal Paper" }, { title: "A Talk", type: "Conference Presentation" }],
+  ), 2);
+});
+
+test("only awarded strategic funding opportunities appear in the live project section", () => {
+  const result = buildCvLiveData({
+    fundingOpportunities: [
+      { id: "a", title: "Granted research project", funder: "Research Council", program: "Grant", status: "Awarded" },
+      { id: "b", title: "Proposal under review", status: "Submitted" },
+    ],
+    aps: { research: { r1Publications: [{ title: "APS paper", year: 2025 }] } },
+  });
+  assert.deepEqual(result.projects.map((item) => item.title), ["Granted research project"]);
+  assert.equal(result.highlights.some((item) => item.text === "Awarded funding: Granted research project"), true);
+  assert.deepEqual(result.sections.Papers.map((item) => item.text), ["APS paper"]);
+  assert.equal(result.counts.papers, 1);
+});
+
+test("APS attention is section-specific, limited to entered records, and respects ignored quality checks", () => {
+  const aps = { activeCycle: "APS27", cycles: { APS27: {
+    status: "In Progress",
+    ignoredQualityIssues: ["R6_RECOG-period"],
+    research: { r6Recognitions: ["Won award"] },
+    societal: { s3Outreach: ["Organized community workshops for local schools and university partners (2026)"] },
+  } } };
+  const reviews = apsQualityReviewItems(aps);
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].section, "research");
+  assert.match(reviews[0].label, /APS27 research entries need review/);
+  assert.match(reviews[0].detail, /only one short entry/);
+  assert.equal(apsQualityReviewItems({ activeCycle: "APS27", cycles: { APS27: { status: "Submitted", research: { r6Recognitions: ["Won award"] } } } }).length, 0);
+});

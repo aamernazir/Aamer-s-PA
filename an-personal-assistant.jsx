@@ -2,6 +2,7 @@ import { extractPdfText } from "./src/pdf-text.js";
 import { cvEntryKey, pendingCvEntries as findPendingCvEntries } from "./src/cv-matching.js";
 import { createCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
+import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
 
 function isDocxUpload(file) {
   return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || String(file?.name || "").toLowerCase().endsWith(".docx");
@@ -5679,6 +5680,12 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const requestedSection = sessionStorage.getItem("nyx:aps-section");
+    if (["teaching", "research", "societal", "behavior"].includes(requestedSection)) setSection(requestedSection);
+    if (requestedSection) sessionStorage.removeItem("nyx:aps-section");
+  }, []);
+
+  useEffect(() => {
     if (!loaded || !data) return;
     // Persist locally immediately; the storage layer queues cloud synchronization.
     (async () => {
@@ -7792,6 +7799,7 @@ function App() {
   const [collapsedCvSections, setCollapsedCvSections] = useState({ projects: true });
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
   const [otherNyxRecords, setOtherNyxRecords] = useState(null);
+  const [liveCvSources, setLiveCvSources] = useState({ projects: [], aps: null, skills: null, fundingOpportunities: [] });
 
   const [dragActive, setDragActive] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -7879,29 +7887,39 @@ function App() {
     })();
   }, []);
 
-  // CV reconciliation is cross-module: a CV item already represented in the
-  // Project Dashboard or APS is part of Nyx (A), even if it is not duplicated
-  // in the Research Intelligence archive.
+  // CV-linked sections are read from their owning module records. Re-reading
+  // on focus keeps this view current after a module is updated in another tab.
   useEffect(() => {
-    (async () => {
+    const refreshLiveCvSources = async () => {
       try {
-        const results = await Promise.all([
+        const [projectResult, apsResult, skillResult, fundingResult] = await Promise.all([
           window.storage.get(PROJECTS_STORAGE_KEY).catch(() => null),
           window.storage.get("am2r-aps-v1").catch(() => null),
+          window.storage.get("am2r-research-intelligence-skills-v1").catch(() => null),
+          window.storage.get("am2r-funding-pipeline-v1").catch(() => null),
         ]);
-        setOtherNyxRecords(results.flatMap((result) => {
-          if (!result?.value) return [];
-          try {
-            const parsed = JSON.parse(result.value);
-            return Array.isArray(parsed) ? parsed : [parsed];
-          } catch (e) {
-            return [];
-          }
-        }));
+        const parse = (result, fallback) => {
+          if (!result?.value) return fallback;
+          try { return JSON.parse(result.value); } catch { return fallback; }
+        };
+        const projects = parse(projectResult, []);
+        const aps = parse(apsResult, null);
+        const skills = parse(skillResult, null);
+        const fundingOpportunities = parse(fundingResult, []);
+        const nextSources = { projects: Array.isArray(projects) ? projects : [], aps, skills, fundingOpportunities: Array.isArray(fundingOpportunities) ? fundingOpportunities : [] };
+        setLiveCvSources((previous) => JSON.stringify(previous) === JSON.stringify(nextSources) ? previous : nextSources);
+        setOtherNyxRecords([Array.isArray(projects) ? projects : [], aps].filter(Boolean));
       } catch (e) {
         setOtherNyxRecords([]);
       }
-    })();
+    };
+    refreshLiveCvSources();
+    window.addEventListener("focus", refreshLiveCvSources);
+    document.addEventListener("visibilitychange", refreshLiveCvSources);
+    return () => {
+      window.removeEventListener("focus", refreshLiveCvSources);
+      document.removeEventListener("visibilitychange", refreshLiveCvSources);
+    };
   }, []);
 
   // The dashboard can send the user straight to the actionable CV queue.
@@ -8152,6 +8170,8 @@ function App() {
   const cvProjectLines = extractCvSection(cvSourceText, "RESEARCH GRANTS AND FUNDING");
   const cvSourceLines = cvSourceText.split(/\r?\n/);
   const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
+  const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: liveCvSources.fundingOpportunities });
+  const cvLiveProjectGaps = findCvProjectDuplicates(cvProjectLines, liveCvSources.projects);
   const firstCvLine = cvSourceLines.findIndex((line) => line.trim());
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
@@ -9051,16 +9071,17 @@ function App() {
     </div>;
   }
 
-  function renderImportedCvSection(id, title, lines, empty, extraContent = null) {
+  function renderImportedCvSection(id, title, lines, empty, extraContent = null, liveItems = []) {
     const collapsed = Boolean(collapsedCvSections[id]);
+    const sectionCount = lines.length + liveItems.length;
     return <section key={id} style={{ marginBottom: 8 }}>
       <button type="button" onClick={() => setCollapsedCvSections((previous) => ({ ...previous, [id]: !Boolean(previous[id]) }))} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 3px", border: 0, borderBottom: `2px solid ${TEAL}`, background: "transparent", textAlign: "left", cursor: "pointer" }}>
         <span className="pa-display" style={{ color: INK, fontSize: 19, fontWeight: 700 }}>{title}</span>
-        <span className="pa-mono" style={{ color: MUTED, fontSize: 10.5 }}>{lines.length ? `${lines.length} CV lines` : "CV section"}</span>
+        <span className="pa-mono" style={{ color: MUTED, fontSize: 10.5 }}>{sectionCount ? `${sectionCount} ${liveItems.length ? "records" : "CV lines"}${liveItems.length ? ` · ${liveItems.length} live-linked` : ""}` : "CV section"}</span>
         <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
       </button>
       {!collapsed && <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderTop: 0, borderRadius: "0 0 6px 6px", padding: "12px 16px", color: INK, fontSize: 12.5, lineHeight: 1.5 }}>
-        {lines.length ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
+        {sectionCount ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
           const cells = line.split("\t").map((part) => part.trim()).filter(Boolean);
           const parts = cells.length > 1 ? cells : [line];
           const colonAt = parts.length === 1 ? parts[0].indexOf(":") : -1;
@@ -9069,7 +9090,10 @@ function App() {
           return <div key={`${id}-${index}`} style={{ display: "grid", gridTemplateColumns: parts.length > 1 ? "minmax(110px, 0.8fr) minmax(0, 2fr)" : "1fr", gap: "4px 10px", paddingBottom: 4, borderBottom: "1px solid #EEF0F2" }}>
             {parts.length > 1 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0]}</strong><span>{parts.slice(1).join(" · ")}</span></> : colonAt > 0 && colonAt < 45 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0].slice(0, colonAt + 1)}</strong><span>{parts[0].slice(colonAt + 1).trim()}</span></> : <span>{parts[0]}</span>}
           </div>;
-        })}</div> : <div style={{ color: MUTED }}>{empty}</div>}
+        })}{liveItems.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(140px, 0.8fr) minmax(0, 2fr)", gap: "4px 10px", alignItems: "start", padding: "7px 0", borderBottom: "1px solid #EEF0F2" }}>
+          <strong style={{ color: TEAL, fontWeight: 600 }}>{item.role ? `${item.role} · ` : ""}{item.status || item.source}</strong>
+          <span>{item.text || item.title}{item.year ? <span style={{ color: MUTED }}> · {item.year}</span> : null}{item.program ? <span style={{ color: MUTED }}> · {item.program}</span> : null}{item.projectNumber ? <span style={{ color: MUTED }}> · Project {item.projectNumber}</span> : null}{item.duration ? <span style={{ color: MUTED }}> · {item.duration}</span> : null}<span style={{ display: "block", color: "#8A929E", fontSize: 10.5 }}>{item.source}</span></span>
+        </div>)}</div> : <div style={{ color: MUTED }}>{empty}</div>}
         {extraContent}
       </div>}
     </section>;
@@ -9250,9 +9274,16 @@ function App() {
             </div>
             </div>
 
-            {renderImportedCvSection("summary", "Summary", cvSummaryLines, "Import your CV Word file to show the front-page summary here.")}
+            {renderImportedCvSection("summary", "Summary", cvSummaryLines, "Import your CV Word file to show the front-page summary here.", null, liveCvData.highlights.map((item) => ({ ...item, status: "Live highlight" })))}
             {renderImportedCvSection("education", "Education", cvEducationLines, "Education details will appear here when the CV Word file is imported.")}
-            {renderImportedCvSection("projects", "Projects", cvProjectLines, "Project and grant details will appear here when the CV Word file is imported.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null)}
+            {renderImportedCvSection("projects", "Projects", cvProjectLines, "Project and grant details will appear here when the CV Word file is imported or added in Project Dashboard.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null, cvLiveProjectGaps.concat(findCvSectionGaps(cvProjectLines, liveCvData.sections.Projects.filter((item) => item.source !== "Project Dashboard"))))}
+            {renderImportedCvSection("live-papers", "Papers", [], "Paper records from APS that are not already listed in the CV master or Research records will appear here.", null, liveCvData.sections.Papers)}
+            {renderImportedCvSection("achievements", "Achievements", [], "Achievements and recognitions added in APS or CV Research records will appear here.", null, liveCvData.sections.Achievements)}
+            {renderImportedCvSection("conferences", "Conferences", [], "Conference contributions recorded in APS will appear here.", null, liveCvData.sections.Conferences)}
+            {renderImportedCvSection("teaching-supervision", "Teaching & Supervision", [], "Teaching and supervision records from APS will appear here.", null, liveCvData.sections["Teaching & Supervision"])}
+            {renderImportedCvSection("mentoring", "Mentoring", [], "Mentoring records from APS will appear here.", null, liveCvData.sections.Mentoring)}
+            {renderImportedCvSection("community-engagement", "Community Engagement", [], "Societal benefit, outreach, and community records from APS will appear here.", null, liveCvData.sections["Community Engagement"])}
+            {renderImportedCvSection("professional-development", "Professional Development", [], "Completed activities from Skill Development will appear here.", null, liveCvData.sections["Professional Development"])}
 
             {nonProjectOutputGroups.length === 0 ? (
               <EmptyState text="No CV records or CV gaps yet." />
