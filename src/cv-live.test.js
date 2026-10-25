@@ -43,11 +43,23 @@ test("CV summary highlights include achievements and completed projects without 
   assert.deepEqual(project, { id: "p1", title: "Finished Study", status: "Completed" });
 });
 
-test("publication totals combine CV master and archive records without counting the same title twice", () => {
+test("publication totals include only explicit publication sections and deduplicate titles across sources", () => {
   assert.equal(countCvPublications(
-    [{ title: "A Paper", type: "Journal Paper" }, { title: "A Talk", type: "Conference Presentation" }],
-    [{ title: "A Paper", type: "Journal Paper" }, { title: "B Paper", type: "Journal Paper" }, { title: "A Talk", type: "Conference Presentation" }],
-  ), 2);
+    [
+      { title: "Journal Work", type: "Other", section: "Journal Articles" },
+      { title: "Proceedings Work", type: "Journal Paper", section: "Conference Proceedings" },
+      { title: "Chapter Work", type: "Book Chapter", section: "Book Chapters" },
+      { title: "Conference Talk", type: "Conference Paper", section: "Conferences" },
+      { title: "Broad Publication Entry", type: "Journal Paper", section: "Publications" },
+    ],
+    [
+      { title: "Journal Work", type: "Journal Paper" },
+      { title: "Archive Journal Work", type: "Journal Paper" },
+      { title: "Conference Talk", type: "Conference Presentation" },
+      { title: "Chapter Work", type: "Book Chapter" },
+    ],
+    [{ text: "Archive Journal Work", type: "Journal Paper" }],
+  ), 4);
 });
 
 test("only awarded strategic funding opportunities appear in the live project section", () => {

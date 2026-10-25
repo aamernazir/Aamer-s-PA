@@ -187,15 +187,28 @@ export function buildCvLiveData({ projects = [], aps = null, outputs = [], skill
   } };
 }
 
+function cvPublicationTypeFromSection(section = "") {
+  const label = String(section || "").toLowerCase().replace(/[._:]+/g, " ").replace(/\s+/g, " ").trim();
+  if (/\bbook chapters?\b/.test(label) || /\bchapters? in books?\b/.test(label)) return "Book Chapter";
+  if (/\bjournal (?:articles?|papers?|publications?)\b/.test(label)) return "Journal Paper";
+  if (/\b(?:conference|conf\.?) (?:papers?|publications?|proceedings)\b/.test(label)) return "Conference Paper";
+  return "";
+}
+
 export function countCvPublications(entries = [], outputs = [], additionalRecords = []) {
-  const seen = new Set();
+  const seenTitles = new Set();
   const acceptableTypes = new Set(["Journal Paper", "Conference Paper", "Book Chapter"]);
-  [...(Array.isArray(entries) ? entries : []), ...(Array.isArray(outputs) ? outputs : []), ...(Array.isArray(additionalRecords) ? additionalRecords : [])].forEach((entry) => {
+  const records = [
+    ...(Array.isArray(entries) ? entries.map((entry) => ({ ...entry, type: cvPublicationTypeFromSection(entry?.section) })) : []),
+    ...(Array.isArray(outputs) ? outputs : []),
+    ...(Array.isArray(additionalRecords) ? additionalRecords : []),
+  ];
+  records.forEach((entry) => {
     const type = String(entry?.type || "");
     const title = normalized(entry?.title || entry?.text);
-    if (acceptableTypes.has(type) && title) seen.add(`${type}:${title}`);
+    if (acceptableTypes.has(type) && title) seenTitles.add(title);
   });
-  return seen.size;
+  return seenTitles.size;
 }
 
 export function findCvProjectDuplicates(cvLines = [], projects = []) {
