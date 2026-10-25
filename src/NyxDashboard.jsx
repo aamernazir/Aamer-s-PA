@@ -46,6 +46,7 @@ const STORAGE_KEYS = {
   mailbox: "an2r-mailbox-archive-v1",
   mailboxScan: "an2r-gmail-deadlines-v1",
   funding: "am2r-funding-pipeline-v1",
+  dashboardTiles: "nyx-dashboard-tiles-v1",
 };
 
 // The CV is Nyx's authoritative career record. Live module records link
@@ -62,6 +63,27 @@ const GRANT_TREND = [
   { year: 2021, value: 2 }, { year: 2022, value: 4 },
   { year: 2023, value: 1 }, { year: 2024, value: 2 },
   { year: 2025, value: 4 }, { year: 2026, value: 2 },
+];
+
+const DASHBOARD_TILE_OPTIONS = [
+  { id: "metric:publications", label: "Publications" },
+  { id: "metric:active-projects", label: "Active projects" },
+  { id: "metric:completed-projects", label: "Completed projects" },
+  { id: "metric:achievements", label: "Achievements" },
+  { id: "metric:contributions", label: "CV contributions" },
+  { id: "metric:research-products", label: "Research products" },
+  { id: "metric:conferences", label: "Conferences" },
+  { id: "metric:education", label: "Education" },
+  { id: "metric:summary", label: "Summary" },
+  { id: "metric:citations", label: "Citations" },
+  { id: "metric:teaching", label: "Teaching & supervision" },
+  { id: "metric:community", label: "Community engagement" },
+  { id: "metric:mentoring", label: "Mentoring" },
+  { id: "metric:professional-development", label: "Professional development" },
+];
+const DEFAULT_DASHBOARD_TILES = [
+  "metric:publications", "metric:active-projects", "metric:completed-projects", "metric:achievements",
+  "metric:education", "metric:research-products", "metric:conferences", "metric:citations",
 ];
 
 const PERIODS = [
@@ -462,6 +484,32 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const cvPaperCount = countCvPublications(cvEntries, outputs, cvLive.sections.Papers);
   const cvContributionCount = cvLive.apsEntries.length + cvLive.counts.professionalDevelopment;
   const cvCurrentYearPapers = countCvPublications([], outputs.filter((item) => Number(item?.year) === Number(new Date().getFullYear())));
+  const cvSectionOptions = [...new Set(cvEntries.map((entry) => String(entry?.section || "").trim()).filter(Boolean))];
+  const dashboardTileOptions = [...DASHBOARD_TILE_OPTIONS, ...cvSectionOptions.map((section) => ({ id: `cv-section:${section}`, label: section }))];
+  const savedTileSelection = Array.isArray(raw.dashboardTiles) && raw.dashboardTiles.length === 8 ? raw.dashboardTiles : DEFAULT_DASHBOARD_TILES;
+  const selectedDashboardTiles = savedTileSelection.map((id) => dashboardTileOptions.some((option) => option.id === id) ? id : DASHBOARD_TILE_OPTIONS[0].id);
+  const sectionCount = (matcher) => new Set(cvEntries.filter((entry) => matcher(String(entry?.section || ""))).map((entry) => String(entry?.title || "").trim().toLowerCase()).filter(Boolean)).size;
+  const dashboardTileValues = {
+    "metric:publications": { value: cvPaperCount, detail: "Journals · conferences · chapters" },
+    "metric:active-projects": { value: activeProjects.length, detail: "Currently active" },
+    "metric:completed-projects": { value: cvLive.counts.completedProjects, detail: "Completed projects" },
+    "metric:achievements": { value: cvLive.counts.achievements, detail: "Linked CV highlights" },
+    "metric:contributions": { value: cvContributionCount, detail: "Across live modules" },
+    "metric:research-products": { value: products.length, detail: "Research products" },
+    "metric:conferences": { value: cvLive.counts.conferences, detail: "CV and APS records" },
+    "metric:education": { value: sectionCount((section) => /education/i.test(section)), detail: "CV education entries" },
+    "metric:summary": { value: sectionCount((section) => /summary|profile/i.test(section)), detail: "CV summary entries" },
+    "metric:citations": { value: latestCitationSnapshots[0]?.citations != null ? Number(latestCitationSnapshots[0].citations).toLocaleString() : "—", detail: citationLabel || "No citation snapshot" },
+    "metric:teaching": { value: cvLive.counts.teaching, detail: "Teaching & supervision" },
+    "metric:community": { value: cvLive.counts.community, detail: "Community engagement" },
+    "metric:mentoring": { value: cvLive.counts.mentoring, detail: "Mentoring records" },
+    "metric:professional-development": { value: cvLive.counts.professionalDevelopment, detail: "Completed learning" },
+  };
+  cvSectionOptions.forEach((section) => {
+    const id = `cv-section:${section}`;
+    dashboardTileValues[id] = { value: sectionCount((candidate) => candidate.trim().toLowerCase() === section.toLowerCase()), detail: "CV entries" };
+  });
+
   const latestCitationSnapshots = [...(Array.isArray(raw.impact?.snapshots) ? raw.impact.snapshots : [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const latestCitationsBySource = Object.fromEntries([...new Set(latestCitationSnapshots.map((snapshot) => snapshot.source).filter(Boolean))].map((source) => [source, latestCitationSnapshots.find((snapshot) => snapshot.source === source)]));
   const citationLabel = ["Pure", "Google Scholar", "Scopus", "ORCID"].filter((source) => latestCitationsBySource[source]?.citations != null).map((source) => `${source === "Google Scholar" ? "Scholar" : source} ${Number(latestCitationsBySource[source].citations).toLocaleString()}`).join(" · ");
@@ -474,6 +522,12 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const products = activeProducts(activeProjects);
   const productLabel = products.slice(0, 3).map((product) => product.shortLabel || product.name).join(" · ");
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
+  function saveDashboardTile(index, nextId) {
+    const next = [...selectedDashboardTiles];
+    next[index] = nextId;
+    setRaw((previous) => ({ ...previous, dashboardTiles: next }));
+    window.storage.set(STORAGE_KEYS.dashboardTiles, JSON.stringify(next)).catch(() => {});
+  }
   function openModule(moduleId, route) { if (route && moduleId === "archive") sessionStorage.setItem("nyx:archive-route", route); if (route && moduleId === "aps") sessionStorage.setItem("nyx:aps-section", route); setActiveNav(moduleId); onOpenModule(moduleId); }
   async function askNyx() {
     const question = chatInput.trim();
@@ -483,22 +537,22 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
     setChatBusy(true);
     try {
       const context = JSON.stringify({ reportingPeriod: period, projects: raw.projects || [], aps: raw.aps || null, researchIntelligence: raw.archive || null, researchImpact: raw.impact || null, skills: raw.skills || null, mailbox: raw.mailbox || null, mailboxScan: raw.mailboxScan || null });
-      const response = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "nyx-assistant", max_tokens: 1200, system: "You are Nyx, Aamer's personal academic and research assistant. Answer only from the supplied Nyx records. Synthesize and calculate when useful, but never invent missing facts. State when information is unavailable or uncertain. End with a short Source modules line.", messages: [{ role: "user", content: "NYX RECORDS:\n" + context + "\n\nQUESTION:\n" + question }] }) });
-      const result = await response.json();
-      if (!response.ok || result.error) throw new Error(result.error?.message || "Nyx could not answer.");
-      const answer = (result.content || []).find((part) => part.type === "text")?.text || "I could not form an answer from the available Nyx records.";
-      setChatMessages((items) => [...items, { role: "assistant", text: answer }]);
-    } catch (error) {
-      setChatMessages((items) => [...items, { role: "assistant", text: "I could not answer that right now. " + (error?.message || "Please try again.") }]);
-    } finally { setChatBusy(false); }
-  }
-
-  const displayDate = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date());
-
-  return <main className="nyx-page"><div className="nyx-workspace">
-    <aside className="nyx-left-rail" aria-label="Operational modules">
-      <button className="nyx-side-brand" onClick={() => { setActiveNav("home"); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Nyx dashboard home"><span>N</span><small>PA</small></button><div className="nyx-brand-name">Nyx</div><div className="nyx-brand-subtitle">Aamer's<br />Personal Assistant</div><div className="nyx-side-label">OPERATIONAL MODULES</div>
-      <nav className="nyx-side-nav">{navModules.map((module) => { const Icon = module.icon; const isActive = activeNav === module.id; return <button key={module.id} className={`nyx-side-nav-item ${isActive ? "is-active" : ""}`} onClick={() => module.id === "home" ? (setActiveNav("home"), window.scrollTo({ top: 0, behavior: "smooth" })) : openModule(module.id)} title={module.name} aria-current={isActive ? "page" : undefined}><Icon size={18} /><span>{module.name}</span>{module.id !== "home" && <small>{loading ? "…" : moduleLiveSummary(module, raw)}</small>}</button>; })}</nav>
+      const response = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "nyx-assistant", max_tokens: 1200, system: "You are Nyx, Aamer's personal academic and research assistant. Answer only from the supplied Ny<section className="nyx-custom-summary" aria-label="Customizable CV dashboard tiles">
+        <div className="nyx-custom-summary-heading"><strong>CV snapshot</strong><span>Choose what each tile shows</span></div>
+        <div className="nyx-custom-tile-grid">{selectedDashboardTiles.map((id, index) => {
+          const option = dashboardTileOptions.find((item) => item.id === id) || DASHBOARD_TILE_OPTIONS[0];
+          const metric = dashboardTileValues[id] || { value: 0, detail: "CV entries" };
+          return <article className="nyx-custom-tile" key={index}>
+            <label className="nyx-custom-tile-label" htmlFor={`nyx-dashboard-tile-${index}`}>Tile {index + 1}</label>
+            <select id={`nyx-dashboard-tile-${index}`} aria-label={`Choose what tile ${index + 1} shows`} value={id} onChange={(event) => saveDashboardTile(index, event.target.value)}>
+              <optgroup label="Dashboard metrics">{DASHBOARD_TILE_OPTIONS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</optgroup>
+              {cvSectionOptions.length > 0 && <optgroup label="CV sections">{cvSectionOptions.map((section) => <option value={`cv-section:${section}`} key={section}>{section}</option>)}</optgroup>}
+            </select>
+            <strong className="nyx-custom-tile-value">{metric.value}</strong>
+            <small title={metric.detail}>{metric.detail}</small>
+          </article>;
+        })}</div>
+      </section>ap((module) => { const Icon = module.icon; const isActive = activeNav === module.id; return <button key={module.id} className={`nyx-side-nav-item ${isActive ? "is-active" : ""}`} onClick={() => module.id === "home" ? (setActiveNav("home"), window.scrollTo({ top: 0, behavior: "smooth" })) : openModule(module.id)} title={module.name} aria-current={isActive ? "page" : undefined}><Icon size={18} /><span>{module.name}</span>{module.id !== "home" && <small>{loading ? "…" : moduleLiveSummary(module, raw)}</small>}</button>; })}</nav>
       <div className="nyx-side-user"><span>AN</span><div><strong>Prof. Aamer Nazir</strong><small>aamernazir.an@gmail.com</small></div></div><button className="nyx-settings-button"><Wrench size={17} />Settings</button>
     </aside>
     <section className="nyx-main-column">

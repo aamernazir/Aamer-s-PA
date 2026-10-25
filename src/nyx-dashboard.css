@@ -40,3 +40,18 @@
 .nyx-research-products > p { font-size:11px; color:#6679bd; margin:5px 0; }
 .nyx-chart-panel > footer { margin-top:auto; }
 @media(max-width:640px) { .nyx-research-product-list { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+
+/* Customizable CV snapshot tiles */
+.nyx-custom-summary { margin:0 0 12px; }
+.nyx-custom-summary-heading { display:flex; align-items:baseline; gap:10px; margin:0 0 7px; color:#233b63; }
+.nyx-custom-summary-heading strong { font:600 12px 'IBM Plex Mono',monospace; letter-spacing:.04em; text-transform:uppercase; }
+.nyx-custom-summary-heading span { color:#718096; font-size:11px; }
+.nyx-custom-tile-grid { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:8px; }
+.nyx-custom-tile { display:flex; min-width:0; aspect-ratio:1.12 / 1; flex-direction:column; align-items:stretch; justify-content:space-between; padding:10px; overflow:hidden; border:1px solid #dce5ef; border-radius:8px; background:linear-gradient(150deg,#fff,#f7faff); box-shadow:0 2px 6px rgba(44,94,145,.045); }
+.nyx-custom-tile-label { color:#8190a2; font:600 9px 'IBM Plex Mono',monospace; letter-spacing:.05em; text-transform:uppercase; }
+.nyx-custom-tile select { width:100%; min-width:0; padding:4px 18px 4px 6px; border:1px solid #dce5ef; border-radius:5px; color:#244a70; background:#fff; font:600 10px 'DM Sans',sans-serif; text-overflow:ellipsis; cursor:pointer; }
+.nyx-custom-tile-value { display:block; overflow:hidden; color:#092e55; font:700 clamp(22px,2.2vw,33px)/.95 'Source Serif 4',serif; text-overflow:ellipsis; white-space:nowrap; }
+.nyx-custom-tile small { display:block; overflow:hidden; color:#6b7d90; font-size:9px; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width:1130px) { .nyx-custom-tile-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }.nyx-custom-tile { aspect-ratio:1.5 / 1; } }
+@media (max-width:640px) { .nyx-custom-tile-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }.nyx-custom-tile { aspect-ratio:1.55 / 1; padding:9px; }.nyx-custom-tile-value { font-size:25px; } }
