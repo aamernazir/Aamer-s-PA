@@ -11,8 +11,8 @@ test("Project Dashboard records become live CV project entries and duplicates co
   ];
   const live = buildCvLiveData({ projects });
   assert.equal(live.projects.length, 2);
-  assert.equal(live.projects[0].status, "Completed");
-  assert.equal(live.projects[1].status, "In progress");
+  assert.equal(live.projects[0].status, "In progress");
+  assert.equal(live.projects[1].status, "Completed");
   assert.deepEqual(findCvProjectDuplicates(["Research Grants", "Recycled Polymer Demonstrator — KF-12"], projects).map((item) => item.title), ["New Materials Study"]);
 });
 
