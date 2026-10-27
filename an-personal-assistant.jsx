@@ -1,6 +1,6 @@
 import { extractPdfText } from "./src/pdf-text.js";
 import { cvEntryKey, pendingCvEntries as findPendingCvEntries } from "./src/cv-matching.js";
-import { createCvDocx } from "./src/cv-docx.js";
+import { createCvDocx, updateOriginalCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
 import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
 
@@ -7927,7 +7927,7 @@ function App() {
     const route = sessionStorage.getItem("nyx:archive-route");
     if (!route) return;
     sessionStorage.removeItem("nyx:archive-route");
-    setTab("cv-evidence");
+    setTab("archive");
     if (!route.startsWith("cv-section:")) return;
     const section = route.slice("cv-section:".length).toLowerCase();
     if (["projects", "summary", "education", "achievements"].includes(section)) {
@@ -8186,9 +8186,11 @@ function App() {
     setExtractError("");
     try {
       const sourceText = await extractDocxUploadText(file);
+      const sourceBytes = new Uint8Array(await file.arrayBuffer());
+      const sourceDocxBase64 = Array.from({ length: Math.ceil(sourceBytes.length / 32766) }, (_, index) => String.fromCharCode(...sourceBytes.subarray(index * 32766, (index + 1) * 32766))).map((chunk) => btoa(chunk)).join("");
       const entries = parseCvEntries(sourceText);
       if (!entries.length) throw new Error("Nyx could not identify recognizable CV entries. Please use the current CV Word file with its sections and lists intact.");
-      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), entries, dismissedEntries: previous.cvRegistry?.dismissedEntries || [], parserVersion: CV_PARSER_VERSION } }));
+      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), sourceDocxBase64, entries, apsDecisions: previous.cvRegistry?.apsDecisions || {}, apsTypes: previous.cvRegistry?.apsTypes || {}, dismissedEntries: previous.cvRegistry?.dismissedEntries || [], parserVersion: CV_PARSER_VERSION } }));
       setSyncMessage(`CV master list imported: ${entries.length} entries. Nyx has kept the complete text and will now show only entries without an Intelligence record.`);
     } catch (error) { setExtractError(error.message || "Could not import the CV."); }
     finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
@@ -8196,7 +8198,7 @@ function App() {
 
   const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
   const dismissedCvEntries = Array.isArray(data.cvRegistry?.dismissedEntries) ? data.cvRegistry.dismissedEntries : [];
-  const pendingCvEntries = otherNyxRecords === null ? [] : findPendingCvEntries(cvEntries, [data.outputs, otherNyxRecords], dismissedCvEntries);
+  const pendingCvEntries = []; // Imported Word CV entries are validated; missing PDFs do not make them pending.
   const cvSourceText = String(data.cvRegistry?.sourceText || "");
   const cvSummaryLines = extractCvSection(cvSourceText, "SUMMARY");
   const cvSummaryDisplayLines = cvSummaryLines.join(" ").trim().split(/(?<=[.!?])\s+(?=[A-Z])/).filter(Boolean).slice(0, 5);
@@ -8204,7 +8206,26 @@ function App() {
   const cvProjectLines = extractCvSection(cvSourceText, "RESEARCH GRANTS AND FUNDING");
   const cvSourceLines = cvSourceText.split(/\r?\n/);
   const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
-  const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: liveCvSources.fundingOpportunities });
+  const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: liveCvSources.fundingOpportunities, cvEntries });
+  const apsDecisions = data.cvRegistry?.apsDecisions || {};
+  const apsTypes = data.cvRegistry?.apsTypes || {};
+  const normalizedCvTitle = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const existingCvTitles = new Set([...cvEntries, ...data.outputs, ...liveCvData.projects].map((item) => normalizedCvTitle(item.title)).filter(Boolean));
+  const apsCandidates = liveCvData.apsEntries.filter((entry) => !existingCvTitles.has(normalizedCvTitle(entry.text)));
+  const approvedApsEntries = apsCandidates.filter((entry) => apsDecisions[entry.id] === "approved");
+  const pendingApsEntries = apsCandidates.filter((entry) => !apsDecisions[entry.id]);
+  function setApsDecision(entry, decision) {
+    setData((previous) => ({ ...previous, cvRegistry: {
+      ...(previous.cvRegistry || {}),
+      apsDecisions: { ...(previous.cvRegistry?.apsDecisions || {}), [entry.id]: decision },
+    } }));
+  }
+  function setApsPublicationType(entry, type) {
+    setData((previous) => ({ ...previous, cvRegistry: {
+      ...(previous.cvRegistry || {}),
+      apsTypes: { ...(previous.cvRegistry?.apsTypes || {}), [entry.id]: type },
+    } }));
+  }
   // Project Dashboard is the live source; show current status before CV-only history.
   const cvLiveProjectItems = liveCvData.projects;
   const cvProjectDisplayLines = cvProjectLines
@@ -8216,6 +8237,12 @@ function App() {
       return year(b) - year(a);
     });
   const achievementEntries = cvEntries.filter((entry) => /achievement|award|recognition/i.test(String(entry.section || "")));
+  const apsTypeForSection = (section) => ({
+    Papers: "Journal Paper", Conferences: "Conference Committee Service",
+    "Teaching & Supervision": "Teaching / Supervision Evidence",
+    Mentoring: "Teaching / Supervision Evidence",
+    "Community Engagement": "Media / Outreach",
+  })[section] || "Other";
   const sourceOnlyCvSections = [...new Set(cvEntries.map((entry) => String(entry.section || "").trim()).filter(Boolean))]
     .filter((section) => !/summary|profile|education|project|grant|achievement|award|recognition/i.test(section))
     .map((section) => ({
@@ -8224,7 +8251,7 @@ function App() {
         output.cvEntryId === entry.id || String(output.title || "").trim().toLowerCase() === String(entry.title || "").trim().toLowerCase()
       ) && !pendingCvEntries.some((pending) => pending.id === entry.id)),
     }))
-    .filter((group) => group.entries.length);
+    .filter((group) => group.entries.length && typeForCvSection(group.section) === "Other");
   const firstCvLine = cvSourceLines.findIndex((line) => line.trim());
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
@@ -8239,10 +8266,10 @@ function App() {
     if (!sourceText) { setExtractError("The CV cannot be empty."); return; }
     const entries = parseCvEntries(sourceText);
     if (!entries.length) { setExtractError("Nyx could not identify CV entries. Keep the original section headings and lists, then try again."); return; }
-    setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, sourceText: sourceText.slice(0, 750000), entries, parserVersion: CV_PARSER_VERSION, editedAt: new Date().toISOString() } }));
+    setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, sourceText: sourceText.slice(0, 750000), sourceDocxBase64: null, entries, parserVersion: CV_PARSER_VERSION, editedAt: new Date().toISOString() } }));
     setEditingCvText(false);
     setExtractError("");
-    setSyncMessage("CV changes saved. The pending-evidence comparison has been refreshed.");
+    setSyncMessage("CV text saved. Re-import the original Word file to preserve its layout on export.");
   }
 
   async function exportCvAsWord() {
@@ -8251,7 +8278,18 @@ function App() {
     setExportingCv(true);
     setExtractError("");
     try {
-      const blob = await createCvDocx(sourceText, cvEntries.map((entry) => entry.section));
+      const knownTitles = new Set(cvEntries.map((entry) => String(entry.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()));
+      const additions = [
+        ...liveCvData.projects.map((project) => ({ section: "RESEARCH GRANTS AND FUNDING", title: project.title, text: [project.title, project.role, project.status, project.projectNumber].filter(Boolean).join(" · ") })),
+        ...data.outputs.filter((output) => !output.cvEntryId).map((output) => ({ section: output.cvSection || output.type || "Other CV records", title: output.title, text: [output.title, output.year].filter(Boolean).join(" · ") })),
+        ...approvedApsEntries.map((entry) => ({ section: entry.section === "Papers" ? ({ "Journal Paper": "Journal Articles", "Conference Paper": "Conference Proceedings", "Book Chapter": "Book Chapters" }[apsTypes[entry.id]] || "Publications") : entry.section, title: entry.text, text: entry.text })),
+      ].filter((item) => {
+        const title = normalizedCvTitle(item.title);
+        return title && !knownTitles.has(title) && !normalizedCvTitle(sourceText).includes(title);
+      });
+      const blob = data.cvRegistry?.sourceDocxBase64
+        ? await updateOriginalCvDocx(data.cvRegistry.sourceDocxBase64, additions, cvEntries.map((entry) => entry.section))
+        : await createCvDocx(sourceText + (additions.length ? "\n" + additions.map((item) => `${item.section}\n${item.text}`).join("\n") : ""), cvEntries.map((entry) => entry.section));
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       const baseName = String(data.cvRegistry?.sourceFile || "Aamer_Nazir_CV").replace(/\.docx$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
@@ -8259,7 +8297,7 @@ function App() {
       anchor.download = `${baseName || "Aamer_Nazir_CV"}_Nyx.docx`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setSyncMessage("Word CV exported from the current CV master text.");
+      setSyncMessage(data.cvRegistry?.sourceDocxBase64 ? "Updated copy exported from your original Word CV." : "Updated Word CV exported. Re-import the original DOCX to preserve its formatting on future exports.");
     } catch (error) {
       setExtractError(error?.message || "Could not create the Word CV.");
     } finally { setExportingCv(false); }
@@ -8966,11 +9004,17 @@ function App() {
     }
   }
 
+  const apsTypeForEntry = (entry) => entry.section === "Papers" ? (apsTypes[entry.id] || "Journal Paper") : apsTypeForSection(entry.section);
   const groupedOutputs = OUTPUT_TYPES.map((type) => ({
     type,
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
-    pending: pendingCvByType[type] || [],
-  })).filter((g) => g.items.length > 0 || g.pending.length > 0);
+    pending: [],
+    cvItems: cvEntries.filter((entry) => typeForCvSection(entry.section) === type && !data.outputs.some((output) =>
+      output.cvEntryId === entry.id || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title)
+    )),
+    apsPending: pendingApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
+    apsApproved: approvedApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
+  })).filter((g) => g.items.length || g.cvItems.length || g.apsPending.length || g.apsApproved.length);
   const projectEvidenceGroup = groupedOutputs.find((group) => group.type === "Project / Grant Evidence") || null;
   const achievementGroups = groupedOutputs.filter((group) => ["Award / Certificate", "Professional Recognition / Ranking"].includes(group.type));
   const unmatchedAchievementEntries = achievementEntries.filter((entry) => !achievementGroups.some((group) =>
@@ -9106,7 +9150,7 @@ function App() {
 
   function renderResearchTabs() {
     return <div className="pa-research-nav">
-      {[["archive", "Research records", FileText], ["cv-evidence", "Career CV", FileCheck], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
+      {[["archive", "CV", FileText], ["strengths", "Strengths & Expertise", Sparkles], ["benchmark", "Peer Benchmarking", Users], ["trends", "Yearly Trends", BarChart3], ["skills", "Skill Development", GraduationCap]].map(([id, label, Icon]) => (
         <button key={id} onClick={() => setTab(id)} style={{ display: "flex", alignItems: "center", gap: 5, background: tab === id ? INK : "#fff", color: tab === id ? "#fff" : INK, border: "1px solid " + (tab === id ? INK : "#C7CCD3"), borderRadius: 20, padding: "6px 10px", fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}>
           <Icon size={12} /> {label}
         </button>
@@ -9114,15 +9158,30 @@ function App() {
     </div>;
   }
 
+  function renderApsCard(entry, pending = false) {
+    return <div key={entry.id} className="pa-card" style={{ background: pending ? "#FFFDF8" : "#EFF5EF", border: "1px solid " + (pending ? "#E5C97A" : "#A8CCB5"), borderRadius: 6, padding: "12px 14px" }}>
+      <div style={{ fontSize: 10.5, color: pending ? AMBER : GREEN, fontWeight: 700 }}>{pending ? "APS · PENDING YOUR APPROVAL" : "APS · APPROVED FOR CV"}</div>
+      <div style={{ fontSize: 13, color: INK, margin: "6px 0" }}>{entry.text}</div>
+      <div style={{ fontSize: 11, color: MUTED }}>{entry.source}</div>
+      {pending && entry.section === "Papers" && <select aria-label="APS publication type" value={apsTypes[entry.id] || ""} onChange={(event) => setApsPublicationType(entry, event.target.value)} style={{ marginTop: 8, padding: 6 }}><option value="">Choose publication type</option><option value="Journal Paper">Journal paper</option><option value="Conference Paper">Conference proceedings</option><option value="Book Chapter">Book chapter</option></select>}
+      {pending && <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
+        <button type="button" onClick={() => setApsDecision(entry, "approved")} disabled={entry.section === "Papers" && !apsTypes[entry.id]} style={{ border: "1px solid #9CC9AA", borderRadius: 4, background: "#fff", color: GREEN, padding: "6px 9px", cursor: "pointer" }}>Approve for CV</button>
+        <button type="button" onClick={() => setApsDecision(entry, "removed")} style={{ border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: MUTED, padding: "6px 9px", cursor: "pointer" }}>Remove from CV</button>
+      </div>}
+    </div>;
+  }
+
   function renderOutputGroup(group) {
     return <div id={`nyx-cv-output-${group.type.replace(/[^a-z0-9]/gi, "-")}`} key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
       <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: !previous[group.type] }))} aria-expanded={!collapsedCategories[group.type]} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsedCategories[group.type] ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
         <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type === "Journal Paper" ? "Papers" : `${group.type}s`}</span>
-        <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
+        <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length + group.cvItems.length + group.apsApproved.length} CV record{group.items.length + group.cvItems.length + group.apsApproved.length === 1 ? "" : "s"}{group.apsPending.length ? ` · ${group.apsPending.length} APS pending` : ""}</span>
         <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsedCategories[group.type] ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
       </button>
       {!collapsedCategories[group.type] && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
-        {group.pending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderPendingCvCard(entry)}</div>)}
+        {group.cvItems.map((entry) => <div key={entry.id} className="pa-output-column-item pa-card" style={{ padding: 14, border: "1px solid #DCDFE3", borderRadius: 6, background: "#fff" }}><strong style={{ fontSize: 13 }}>{entry.title}</strong><div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>Validated · imported Word CV</div><button type="button" onClick={() => requestEvidenceUpload(entry)} style={{ marginTop: 8, border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: TEAL, padding: "6px 9px", cursor: "pointer" }}>Add evidence</button></div>)}
+        {group.apsPending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderApsCard(entry, true)}</div>)}
+        {group.apsApproved.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderApsCard(entry)}</div>)}
         {group.items.map((output) => <div key={output.id} className="pa-output-column-item">{renderOutputCard(output)}</div>)}
       </div>}
     </div>;
@@ -9171,12 +9230,12 @@ function App() {
 
         {tab !== "archive" && renderResearchTabs()}
 
-        {tab === "cv-evidence" && (
+        {tab === "archive" && (
           <div>
             <input ref={cvInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={importCv} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
             <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "18px 20px", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>Career CV</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>Keep the complete CV here in its original section order. Research records provide linked evidence and analytics; the CV remains the source for job applications and Word exports.</div></div>
+                <div><div className="pa-display" style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 5 }}>Master Word CV</div><div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 720 }}>One CV, updated from your original Word document and linked Nyx records. Export an updated copy whenever needed.</div></div>
                 <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}><button onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ display: "flex", alignItems: "center", gap: 6, background: importingCv ? "#C7CCD3" : TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: importingCv ? "default" : "pointer", flexShrink: 0 }}>{importingCv ? <Loader2 size={14} className="pa-spin" /> : <Upload size={14} />}{importingCv ? "Importing CV…" : data.cvRegistry ? "Replace CV Word file" : "Import CV Word file"}</button><button onClick={exportCvAsWord} disabled={!data.cvRegistry?.sourceText || exportingCv || editingCvText} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: data.cvRegistry?.sourceText ? TEAL : MUTED, border: "1px solid #C7CCD3", borderRadius: 4, padding: "9px 13px", fontSize: 12.5, fontWeight: 600, cursor: !data.cvRegistry?.sourceText || exportingCv || editingCvText ? "default" : "pointer", flexShrink: 0 }}>{exportingCv ? <Loader2 size={14} className="pa-spin" /> : <Download size={14} />}{exportingCv ? "Preparing Word CV…" : "Export Word CV"}</button></div>
               </div>
               {data.cvRegistry && <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #EAECF0", fontSize: 12, color: MUTED }}>Master source: <strong style={{ color: INK }}>{data.cvRegistry.sourceFile}</strong> · {cvEntries.length} CV entries retained · {pendingCvEntries.length} pending evidence · {dismissedCvEntries.length} removed from queue</div>}
@@ -9200,9 +9259,7 @@ function App() {
             <div className="pa-research-overview">
             <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 16px" }}>
             {renderResearchTabs()}
-            <div style={{ fontSize: 12, color: MUTED, marginBottom: 12, lineHeight: 1.45 }}>
-              Nyx records and CV-only gaps are shown by category. On a pending card, approve it without a file, upload evidence, or remove it from the queue. Conference presentations, proceedings papers, committee service and attendance have separate sections.
-            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 12, lineHeight: 1.45 }}>Upload new records here. Existing Word CV entries and linked projects are already validated; APS additions wait for your approval in their CV section.</div>
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               <input ref={fileInputRef} type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" multiple onChange={handleFileInput} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
@@ -9333,8 +9390,8 @@ function App() {
 
             {renderImportedCvSection("summary", "Summary", cvSummaryDisplayLines, "Import your CV Word file to show the front-page summary here.")}
             {renderImportedCvSection("education", "Education", cvEducationLines, "Education details will appear here when the CV Word file is imported.")}
-            {renderImportedCvSection("projects", "Projects", cvProjectDisplayLines, "Projects appear here when added in Project Dashboard or imported from the CV.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null, cvLiveProjectItems)}
-            {(achievementEntries.length > 0 || achievementGroups.length > 0) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries.map((entry) => entry.title), "CV achievements appear here.", achievementGroups.length ? <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}</div> : null)}
+            {renderImportedCvSection("projects", "Projects", cvProjectDisplayLines, "Projects appear here when added in Project Dashboard or imported from the CV.", <>{projectEvidenceGroup && renderOutputGroup(projectEvidenceGroup)}{pendingApsEntries.filter((entry) => entry.section === "Projects").map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Projects").map((entry) => renderApsCard(entry))}</>, cvLiveProjectItems)}
+            {(achievementEntries.length > 0 || achievementGroups.length > 0 || pendingApsEntries.some((entry) => entry.section === "Achievements") || approvedApsEntries.some((entry) => entry.section === "Achievements")) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries.map((entry) => entry.title), "CV achievements appear here.", <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}{pendingApsEntries.filter((entry) => entry.section === "Achievements").map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Achievements").map((entry) => renderApsCard(entry))}</div>)}
 
 
             {sourceOnlyCvSections.map(({ section, entries }) => renderImportedCvSection(`source-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, section, entries.map((entry) => entry.title), "CV entries appear here."))}

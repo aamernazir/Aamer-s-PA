@@ -30,3 +30,68 @@ export async function createCvDocx(sourceText, sections = []) {
   zip.file("word/document.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + paragraphs + '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="480" w:footer="480" w:gutter="0"/></w:sectPr></w:body></w:document>');
   return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", compression: "DEFLATE", compressionOptions: { level: 6 } });
 }
+
+export async function updateOriginalCvDocx(base64, additions = [], sectionNames = []) {
+  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+  const zip = await JSZip.loadAsync(bytes);
+  const documentFile = zip.file("word/document.xml");
+  if (!documentFile) throw new Error("The imported Word file has no document body.");
+  const xml = await documentFile.async("string");
+  const documentXml = new DOMParser().parseFromString(xml, "application/xml");
+  if (documentXml.querySelector("parsererror")) throw new Error("The original Word document could not be updated safely.");
+  const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const body = documentXml.getElementsByTagNameNS(namespace, "body")[0];
+  if (!body) throw new Error("The original Word document has no editable body.");
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const knownHeadings = new Set(sectionNames.map(normalize).filter(Boolean));
+  const paragraphText = (paragraph) => Array.from(paragraph.getElementsByTagNameNS(namespace, "t")).map((node) => node.textContent).join("");
+  const makeParagraph = (value, heading = false) => {
+    const paragraph = documentXml.createElementNS(namespace, "w:p");
+    if (heading) {
+      const props = documentXml.createElementNS(namespace, "w:pPr");
+      const style = documentXml.createElementNS(namespace, "w:pStyle");
+      style.setAttributeNS(namespace, "w:val", "Heading1");
+      props.appendChild(style);
+      paragraph.appendChild(props);
+    }
+    const run = documentXml.createElementNS(namespace, "w:r");
+    const textNode = documentXml.createElementNS(namespace, "w:t");
+    textNode.textContent = String(value);
+    run.appendChild(textNode);
+    paragraph.appendChild(run);
+    return paragraph;
+  };
+  const originalText = normalize(Array.from(body.getElementsByTagNameNS(namespace, "t")).map((node) => node.textContent).join(" "));
+  const unique = new Set();
+  const grouped = new Map();
+  additions.forEach(({ section, text }) => {
+    const value = String(text || "").trim();
+    const key = normalize(value);
+    if (!value || !key || unique.has(key) || originalText.includes(key)) return;
+    unique.add(key);
+    const label = String(section || "Other CV records").trim();
+    grouped.set(label, [...(grouped.get(label) || []), value]);
+  });
+  for (const [section, entries] of grouped) {
+    const paragraphs = Array.from(body.getElementsByTagNameNS(namespace, "p")).filter((node) => node.parentNode === body);
+    const heading = paragraphs.find((paragraph) => normalize(paragraphText(paragraph)) === normalize(section));
+    let anchor = heading;
+    if (heading) {
+      for (let index = paragraphs.indexOf(heading) + 1; index < paragraphs.length; index++) {
+        if (knownHeadings.has(normalize(paragraphText(paragraphs[index])))) break;
+        anchor = paragraphs[index];
+      }
+    } else {
+      const title = makeParagraph(section, true);
+      body.insertBefore(title, body.getElementsByTagNameNS(namespace, "sectPr")[0] || null);
+      anchor = title;
+    }
+    for (const value of entries) {
+      const paragraph = makeParagraph(value);
+      body.insertBefore(paragraph, anchor.nextSibling);
+      anchor = paragraph;
+    }
+  }
+  zip.file("word/document.xml", new XMLSerializer().serializeToString(documentXml));
+  return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", compression: "DEFLATE" });
+}

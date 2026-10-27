@@ -446,7 +446,7 @@ function attentionFromRaw(raw, activeProjects, dataWarnings) {
   const mailboxItems = Array.isArray(raw.mailboxScan?.items) ? raw.mailboxScan.items : [];
   const researchOutputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
-  const cvPending = pendingCvEntries(cvEntries, [researchOutputs, raw.projects, raw.aps], raw.archive?.cvRegistry?.dismissedEntries || []);
+  const cvPending = []; // Imported Word CV entries are validated even without separate evidence uploads.
   const deadlineItems = mailboxItems.filter((item) => Array.isArray(item?.deadlineHints) && item.deadlineHints.length).slice(0, 1);
   const attention = [];
   if (overdue.length) attention.push({ label: plural(overdue.length, "active work package") + " overdue", detail: overdue[0].project?.title || "Open Project Dashboard", moduleId: "projects", tone: "warn" });
@@ -494,10 +494,18 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const activeNotFundedProjects = useMemo(() => activeProjects.filter((project) => !hasProjectNumber(project)), [activeProjects]);
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
-  const cvLive = buildCvLiveData({ projects, aps: raw.aps, outputs, skills: raw.skills, fundingOpportunities: raw.funding });
+  const cvLive = buildCvLiveData({ projects, aps: raw.aps, outputs, skills: raw.skills, fundingOpportunities: raw.funding, cvEntries });
+  const cvTitleKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const existingCvTitles = new Set([...cvEntries, ...outputs, ...cvLive.projects].map((item) => cvTitleKey(item.title)).filter(Boolean));
+  const apsCandidates = cvLive.apsEntries.filter((entry) => !existingCvTitles.has(cvTitleKey(entry.text)));
+  const apsDecisions = raw.archive?.cvRegistry?.apsDecisions || {};
+  const apsTypes = raw.archive?.cvRegistry?.apsTypes || {};
+  const approvedAps = apsCandidates.filter((entry) => apsDecisions[entry.id] === "approved");
+  const pendingAps = apsCandidates.filter((entry) => !apsDecisions[entry.id]);
   const selectedCvEntries = cvEntries.filter((entry) => inSelectedYear(entry, period));
   const selectedOutputs = outputs.filter((output) => inSelectedYear(output, period));
-  const cvPaperCount = countCvPublications(selectedCvEntries, selectedOutputs.filter((output) => ["Journal Paper", "Conference Paper", "Book Chapter"].includes(output?.type)));
+  const selectedApprovedAps = approvedAps.filter((entry) => inSelectedYear(entry, period));
+  const cvPaperCount = countCvPublications(selectedCvEntries, selectedOutputs.filter((output) => ["Journal Paper", "Conference Paper", "Book Chapter"].includes(output?.type)), selectedApprovedAps.filter((entry) => entry.section === "Papers" && ["Journal Paper", "Conference Paper", "Book Chapter"].includes(apsTypes[entry.id])).map((entry) => ({ title: entry.text, type: apsTypes[entry.id] })));
   const cvContributionCount = uniqueRecords(selectedCvEntries.filter((entry) => sectionMatches(entry.section, /contribution|service/i)));
   const completedProjectsInPeriod = cvLive.projects.filter((project) => project.status === "Completed" && (period === "career" || yearInPeriod(recordYear({ completedAt: project.completedAt }), period)));
   const cvAchievementEntries = selectedCvEntries.filter((entry) => sectionMatches(entry.section, /achievement|award|recognition/i));
@@ -510,6 +518,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   // data error. The CV remains complete until the user explicitly changes it.
   const dataWarnings = [];
   const attentionItems = useMemo(() => attentionFromRaw(raw, activeProjects, dataWarnings), [raw, activeProjects]);
+  if (pendingAps.length) attentionItems.push({ label: `${pendingAps.length} APS CV item${pendingAps.length === 1 ? "" : "s"} await approval`, detail: "Review in the related CV sections", moduleId: "archive", route: "cv-evidence", tone: "info" });
   const activeProgress = activeProjects.length ? Math.round(activeProjects.reduce((sum, project) => sum + projectProgress(project), 0) / activeProjects.length) : 0;
   const projectLeads = activeProjectLeads(activeProjects);
   const products = activeProducts(activeProjects);
@@ -525,7 +534,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
     "metric:publications": { value: cvPaperCount, detail: period === "career" ? "Journal · proceedings · chapters" : `Published in ${period} · journal · proceedings · chapters`, module: "archive", route: "cv-section:publications" },
     "metric:active-projects": { value: activeProjects.length, detail: "Currently active · Project Dashboard", module: "projects" },
     "metric:completed-projects": { value: completedProjectsInPeriod.length, detail: period === "career" ? "Completed projects" : `Completed in ${period}`, module: "archive", route: "cv-section:projects" },
-    "metric:achievements": { value: uniqueRecords([...cvAchievementEntries, ...cvAchievementOutputs]), detail: period === "career" ? "CV achievements" : `CV achievements · ${period}`, module: "archive", route: "cv-section:achievements" },
+    "metric:achievements": { value: uniqueRecords([...cvAchievementEntries, ...cvAchievementOutputs, ...selectedApprovedAps.filter((entry) => entry.section === "Achievements").map((entry) => ({ title: entry.text }))]), detail: period === "career" ? "CV achievements" : `CV achievements · ${period}`, module: "archive", route: "cv-section:achievements" },
     "metric:contributions": { value: cvContributionCount, detail: "CV contributions", module: "archive", route: "cv-section:contributions" },
     "metric:research-products": { value: outputCount(["Patent", "Report"]), detail: "CV research products", module: "archive", route: "cv-section:products" },
     "metric:conferences": { value: outputCount(["Conference Presentation", "Conference Participation", "Conference Committee Service", "Conference / Professional Service"]) + sectionCount((section) => /conference (?:presentation|participation|service)/i.test(section)), detail: "Presentations · participation · service", module: "archive", route: "cv-section:conferences" },
