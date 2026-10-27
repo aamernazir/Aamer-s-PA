@@ -7952,6 +7952,7 @@ function App() {
     const scroll = () => {
       const ids = [
         `nyx-cv-section-${section}`,
+        `nyx-cv-section-source-${section.replace(/[^a-z0-9]+/g, "-")}`,
         ...targets.map((type) => `nyx-cv-output-${type.replace(/[^a-z0-9]/gi, "-")}`),
         "nyx-cv-section-summary",
       ];
@@ -8215,6 +8216,15 @@ function App() {
       return year(b) - year(a);
     });
   const achievementEntries = cvEntries.filter((entry) => /achievement|award|recognition/i.test(String(entry.section || "")));
+  const sourceOnlyCvSections = [...new Set(cvEntries.map((entry) => String(entry.section || "").trim()).filter(Boolean))]
+    .filter((section) => !/summary|profile|education|project|grant|achievement|award|recognition/i.test(section))
+    .map((section) => ({
+      section,
+      entries: cvEntries.filter((entry) => entry.section === section && !data.outputs.some((output) =>
+        output.cvEntryId === entry.id || String(output.title || "").trim().toLowerCase() === String(entry.title || "").trim().toLowerCase()
+      ) && !pendingCvEntries.some((pending) => pending.id === entry.id)),
+    }))
+    .filter((group) => group.entries.length);
   const firstCvLine = cvSourceLines.findIndex((line) => line.trim());
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
@@ -9327,6 +9337,7 @@ function App() {
             {(achievementEntries.length > 0 || achievementGroups.length > 0) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries.map((entry) => entry.title), "CV achievements appear here.", achievementGroups.length ? <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}</div> : null)}
 
 
+            {sourceOnlyCvSections.map(({ section, entries }) => renderImportedCvSection(`source-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, section, entries.map((entry) => entry.title), "CV entries appear here."))}
             {nonProjectOutputGroups.length === 0 ? (
               <EmptyState text="No CV records or CV gaps yet." />
             ) : (
