@@ -6725,7 +6725,7 @@ function SummaryStat({ label, value }) {
 
 const PublicationArchiveModule = (function() {
 const STORAGE_KEY = "am2r-publication-archive-v1";
-const CV_PARSER_VERSION = 3;
+const CV_PARSER_VERSION = 4;
 
 
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
@@ -8079,18 +8079,18 @@ function App() {
   }
 
   function typeForCvSection(section) {
-    const label = String(section || "").toLowerCase();
-    if (label.includes("patent")) return "Patent";
-    if (label.includes("book") && label.includes("chapter")) return "Book Chapter";
-    if (label.includes("organizing committee") || label.includes("scientific/technical") || label.includes("scientific / technical")) return "Conference Committee Service";
-    if (label.includes("participation")) return "Conference Participation";
-    if (label.includes("presentation")) return "Conference Presentation";
-    if (label.includes("conference") || label.includes("conf.")) return "Conference Paper";
-    if (label.includes("journal") || label.includes("publication") || label.includes("paper")) return "Journal Paper";
-    if (label.includes("project") || label.includes("grant")) return "Project / Grant Evidence";
-    if (label.includes("award") || label.includes("honour") || label.includes("honor")) return "Award / Certificate";
-    if (label.includes("review") || label.includes("editorial")) return "Editorial / Reviewer Service";
-    if (label.includes("teaching") || label.includes("supervision")) return "Teaching / Supervision Evidence";
+    const label = String(section || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (/\bpatents?\b/.test(label)) return "Patent";
+    if (/\bbook chapters?\b/.test(label)) return "Book Chapter";
+    if (/\borganizing committee\b|\bscientific\s*\/\s*technical\b/.test(label)) return "Conference Committee Service";
+    if (/\bparticipation\b/.test(label)) return "Conference Participation";
+    if (/\bpresentations?\b|\binvited talks?\b/.test(label)) return "Conference Presentation";
+    if (/\b(?:conference|conf\.?)\s+(?:papers?|publications?|proceedings)\b|\bconference proceedings\b/.test(label)) return "Conference Paper";
+    if (/\bjournal\s+(?:articles?|papers?|publications?)\b/.test(label)) return "Journal Paper";
+    if (/\bproject\b|\bgrant\b|\bfunding\b/.test(label)) return "Project / Grant Evidence";
+    if (/\baward\b|\bachievement\b|\bhonou?r\b/.test(label)) return "Award / Certificate";
+    if (/\breview\b|\beditorial\b/.test(label)) return "Editorial / Reviewer Service";
+    if (/\bteaching\b|\bsupervision\b/.test(label)) return "Teaching / Supervision Evidence";
     return "Other";
   }
 
@@ -8099,7 +8099,7 @@ function App() {
     let section = "CV record";
     const entries = [];
     let current = null;
-    const namedHeading = /^(?:Research Grants?|Academic Grants?|Undergraduate Research Projects?|Journal Articles?|Patents?|Books?\s*\/\s*Chapters?|Book Chapters?|Conferences?|Conf\.\s*(?:Presentations?|Papers?|Participation)|Scientific\s*\/\s*Technical\s*\/\s*Organizing Committee member|Editorial Roles?|Reviewer of (?:Books?|Journals?|Book\/Research Proposals))\s*:?\s*$/i;
+    const namedHeading = /^(?:professional\s+summary|summary|profile|research\s+interests|education(?:\s+and\s+qualifications)?|academic\s+qualifications|professional\s+experience|academic\s+experience|research\s+experience|employment\s+history|academic\s+appointments|academic\s+positions|work\s+experience|projects?|research\s+projects?|research\s+grants?|academic\s+grants?|funding|publications?|selected\s+publications|journal\s+(?:articles?|papers?|publications?)|peer[- ]reviewed\s+journal\s+articles?|conference\s+(?:papers?|publications?|proceedings|presentations?)|conf\.\s*(?:presentations?|papers?|participation)|proceedings|book\s+chapters?|books?\s*\/\s*chapters?|patents?|awards?|achievements?|honou?rs?(?:\s+and\s+awards?)?|conferences?|invited\s+talks?|scientific\s*\/\s*technical\s*\/\s*organizing\s+committee\s+member|editorial\s+roles?|reviewer\s+of\s+(?:books?|journals?|book\/research\s+proposals)|professional\s+service|teaching|supervision|technical\s+skills|skills|memberships?|certifications?|community\s+engagement)\s*:?\s*$/i;
     const heading = (line) => line.length < 100 && (/^[A-Z][A-Z\s&/\-(),.]{4,}$/.test(line) || namedHeading.test(line));
     const entryStart = (line) => /^(\d{1,3}[.)]|[-•])\s+/.test(line);
     // Some professionally formatted CVs use one unnumbered line per paper or

@@ -189,7 +189,7 @@ export function buildCvLiveData({ projects = [], aps = null, outputs = [], skill
 
 function cvPublicationTypeFromSection(section = "") {
   const label = String(section || "").toLowerCase().replace(/[._:]+/g, " ").replace(/\s+/g, " ").trim();
-  if (/\bbook chapters?\b/.test(label) || /\bchapters? in books?\b/.test(label)) return "Book Chapter";
+  if (/\bbook chapters?\b/.test(label)) return "Book Chapter";
   if (/\bjournal (?:articles?|papers?|publications?)\b/.test(label)) return "Journal Paper";
   if (/\b(?:conference|conf\.?) (?:papers?|publications?|proceedings)\b/.test(label)) return "Conference Paper";
   return "";
@@ -198,9 +198,20 @@ function cvPublicationTypeFromSection(section = "") {
 export function countCvPublications(entries = [], outputs = [], additionalRecords = []) {
   const seenTitles = new Set();
   const acceptableTypes = new Set(["Journal Paper", "Conference Paper", "Book Chapter"]);
+  const cvEntries = Array.isArray(entries) ? entries : [];
+  const entryById = new Map(cvEntries.filter((entry) => entry?.id).map((entry) => [String(entry.id), entry]));
+  const titleByEntryId = new Map(cvEntries.filter((entry) => entry?.id && entry?.title).map((entry) => [String(entry.id), normalized(entry.title)]));
   const records = [
-    ...(Array.isArray(entries) ? entries.map((entry) => ({ ...entry, type: cvPublicationTypeFromSection(entry?.section) })) : []),
-    ...(Array.isArray(outputs) ? outputs : []),
+    ...cvEntries.map((entry) => ({ ...entry, type: cvPublicationTypeFromSection(entry?.section) })),
+    ...(Array.isArray(outputs) ? outputs : []).map((output) => {
+      const linkedEntry = output?.cvEntryId ? entryById.get(String(output.cvEntryId)) : null;
+      const section = output?.cvSection || linkedEntry?.section;
+      return {
+        ...output,
+        type: section ? cvPublicationTypeFromSection(section) : output?.type,
+        title: (output?.cvEntryId && titleByEntryId.get(String(output.cvEntryId))) || output?.title,
+      };
+    }),
     ...(Array.isArray(additionalRecords) ? additionalRecords : []),
   ];
   records.forEach((entry) => {

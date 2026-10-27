@@ -43,22 +43,23 @@ test("CV summary highlights include achievements and completed projects without 
   assert.deepEqual(project, { id: "p1", title: "Finished Study", status: "Completed" });
 });
 
-test("publication totals include only explicit publication sections and deduplicate titles across sources", () => {
+test("publication count accepts only the three requested types and respects CV-linked section classifications", () => {
   assert.equal(countCvPublications(
     [
-      { title: "Journal Work", type: "Other", section: "Journal Articles" },
-      { title: "Proceedings Work", type: "Journal Paper", section: "Conference Proceedings" },
-      { title: "Chapter Work", type: "Book Chapter", section: "Book Chapters" },
-      { title: "Conference Talk", type: "Conference Paper", section: "Conferences" },
-      { title: "Broad Publication Entry", type: "Journal Paper", section: "Publications" },
+      { id: "j1", title: "Journal Work", type: "Other", section: "Journal Articles" },
+      { id: "c1", title: "Proceedings Work", type: "Journal Paper", section: "Conference Proceedings" },
+      { id: "b1", title: "Chapter Work", type: "Book Chapter", section: "Book Chapters" },
+      { id: "x1", title: "Conference Talk", type: "Conference Paper", section: "Conferences" },
+      { id: "x2", title: "Broad Publication", type: "Journal Paper", section: "Publications" },
     ],
     [
-      { title: "Journal Work", type: "Journal Paper" },
-      { title: "Archive Journal Work", type: "Journal Paper" },
-      { title: "Conference Talk", type: "Conference Presentation" },
-      { title: "Chapter Work", type: "Book Chapter" },
+      { title: "Journal Work copy", type: "Journal Paper", cvEntryId: "j1" },
+      { title: "Other proceedings", type: "Conference Paper", cvEntryId: "c1" },
+      { title: "Talk wrongly typed", type: "Journal Paper", cvSection: "Conference Presentations" },
+      { title: "Archive journal", type: "Journal Paper" },
+      { title: "Archive talk", type: "Conference Presentation" },
     ],
-    [{ text: "Archive Journal Work", type: "Journal Paper" }],
+    [{ text: "Archive journal", type: "Journal Paper" }],
   ), 4);
 });
 
