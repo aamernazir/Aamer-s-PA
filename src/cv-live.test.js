@@ -74,7 +74,7 @@ test("only awarded strategic funding opportunities appear in the live project se
   assert.deepEqual(result.projects.map((item) => item.title), ["Granted research project"]);
   assert.equal(result.highlights.some((item) => item.text === "Awarded funding: Granted research project"), true);
   assert.deepEqual(result.sections.Papers.map((item) => item.text), ["APS paper"]);
-  assert.equal(result.counts.papers, 1);
+  assert.equal(result.counts.papers, 0); // APS notes alone are not validated publication records.
 });
 
 test("APS attention is section-specific, limited to entered records, and respects ignored quality checks", () => {
