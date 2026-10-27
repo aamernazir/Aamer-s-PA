@@ -108,9 +108,18 @@ export function liveCvProjects(projects = [], fundingOpportunities = []) {
       projectNumber: String(project.projectNumber || "").trim(),
       program: String(project.program || "").trim(),
       duration: String(project.duration || "").trim(),
+      startedAt: project.startDate || project.startedAt || project.createdAt || "",
+      completedAt: project.completedAt || project.completionDate || "",
+      updatedAt: project.updatedAt || "",
       source: project.cvSource || "Project Dashboard",
     };
-  }).filter(Boolean);
+  }).filter(Boolean).sort((a, b) => {
+    const priority = (item) => item.status === "In progress" ? 0 : item.status === "Awarded" ? 1 : 2;
+    const order = priority(a) - priority(b);
+    if (order) return order;
+    const date = (item) => String(item.completedAt || item.startedAt || item.updatedAt || "").match(/(?:19|20)\d{2}(?:-\d{2})?(?:-\d{2})?/)?.[0] || "";
+    return date(b).localeCompare(date(a)) || a.title.localeCompare(b.title);
+  });
 }
 
 export function liveCvApsEntries(aps, projects = [], fundingOpportunities = []) {

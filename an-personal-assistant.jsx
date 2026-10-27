@@ -7922,12 +7922,44 @@ function App() {
     };
   }, []);
 
-  // The dashboard can send the user straight to the actionable CV queue.
+  // Dashboard tiles open the matching CV subsection.
   useEffect(() => {
-    if (sessionStorage.getItem("nyx:archive-route") === "cv-evidence") {
-      setTab("cv-evidence");
-      sessionStorage.removeItem("nyx:archive-route");
+    const route = sessionStorage.getItem("nyx:archive-route");
+    if (!route) return;
+    sessionStorage.removeItem("nyx:archive-route");
+    setTab("cv-evidence");
+    if (!route.startsWith("cv-section:")) return;
+    const section = route.slice("cv-section:".length).toLowerCase();
+    if (["projects", "summary", "education", "achievements"].includes(section)) {
+      setCollapsedCvSections((previous) => ({ ...previous, [section]: false }));
     }
+    const outputTypes = {
+      publications: ["Journal Paper", "Conference Paper", "Book Chapter"],
+      papers: ["Journal Paper", "Conference Paper", "Book Chapter"],
+      conferences: ["Conference Presentation", "Conference Participation", "Conference Committee Service", "Conference / Professional Service"],
+      products: ["Patent", "Report"],
+      teaching: ["Teaching / Supervision Evidence"],
+      community: ["Media / Outreach"],
+    };
+    const targets = outputTypes[section] ||
+      (/journal|paper|publication|proceeding|book chapter/.test(section) ? outputTypes.publications :
+      /conference/.test(section) ? outputTypes.conferences :
+      /award|recognition/.test(section) ? ["Award / Certificate", "Professional Recognition / Ranking"] :
+      /teaching|supervision/.test(section) ? outputTypes.teaching :
+      /outreach|community/.test(section) ? outputTypes.community : []);
+    if (targets.length) setCollapsedCategories((previous) => Object.fromEntries(Object.entries(previous).filter(([type]) => !targets.includes(type))));
+    let attempts = 0;
+    const scroll = () => {
+      const ids = [
+        `nyx-cv-section-${section}`,
+        ...targets.map((type) => `nyx-cv-output-${type.replace(/[^a-z0-9]/gi, "-")}`),
+        "nyx-cv-section-summary",
+      ];
+      const target = ids.map((id) => document.getElementById(id)).find(Boolean);
+      if (target) target.scrollIntoView({ block: "start" });
+      else if (++attempts < 20) window.setTimeout(scroll, 100);
+    };
+    window.setTimeout(scroll, 80);
   }, []);
 
   useEffect(() => {
@@ -8172,7 +8204,17 @@ function App() {
   const cvSourceLines = cvSourceText.split(/\r?\n/);
   const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
   const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: liveCvSources.fundingOpportunities });
-  const cvLiveProjectGaps = findCvProjectDuplicates(cvProjectLines, liveCvSources.projects);
+  // Project Dashboard is the live source; show current status before CV-only history.
+  const cvLiveProjectItems = liveCvData.projects;
+  const cvProjectDisplayLines = cvProjectLines
+    .filter((line) => !cvLiveProjectItems.some((project) =>
+      project.title && line.toLowerCase().includes(project.title.toLowerCase())
+    ))
+    .sort((a, b) => {
+      const year = (line) => Number(line.match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0);
+      return year(b) - year(a);
+    });
+  const achievementEntries = cvEntries.filter((entry) => /achievement|award|recognition/i.test(String(entry.section || "")));
   const firstCvLine = cvSourceLines.findIndex((line) => line.trim());
   // The CV is only the comparison source. A missing CV record is displayed
   // beside its verified peers in Research Intelligence, never in a separate inbox.
@@ -8920,7 +8962,11 @@ function App() {
     pending: pendingCvByType[type] || [],
   })).filter((g) => g.items.length > 0 || g.pending.length > 0);
   const projectEvidenceGroup = groupedOutputs.find((group) => group.type === "Project / Grant Evidence") || null;
-  const nonProjectOutputGroups = groupedOutputs.filter((group) => group.type !== "Project / Grant Evidence");
+  const achievementGroups = groupedOutputs.filter((group) => ["Award / Certificate", "Professional Recognition / Ranking"].includes(group.type));
+  const unmatchedAchievementEntries = achievementEntries.filter((entry) => !achievementGroups.some((group) =>
+    group.items.some((item) => item.cvEntryId === entry.id || String(item.title || "").trim().toLowerCase() === String(entry.title || "").trim().toLowerCase())
+  ));
+  const nonProjectOutputGroups = groupedOutputs.filter((group) => group.type !== "Project / Grant Evidence" && !achievementGroups.includes(group));
 
   const journalPapers = data.outputs.filter((o) => o.type === "Journal Paper");
   const qRankCounts = Q_RANKS.reduce((acc, q) => ({ ...acc, [q]: journalPapers.filter((p) => p.qRank === q).length }), {});
@@ -9059,7 +9105,7 @@ function App() {
   }
 
   function renderOutputGroup(group) {
-    return <div key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
+    return <div id={`nyx-cv-output-${group.type.replace(/[^a-z0-9]/gi, "-")}`} key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
       <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: !previous[group.type] }))} aria-expanded={!collapsedCategories[group.type]} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsedCategories[group.type] ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
         <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type === "Journal Paper" ? "Papers" : `${group.type}s`}</span>
         <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length} Nyx record{group.items.length === 1 ? "" : "s"}{group.pending.length ? ` · ${group.pending.length} pending decision` : ""}</span>
@@ -9075,7 +9121,7 @@ function App() {
   function renderImportedCvSection(id, title, lines, empty, extraContent = null, liveItems = []) {
     const collapsed = Boolean(collapsedCvSections[id]);
     const sectionCount = lines.length + liveItems.length;
-    return <section key={id} style={{ marginBottom: 8 }}>
+    return <section id={`nyx-cv-section-${id}`} key={id} style={{ marginBottom: 8 }}>
       <button type="button" onClick={() => setCollapsedCvSections((previous) => ({ ...previous, [id]: !Boolean(previous[id]) }))} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 3px", border: 0, borderBottom: `2px solid ${TEAL}`, background: "transparent", textAlign: "left", cursor: "pointer" }}>
         <span className="pa-display" style={{ color: INK, fontSize: 19, fontWeight: 700 }}>{title}</span>
         <span className="pa-mono" style={{ color: MUTED, fontSize: 10.5 }}>{sectionCount ? `${sectionCount} ${liveItems.length ? "records" : "CV lines"}${liveItems.length ? ` · ${liveItems.length} live-linked` : ""}` : "CV section"}</span>
@@ -9277,7 +9323,8 @@ function App() {
 
             {renderImportedCvSection("summary", "Summary", cvSummaryDisplayLines, "Import your CV Word file to show the front-page summary here.")}
             {renderImportedCvSection("education", "Education", cvEducationLines, "Education details will appear here when the CV Word file is imported.")}
-            {renderImportedCvSection("projects", "Projects", cvProjectLines, "Project and grant details will appear here when the CV Word file is imported or added in Project Dashboard.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null, cvLiveProjectGaps)}
+            {renderImportedCvSection("projects", "Projects", cvProjectDisplayLines, "Projects appear here when added in Project Dashboard or imported from the CV.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null, cvLiveProjectItems)}
+            {(achievementEntries.length > 0 || achievementGroups.length > 0) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries.map((entry) => entry.title), "CV achievements appear here.", achievementGroups.length ? <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}</div> : null)}
 
 
             {nonProjectOutputGroups.length === 0 ? (

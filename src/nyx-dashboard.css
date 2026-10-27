@@ -55,3 +55,7 @@
 .nyx-custom-tile small { display:block; overflow:hidden; color:#6b7d90; font-size:9px; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
 @media (max-width:1130px) { .nyx-custom-tile-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }.nyx-custom-tile { aspect-ratio:1.5 / 1; } }
 @media (max-width:640px) { .nyx-custom-tile-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }.nyx-custom-tile { aspect-ratio:1.55 / 1; padding:9px; }.nyx-custom-tile-value { font-size:25px; } }
+
+.nyx-custom-tile-link { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.nyx-custom-tile-link:hover strong, .nyx-custom-tile-link:focus-visible strong { color: #195B89; text-decoration: underline; }
+.nyx-custom-tile-link:focus-visible { outline: 2px solid #195B89; outline-offset: 3px; }

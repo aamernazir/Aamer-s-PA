@@ -112,6 +112,20 @@ function yearInPeriod(year, period) {
   return numeric === Number(period);
 }
 
+function recordYear(record) {
+  const explicit = String(record?.year || record?.completedAt || record?.completionDate || "").match(/\b(?:19|20)\d{2}\b/);
+  if (explicit) return Number(explicit[0]);
+  const matches = String(record?.title || record?.text || "").match(/\b(?:19|20)\d{2}\b/g);
+  return matches?.length ? Number(matches[matches.length - 1]) : null;
+}
+function inSelectedYear(record, period) {
+  return period === "career" || yearInPeriod(recordYear(record), period);
+}
+function uniqueRecords(records) {
+  return new Set(records.map((record) => String(record?.title || record?.text || "").trim().toLowerCase()).filter(Boolean)).size;
+}
+function sectionMatches(section, pattern) { return pattern.test(String(section || "")); }
+
 function countArrays(value) {
   if (!value || typeof value !== "object") return 0;
   return Object.values(value).reduce((sum, entry) => {
@@ -481,8 +495,13 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
   const cvLive = buildCvLiveData({ projects, aps: raw.aps, outputs, skills: raw.skills, fundingOpportunities: raw.funding });
-  const cvPaperCount = countCvPublications(cvEntries, outputs);
-  const cvContributionCount = cvLive.apsEntries.length + cvLive.counts.professionalDevelopment;
+  const selectedCvEntries = cvEntries.filter((entry) => inSelectedYear(entry, period));
+  const selectedOutputs = outputs.filter((output) => inSelectedYear(output, period));
+  const cvPaperCount = countCvPublications(selectedCvEntries, selectedOutputs.filter((output) => ["Journal Paper", "Conference Paper", "Book Chapter"].includes(output?.type)));
+  const cvContributionCount = uniqueRecords(selectedCvEntries.filter((entry) => sectionMatches(entry.section, /contribution|service/i)));
+  const completedProjectsInPeriod = cvLive.projects.filter((project) => project.status === "Completed" && (period === "career" || yearInPeriod(recordYear({ completedAt: project.completedAt }), period)));
+  const cvAchievementEntries = selectedCvEntries.filter((entry) => sectionMatches(entry.section, /achievement|award|recognition/i));
+  const cvAchievementOutputs = selectedOutputs.filter((output) => ["Award / Certificate", "Professional Recognition / Ranking"].includes(output?.type));
   const cvCurrentYearPapers = countCvPublications([], outputs.filter((item) => Number(item?.year) === Number(new Date().getFullYear())));
   const latestCitationSnapshots = [...(Array.isArray(raw.impact?.snapshots) ? raw.impact.snapshots : [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const latestCitationsBySource = Object.fromEntries([...new Set(latestCitationSnapshots.map((snapshot) => snapshot.source).filter(Boolean))].map((source) => [source, latestCitationSnapshots.find((snapshot) => snapshot.source === source)]));
@@ -500,26 +519,27 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const dashboardTileOptions = [...DASHBOARD_TILE_OPTIONS, ...cvSectionOptions.map((section) => ({ id: `cv-section:${section}`, label: section }))];
   const savedTileSelection = Array.isArray(raw.dashboardTiles) && raw.dashboardTiles.length === 8 ? raw.dashboardTiles : DEFAULT_DASHBOARD_TILES;
   const selectedDashboardTiles = savedTileSelection.map((id) => dashboardTileOptions.some((option) => option.id === id) ? id : DASHBOARD_TILE_OPTIONS[0].id);
-  const sectionCount = (matcher) => new Set(cvEntries.filter((entry) => matcher(String(entry?.section || ""))).map((entry) => String(entry?.title || "").trim().toLowerCase()).filter(Boolean)).size;
+  const sectionCount = (matcher) => uniqueRecords(selectedCvEntries.filter((entry) => matcher(String(entry?.section || ""))));
+  const outputCount = (types) => uniqueRecords(selectedOutputs.filter((output) => types.includes(output?.type)));
   const dashboardTileValues = {
-    "metric:publications": { value: cvPaperCount, detail: "Journals · conferences · chapters" },
-    "metric:active-projects": { value: activeProjects.length, detail: "Currently active" },
-    "metric:completed-projects": { value: cvLive.counts.completedProjects, detail: "Completed projects" },
-    "metric:achievements": { value: cvLive.counts.achievements, detail: "Linked CV highlights" },
-    "metric:contributions": { value: cvContributionCount, detail: "Across live modules" },
-    "metric:research-products": { value: products.length, detail: "Research products" },
-    "metric:conferences": { value: cvLive.counts.conferences, detail: "CV and APS records" },
-    "metric:education": { value: sectionCount((section) => /education/i.test(section)), detail: "CV education entries" },
-    "metric:summary": { value: sectionCount((section) => /summary|profile/i.test(section)), detail: "CV summary entries" },
-    "metric:citations": { value: latestCitationSnapshots[0]?.citations != null ? Number(latestCitationSnapshots[0].citations).toLocaleString() : "—", detail: citationLabel || "No citation snapshot" },
-    "metric:teaching": { value: cvLive.counts.teaching, detail: "Teaching & supervision" },
-    "metric:community": { value: cvLive.counts.community, detail: "Community engagement" },
-    "metric:mentoring": { value: cvLive.counts.mentoring, detail: "Mentoring records" },
-    "metric:professional-development": { value: cvLive.counts.professionalDevelopment, detail: "Completed learning" },
+    "metric:publications": { value: cvPaperCount, detail: period === "career" ? "Journal · proceedings · chapters" : `Published in ${period} · journal · proceedings · chapters`, module: "archive", route: "cv-section:publications" },
+    "metric:active-projects": { value: activeProjects.length, detail: "Currently active · Project Dashboard", module: "projects" },
+    "metric:completed-projects": { value: completedProjectsInPeriod.length, detail: period === "career" ? "Completed projects" : `Completed in ${period}`, module: "archive", route: "cv-section:projects" },
+    "metric:achievements": { value: uniqueRecords([...cvAchievementEntries, ...cvAchievementOutputs]), detail: period === "career" ? "CV achievements" : `CV achievements · ${period}`, module: "archive", route: "cv-section:achievements" },
+    "metric:contributions": { value: cvContributionCount, detail: "CV contributions", module: "archive", route: "cv-section:contributions" },
+    "metric:research-products": { value: outputCount(["Patent", "Report"]), detail: "CV research products", module: "archive", route: "cv-section:products" },
+    "metric:conferences": { value: outputCount(["Conference Presentation", "Conference Participation", "Conference Committee Service", "Conference / Professional Service"]) + sectionCount((section) => /conference (?:presentation|participation|service)/i.test(section)), detail: "Presentations · participation · service", module: "archive", route: "cv-section:conferences" },
+    "metric:education": { value: sectionCount((section) => /education/i.test(section)), detail: "CV education entries", module: "archive", route: "cv-section:education" },
+    "metric:summary": { value: sectionCount((section) => /summary|profile/i.test(section)), detail: "CV summary entries", module: "archive", route: "cv-section:summary" },
+    "metric:citations": { value: latestCitationSnapshots[0]?.citations != null ? Number(latestCitationSnapshots[0].citations).toLocaleString() : "—", detail: citationLabel || "No citation snapshot", module: "archive", route: "cv-section:publications" },
+    "metric:teaching": { value: sectionCount((section) => /teaching|supervision/i.test(section)) + outputCount(["Teaching / Supervision Evidence"]), detail: "CV teaching & supervision", module: "archive", route: "cv-section:teaching" },
+    "metric:community": { value: sectionCount((section) => /community|outreach/i.test(section)) + outputCount(["Media / Outreach"]), detail: "CV community engagement", module: "archive", route: "cv-section:community" },
+    "metric:mentoring": { value: sectionCount((section) => /mentor/i.test(section)), detail: "CV mentoring", module: "archive", route: "cv-section:mentoring" },
+    "metric:professional-development": { value: sectionCount((section) => /professional development|training/i.test(section)), detail: "CV professional development", module: "archive", route: "cv-section:professional-development" },
   };
   cvSectionOptions.forEach((section) => {
     const id = `cv-section:${section}`;
-    dashboardTileValues[id] = { value: sectionCount((candidate) => candidate.trim().toLowerCase() === section.toLowerCase()), detail: "CV entries" };
+    dashboardTileValues[id] = { value: sectionCount((candidate) => candidate.trim().toLowerCase() === section.toLowerCase()), detail: period === "career" ? "CV entries" : `CV entries · ${period}`, module: "archive", route: id };
   });
 
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
@@ -570,8 +590,10 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
               <optgroup label="Dashboard metrics">{DASHBOARD_TILE_OPTIONS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</optgroup>
               {cvSectionOptions.length > 0 && <optgroup label="CV sections">{cvSectionOptions.map((section) => <option value={`cv-section:${section}`} key={section}>{section}</option>)}</optgroup>}
             </select>
-            <strong className="nyx-custom-tile-value">{metric.value}</strong>
-            <small title={metric.detail}>{metric.detail}</small>
+            <button type="button" className="nyx-custom-tile-link" onClick={() => openModule(metric.module || "archive", metric.route || "cv-evidence")} title={`Open ${dashboardTileOptions.find((option) => option.id === id)?.label || "CV section"}`}>
+              <strong className="nyx-custom-tile-value">{metric.value}</strong>
+              <small title={metric.detail}>{metric.detail} · Open ↗</small>
+            </button>
           </article>;
         })}</div>
       </section>
