@@ -8206,7 +8206,7 @@ function App() {
   const cvProjectLines = extractCvSection(cvSourceText, "RESEARCH GRANTS AND FUNDING");
   const cvSourceLines = cvSourceText.split(/\r?\n/);
   const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
-  const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: liveCvSources.fundingOpportunities, cvEntries });
+  const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: [], cvEntries });
   const apsDecisions = data.cvRegistry?.apsDecisions || {};
   const apsTypes = data.cvRegistry?.apsTypes || {};
   const normalizedCvTitle = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -9009,7 +9009,7 @@ function App() {
     type,
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
     pending: [],
-    cvItems: cvEntries.filter((entry) => typeForCvSection(entry.section) === type && !data.outputs.some((output) =>
+    cvItems: ["Other", "Project / Grant Evidence", "Award / Certificate", "Professional Recognition / Ranking"].includes(type) ? [] : cvEntries.filter((entry) => typeForCvSection(entry.section) === type && !data.outputs.some((output) =>
       output.cvEntryId === entry.id || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title)
     )),
     apsPending: pendingApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
