@@ -8166,6 +8166,7 @@ function App() {
   const pendingCvEntries = otherNyxRecords === null ? [] : findPendingCvEntries(cvEntries, [data.outputs, otherNyxRecords], dismissedCvEntries);
   const cvSourceText = String(data.cvRegistry?.sourceText || "");
   const cvSummaryLines = extractCvSection(cvSourceText, "SUMMARY");
+  const cvSummaryDisplayLines = cvSummaryLines.join(" ").trim().split(/(?<=[.!?])\s+(?=[A-Z])/).filter(Boolean).slice(0, 5);
   const cvEducationLines = extractCvSection(cvSourceText, "EDUCATION");
   const cvProjectLines = extractCvSection(cvSourceText, "RESEARCH GRANTS AND FUNDING");
   const cvSourceLines = cvSourceText.split(/\r?\n/);
@@ -9274,16 +9275,10 @@ function App() {
             </div>
             </div>
 
-            {renderImportedCvSection("summary", "Summary", cvSummaryLines, "Import your CV Word file to show the front-page summary here.", null, liveCvData.highlights.map((item) => ({ ...item, status: "Live highlight" })))}
+            {renderImportedCvSection("summary", "Summary", cvSummaryDisplayLines, "Import your CV Word file to show the front-page summary here.")}
             {renderImportedCvSection("education", "Education", cvEducationLines, "Education details will appear here when the CV Word file is imported.")}
-            {renderImportedCvSection("projects", "Projects", cvProjectLines, "Project and grant details will appear here when the CV Word file is imported or added in Project Dashboard.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null, cvLiveProjectGaps.concat(findCvSectionGaps(cvProjectLines, liveCvData.sections.Projects.filter((item) => item.source !== "Project Dashboard"))))}
-            {renderImportedCvSection("live-papers", "Papers", [], "Paper records from APS that are not already listed in the CV master or Research records will appear here.", null, liveCvData.sections.Papers)}
-            {renderImportedCvSection("achievements", "Achievements", [], "Achievements and recognitions added in APS or CV Research records will appear here.", null, liveCvData.sections.Achievements)}
-            {renderImportedCvSection("conferences", "Conferences", [], "Conference contributions recorded in APS will appear here.", null, liveCvData.sections.Conferences)}
-            {renderImportedCvSection("teaching-supervision", "Teaching & Supervision", [], "Teaching and supervision records from APS will appear here.", null, liveCvData.sections["Teaching & Supervision"])}
-            {renderImportedCvSection("mentoring", "Mentoring", [], "Mentoring records from APS will appear here.", null, liveCvData.sections.Mentoring)}
-            {renderImportedCvSection("community-engagement", "Community Engagement", [], "Societal benefit, outreach, and community records from APS will appear here.", null, liveCvData.sections["Community Engagement"])}
-            {renderImportedCvSection("professional-development", "Professional Development", [], "Completed activities from Skill Development will appear here.", null, liveCvData.sections["Professional Development"])}
+            {renderImportedCvSection("projects", "Projects", cvProjectLines, "Project and grant details will appear here when the CV Word file is imported or added in Project Dashboard.", projectEvidenceGroup ? <div style={{ marginTop: 14 }}>{renderOutputGroup(projectEvidenceGroup)}</div> : null, cvLiveProjectGaps)}
+
 
             {nonProjectOutputGroups.length === 0 ? (
               <EmptyState text="No CV records or CV gaps yet." />

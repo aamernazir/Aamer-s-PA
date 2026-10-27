@@ -481,7 +481,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const outputs = Array.isArray(raw.archive?.outputs) ? raw.archive.outputs : [];
   const cvEntries = Array.isArray(raw.archive?.cvRegistry?.entries) ? raw.archive.cvRegistry.entries : [];
   const cvLive = buildCvLiveData({ projects, aps: raw.aps, outputs, skills: raw.skills, fundingOpportunities: raw.funding });
-  const cvPaperCount = countCvPublications(cvEntries, outputs, cvLive.sections.Papers);
+  const cvPaperCount = countCvPublications(cvEntries, outputs);
   const cvContributionCount = cvLive.apsEntries.length + cvLive.counts.professionalDevelopment;
   const cvCurrentYearPapers = countCvPublications([], outputs.filter((item) => Number(item?.year) === Number(new Date().getFullYear())));
   const latestCitationSnapshots = [...(Array.isArray(raw.impact?.snapshots) ? raw.impact.snapshots : [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));

@@ -183,7 +183,7 @@ export function buildCvLiveData({ projects = [], aps = null, outputs = [], skill
     mentoring: sections.Mentoring.length,
     community: sections["Community Engagement"].length,
     professionalDevelopment: completedSkills.length,
-    papers: countCvPublications(cvEntries, outputs, sections.Papers),
+    papers: countCvPublications(cvEntries, outputs),
   } };
 }
 
