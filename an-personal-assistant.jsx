@@ -1,5 +1,5 @@
 import { extractPdfText } from "./src/pdf-text.js";
-import { cvEntryKey, pendingCvEntries as findPendingCvEntries } from "./src/cv-matching.js";
+import { cvEntryKey, pendingCvEntries as findPendingCvEntries, recordMatchesCvEntry } from "./src/cv-matching.js";
 import { createCvDocx, updateOriginalCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
 import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
@@ -9018,7 +9018,7 @@ function App() {
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
     pending: [],
     cvItems: ["Other", "Project / Grant Evidence", "Award / Certificate", "Professional Recognition / Ranking"].includes(type) ? [] : cvEntries.filter((entry) => typeForCvSection(entry.section) === type && !data.outputs.some((output) =>
-      output.cvEntryId === entry.id || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title)
+      output.cvEntryId === entry.id || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title) || recordMatchesCvEntry(output, { ...entry, type })
     )),
     apsPending: pendingApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
     apsApproved: approvedApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
