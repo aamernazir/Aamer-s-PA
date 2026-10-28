@@ -2,6 +2,7 @@ import { extractPdfText } from "./src/pdf-text.js";
 import { cvEntryKey, pendingCvEntries as findPendingCvEntries, recordMatchesCvEntry } from "./src/cv-matching.js";
 import { createCvDocx, updateOriginalCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
+import { parseWordCvProjects } from "./src/cv-projects.js";
 import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
 
 function isDocxUpload(file) {
@@ -7796,7 +7797,7 @@ function App() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("archive");
   const [collapsedCategories, setCollapsedCategories] = useState({});
-  const [collapsedCvSections, setCollapsedCvSections] = useState({ projects: true });
+  const [collapsedCvSections, setCollapsedCvSections] = useState({});
   const [expandedProjectId, setExpandedProjectId] = useState(null);
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
   const [otherNyxRecords, setOtherNyxRecords] = useState(null);
@@ -8229,21 +8230,13 @@ function App() {
   }
   // Project Dashboard is the live source; show current status before CV-only history.
   const cvLiveProjectItems = liveCvData.projects;
-  const cvProjectRows = cvProjectLines.filter((line) => !/^(research grants|undergraduate research projects)[:.]?$/i.test(line.trim()));
-  const cvProjectRole = /^(?:principal (?:co-)?investigator|co-investigator|co-?pi|pi|mentor|collaborator|researcher|project lead)\b/i;
-  const cvProjectRoles = cvProjectRows.filter((line) => cvProjectRole.test(line.trim()));
-  const cvProjectTitles = cvProjectRows.filter((line) => !cvProjectRole.test(line.trim()));
-  const cvProjectDisplayLines = cvProjectTitles.map((title, index) => ({
-    id: `cv-word-project-${index}`,
-    title,
-    role: cvProjectRoles[index] || "",
-    source: "Validated · Word CV",
-    status: /\bpresent\b|\bongoing\b/i.test(cvProjectRoles[index] || "") ? "In progress" : "Completed",
-  })).filter((item) => !cvLiveProjectItems.some((project) => project.title && item.title.toLowerCase().includes(project.title.toLowerCase()))).sort((a, b) => {
-    const priority = (item) => item.status === "In progress" ? 0 : 1;
-    const year = (item) => Number((item.role + " " + item.title).match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0);
-    return priority(a) - priority(b) || year(b) - year(a);
-  });
+  const cvProjectDisplayLines = parseWordCvProjects(cvProjectLines)
+    .filter((item) => !cvLiveProjectItems.some((project) => project.title && normalizedCvTitle(item.title).includes(normalizedCvTitle(project.title))))
+    .sort((a, b) => {
+      const priority = (item) => item.status === "In progress" ? 0 : 1;
+      const year = (item) => Number((item.role + " " + item.title).match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0);
+      return priority(a) - priority(b) || year(b) - year(a);
+    });
   const achievementEntries = cvEntries.filter((entry) => /achievement|award|recognition/i.test(String(entry.section || "")));
   const apsTypeForSection = (section) => ({
     Papers: "Journal Paper", Conferences: "Conference Committee Service",
@@ -9206,13 +9199,14 @@ function App() {
   }
 
   function renderOutputGroup(group) {
-    return <div id={`nyx-cv-output-${group.type.replace(/[^a-z0-9]/gi, "-")}`} key={group.type} style={{ marginBottom: collapsedCategories[group.type] ? 12 : 24 }}>
-      <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: !previous[group.type] }))} aria-expanded={!collapsedCategories[group.type]} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsedCategories[group.type] ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
+    const collapsed = collapsedCategories[group.type] !== false;
+    return <div id={`nyx-cv-output-${group.type.replace(/[^a-z0-9]/gi, "-")}`} key={group.type} style={{ marginBottom: collapsed ? 12 : 24 }}>
+      <button type="button" onClick={() => setCollapsedCategories((previous) => ({ ...previous, [group.type]: previous[group.type] === false }))} aria-expanded={!collapsed} aria-controls={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: collapsed ? 0 : 10, padding: "4px 0 8px", border: 0, borderBottom: "2px solid " + TYPE_COLOR[group.type], background: "transparent", textAlign: "left", cursor: "pointer" }}>
         <span className="pa-display" style={{ fontSize: 16, fontWeight: 700, color: INK }}>{group.type === "Journal Paper" ? "Papers" : `${group.type}s`}</span>
         <span className="pa-mono" style={{ fontSize: 11, color: MUTED }}>{group.items.length + group.cvItems.length + group.apsApproved.length} CV record{group.items.length + group.cvItems.length + group.apsApproved.length === 1 ? "" : "s"}{group.apsPending.length ? ` · ${group.apsPending.length} APS pending` : ""}</span>
-        <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsedCategories[group.type] ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
+        <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
       </button>
-      {!collapsedCategories[group.type] && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
+      {!collapsed && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
         {group.cvItems.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderWordCvCard(entry)}</div>)}
         {group.apsPending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderApsCard(entry, true)}</div>)}
         {group.apsApproved.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderApsCard(entry)}</div>)}
@@ -9222,10 +9216,10 @@ function App() {
   }
 
   function renderImportedCvSection(id, title, lines, empty, extraContent = null, liveItems = []) {
-    const collapsed = Boolean(collapsedCvSections[id]);
+    const collapsed = collapsedCvSections[id] !== false;
     const sectionCount = lines.length + liveItems.length;
     return <section id={`nyx-cv-section-${id}`} key={id} style={{ marginBottom: 8 }}>
-      <button type="button" onClick={() => setCollapsedCvSections((previous) => ({ ...previous, [id]: !Boolean(previous[id]) }))} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 3px", border: 0, borderBottom: `2px solid ${TEAL}`, background: "transparent", textAlign: "left", cursor: "pointer" }}>
+      <button type="button" onClick={() => setCollapsedCvSections((previous) => ({ ...previous, [id]: previous[id] === false }))} aria-expanded={!collapsed} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 3px", border: 0, borderBottom: `2px solid ${TEAL}`, background: "transparent", textAlign: "left", cursor: "pointer" }}>
         <span className="pa-display" style={{ color: INK, fontSize: 19, fontWeight: 700 }}>{title}</span>
         <span className="pa-mono" style={{ color: MUTED, fontSize: 10.5 }}>{sectionCount ? `${sectionCount} ${liveItems.length ? "records" : "CV lines"}${liveItems.length ? ` · ${liveItems.length} live-linked` : ""}` : "CV section"}</span>
         <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
