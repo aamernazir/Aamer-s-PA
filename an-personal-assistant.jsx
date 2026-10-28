@@ -3899,7 +3899,7 @@ function GhostAddButton({ onClick, label }) {
   );
 }
 
-function App() {
+function App({ onOpenModule }) {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
@@ -7797,6 +7797,7 @@ function App() {
   const [tab, setTab] = useState("archive");
   const [collapsedCategories, setCollapsedCategories] = useState({});
   const [collapsedCvSections, setCollapsedCvSections] = useState({ projects: true });
+  const [expandedProjectId, setExpandedProjectId] = useState(null);
   const [citationSnapshots, setCitationSnapshots] = useState(DEFAULT_CITATION_SNAPSHOTS);
   const [otherNyxRecords, setOtherNyxRecords] = useState(null);
   const [liveCvSources, setLiveCvSources] = useState({ projects: [], aps: null, skills: null, fundingOpportunities: [] });
@@ -8228,15 +8229,21 @@ function App() {
   }
   // Project Dashboard is the live source; show current status before CV-only history.
   const cvLiveProjectItems = liveCvData.projects;
-  const cvProjectDisplayLines = cvProjectLines
-    .filter((line) => !cvLiveProjectItems.some((project) =>
-      project.title && line.toLowerCase().includes(project.title.toLowerCase())
-    ))
-    .filter((line) => !/^(research grants|undergraduate research projects)[:.]?$/i.test(line.trim()))
-    .sort((a, b) => {
-      const year = (line) => Number(line.match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0);
-      return year(b) - year(a);
-    });
+  const cvProjectRows = cvProjectLines.filter((line) => !/^(research grants|undergraduate research projects)[:.]?$/i.test(line.trim()));
+  const cvProjectRole = /^(?:principal (?:co-)?investigator|co-investigator|co-?pi|pi|mentor|collaborator|researcher|project lead)\b/i;
+  const cvProjectRoles = cvProjectRows.filter((line) => cvProjectRole.test(line.trim()));
+  const cvProjectTitles = cvProjectRows.filter((line) => !cvProjectRole.test(line.trim()));
+  const cvProjectDisplayLines = cvProjectTitles.map((title, index) => ({
+    id: `cv-word-project-${index}`,
+    title,
+    role: cvProjectRoles[index] || "",
+    source: "Validated · Word CV",
+    status: /\bpresent\b|\bongoing\b/i.test(cvProjectRoles[index] || "") ? "In progress" : "Completed",
+  })).filter((item) => !cvLiveProjectItems.some((project) => project.title && item.title.toLowerCase().includes(project.title.toLowerCase()))).sort((a, b) => {
+    const priority = (item) => item.status === "In progress" ? 0 : 1;
+    const year = (item) => Number((item.role + " " + item.title).match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0);
+    return priority(a) - priority(b) || year(b) - year(a);
+  });
   const achievementEntries = cvEntries.filter((entry) => /achievement|award|recognition/i.test(String(entry.section || "")));
   const apsTypeForSection = (section) => ({
     Papers: "Journal Paper", Conferences: "Conference Committee Service",
@@ -9161,15 +9168,41 @@ function App() {
 
   function renderApsCard(entry, pending = false) {
     return <div key={entry.id} className="pa-card" style={{ background: pending ? "#FFFDF8" : "#EFF5EF", border: "1px solid " + (pending ? "#E5C97A" : "#A8CCB5"), borderRadius: 6, padding: "12px 14px" }}>
+      <div style={{ display: "flex", gap: 8 }}><div style={{ flex: 1 }}>
       <div style={{ fontSize: 10.5, color: pending ? AMBER : GREEN, fontWeight: 700 }}>{pending ? "APS · PENDING YOUR APPROVAL" : "APS · APPROVED FOR CV"}</div>
       <div style={{ fontSize: 13, color: INK, margin: "6px 0" }}>{entry.text}</div>
       <div style={{ fontSize: 11, color: MUTED }}>{entry.source}</div>
+      </div><div style={{ display: "flex", flexDirection: "column" }}>
+        <button aria-label="Refresh APS record" title="Refresh from APS" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={async () => { const result = await window.storage.get("am2r-aps-v1"); if (result?.value) setLiveCvSources((previous) => ({ ...previous, aps: JSON.parse(result.value) })); }}><RefreshCw size={13} color={TEAL} /></button>
+        <button aria-label="Edit APS record" title="Edit in APS" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => onOpenModule?.("aps")}><Pencil size={13} color={MUTED} /></button>
+        <button aria-label="Remove APS item from Live CV" title="Remove from Live CV" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { if (window.confirm("Remove this APS item from Live CV? It remains in APS.")) setApsDecision(entry, "removed"); }}><Trash2 size={13} color={MUTED} /></button>
+        <button aria-label={expandedProjectId === entry.id ? "Collapse APS item" : "Expand APS item"} aria-expanded={expandedProjectId === entry.id} style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => setExpandedProjectId(expandedProjectId === entry.id ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: expandedProjectId === entry.id ? "rotate(180deg)" : "none" }} /></button>
+      </div></div>
+      {expandedProjectId === entry.id && <div style={{ fontSize: 11, color: MUTED, borderTop: "1px solid " + LINE, marginTop: 8, paddingTop: 8 }}>{entry.source} · {entry.section} · {entry.sourceField}</div>}
       {pending && entry.section === "Papers" && <select aria-label="APS publication type" value={apsTypes[entry.id] || ""} onChange={(event) => setApsPublicationType(entry, event.target.value)} style={{ marginTop: 8, padding: 6 }}><option value="">Choose publication type</option><option value="Journal Paper">Journal paper</option><option value="Conference Paper">Conference proceedings</option><option value="Book Chapter">Book chapter</option></select>}
       {pending && <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
         <button type="button" onClick={() => setApsDecision(entry, "approved")} disabled={entry.section === "Papers" && !apsTypes[entry.id]} style={{ border: "1px solid #9CC9AA", borderRadius: 4, background: "#fff", color: GREEN, padding: "6px 9px", cursor: "pointer" }}>Approve for CV</button>
         <button type="button" onClick={() => setApsDecision(entry, "removed")} style={{ border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: MUTED, padding: "6px 9px", cursor: "pointer" }}>Remove from CV</button>
       </div>}
     </div>;
+  }
+
+  function renderWordCvCard(entry) {
+    const open = expandedProjectId === entry.id;
+    const buttonStyle = { background: "none", border: 0, width: 24, height: 24, display: "grid", placeItems: "center", cursor: "pointer" };
+    const changeSource = (nextTitle) => setData((previous) => {
+      const sourceText = String(previous.cvRegistry?.sourceText || "").replace(entry.title, nextTitle);
+      return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: parseCvEntries(sourceText) } };
+    });
+    return <div className="pa-card" style={{ padding: 12, border: "1px solid " + LINE, borderRadius: 6, background: "#fff" }}><div style={{ display: "flex", gap: 8 }}>
+      <div style={{ flex: 1 }}><strong style={{ fontSize: 13 }}>{entry.title}</strong><div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>Validated · Word CV</div><button type="button" onClick={() => requestEvidenceUpload(entry)} style={{ marginTop: 8, border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: TEAL, padding: "6px 9px", cursor: "pointer" }}>Add evidence</button></div>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <button style={buttonStyle} aria-label="Refresh CV record" title="Refresh from Word CV text" onClick={() => setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: parseCvEntries(previous.cvRegistry?.sourceText || "") } }))}><RefreshCw size={13} color={TEAL} /></button>
+        <button style={buttonStyle} aria-label="Edit CV record" title="Edit CV record" onClick={() => { const value = window.prompt("Edit this Word CV entry. The next export will use a generated Word layout.", entry.title); if (value?.trim() && value.trim() !== entry.title) changeSource(value.trim()); }}><Pencil size={13} color={MUTED} /></button>
+        <button style={buttonStyle} aria-label="Remove CV record" title="Remove from CV" onClick={() => { if (window.confirm("Remove this entry from the CV master text?")) changeSource(""); }}><Trash2 size={13} color={MUTED} /></button>
+        <button style={buttonStyle} aria-label={open ? "Collapse CV record" : "Expand CV record"} aria-expanded={open} onClick={() => setExpandedProjectId(open ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
+      </div>
+    </div>{open && <div style={{ borderTop: "1px solid " + LINE, marginTop: 8, paddingTop: 8, color: MUTED, fontSize: 11 }}>{entry.section}</div>}</div>;
   }
 
   function renderOutputGroup(group) {
@@ -9180,7 +9213,7 @@ function App() {
         <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", flexShrink: 0, transform: collapsedCategories[group.type] ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
       </button>
       {!collapsedCategories[group.type] && <div id={`pa-category-${group.type.replace(/[^a-z0-9]/gi, "-")}`} className="pa-output-columns">
-        {group.cvItems.map((entry) => <div key={entry.id} className="pa-output-column-item pa-card" style={{ padding: 14, border: "1px solid #DCDFE3", borderRadius: 6, background: "#fff" }}><strong style={{ fontSize: 13 }}>{entry.title}</strong><div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>Validated · imported Word CV</div><button type="button" onClick={() => requestEvidenceUpload(entry)} style={{ marginTop: 8, border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: TEAL, padding: "6px 9px", cursor: "pointer" }}>Add evidence</button></div>)}
+        {group.cvItems.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderWordCvCard(entry)}</div>)}
         {group.apsPending.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderApsCard(entry, true)}</div>)}
         {group.apsApproved.map((entry) => <div key={entry.id} className="pa-output-column-item">{renderApsCard(entry)}</div>)}
         {group.items.map((output) => <div key={output.id} className="pa-output-column-item">{renderOutputCard(output)}</div>)}
@@ -9199,10 +9232,24 @@ function App() {
       </button>
       {!collapsed && <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderTop: 0, borderRadius: "0 0 6px 6px", padding: "12px 16px", color: INK, fontSize: 12.5, lineHeight: 1.5 }}>
         {id === "projects" ? <div className="pa-output-columns">
-          {liveItems.map((item) => <article key={item.id} className="pa-output-column-item pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "12px 14px" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}><div style={{ width: 30, height: 30, borderRadius: 5, background: TEAL + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><FolderKanban size={15} color={TEAL} /></div><div><strong style={{ fontSize: 14, color: INK }}>{item.title}</strong><div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{[item.status, item.role, item.program, item.projectNumber ? `Project ${item.projectNumber}` : "", item.duration].filter(Boolean).join(" · ")}</div><div style={{ fontSize: 10.5, color: TEAL, marginTop: 5 }}>{item.source}</div></div></div>
-          </article>)}
-          {lines.map((line, index) => <article key={`cv-project-${index}`} className="pa-output-column-item pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "12px 14px" }}><div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}><div style={{ width: 30, height: 30, borderRadius: 5, background: TEAL + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><FolderKanban size={15} color={TEAL} /></div><div><div style={{ fontSize: 13.5, color: INK, fontWeight: 600 }}>{line}</div><div style={{ fontSize: 10.5, color: GREEN, marginTop: 5 }}>Validated · Word CV</div></div></div></article>)}
+          {[...liveItems, ...lines].filter((item) => !(data.cvRegistry?.hiddenProjectCards || []).includes(item.id)).sort((a, b) => { const priority = (item) => item.status === "In progress" ? 0 : item.status === "Awarded" ? 1 : 2; const year = (item) => Number(String(item.completedAt || item.startedAt || item.role || item.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0); return priority(a) - priority(b) || year(b) - year(a); }).map((item) => {
+            const fromWord = item.source === "Validated · Word CV";
+            const open = expandedProjectId === item.id;
+            const iconStyle = { background: "none", border: 0, width: 24, height: 24, display: "grid", placeItems: "center", cursor: "pointer" };
+            return <article key={item.id} className="pa-output-column-item pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "11px 12px" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 5, background: TEAL + "22", display: "grid", placeItems: "center", flexShrink: 0 }}><FolderKanban size={15} color={TEAL} /></div>
+                <div style={{ minWidth: 0, flex: 1 }}><strong style={{ fontSize: 14, color: INK }}>{item.title}</strong><div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{[item.status, item.role, item.program, item.projectNumber ? `Project ${item.projectNumber}` : "", item.duration].filter(Boolean).join(" · ")}</div><div style={{ fontSize: 10.5, color: TEAL, marginTop: 5 }}>{item.source}</div></div>
+                <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
+                  <button type="button" aria-label="Refresh project" title="Refresh from source" style={iconStyle} onClick={async () => { if (fromWord) { setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: parseCvEntries(previous.cvRegistry?.sourceText || "") } })); } else { const result = await window.storage.get(PROJECTS_STORAGE_KEY); if (result?.value) setLiveCvSources((previous) => ({ ...previous, projects: JSON.parse(result.value) })); } }}><RefreshCw size={13} color={TEAL} /></button>
+                  <button type="button" aria-label="Edit project" title={fromWord ? "Edit Word CV project text" : "Edit in Project Dashboard"} style={iconStyle} onClick={() => { if (!fromWord) return onOpenModule?.("projects"); const value = window.prompt("Edit project title in the CV. This will require a new Word export layout.", item.title); if (!value?.trim() || value.trim() === item.title) return; setData((previous) => { const sourceText = String(previous.cvRegistry?.sourceText || "").replace(item.title, value.trim()); return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: parseCvEntries(sourceText) } }; }); }}><Pencil size={13} color="#9AA2AF" /></button>
+                  <button type="button" aria-label="Remove project from Live CV" title="Hide from Live CV; keep the source record" style={iconStyle} onClick={() => { if (!window.confirm("Hide this project from Live CV? Its source record will remain available.")) return; setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, hiddenProjectCards: [...(previous.cvRegistry?.hiddenProjectCards || []), item.id] } })); }}><Trash2 size={13} color="#9AA2AF" /></button>
+                  <button type="button" aria-label={open ? "Collapse project" : "Expand project"} aria-expanded={open} title={open ? "Collapse details" : "Expand details"} style={iconStyle} onClick={() => setExpandedProjectId(open ? null : item.id)}><ChevronDown size={16} color="#9AA2AF" style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
+                </div>
+              </div>
+              {open && <div style={{ borderTop: "1px solid " + LINE, padding: "9px 0 0 40px", marginTop: 9, color: MUTED, fontSize: 12 }}>{[item.role, item.program, item.projectNumber, item.duration, item.startedAt, item.completedAt, item.source].filter(Boolean).join(" · ")}</div>}
+            </article>;
+          })}
           {!sectionCount && <div style={{ color: MUTED }}>{empty}</div>}
         </div> : sectionCount ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
           const cells = line.split("\t").map((part) => part.trim()).filter(Boolean);
@@ -10095,7 +10142,7 @@ export default function App() {
     return <ModuleFrame onBack={() => setActiveModule(null)}><APSModule /></ModuleFrame>;
   }
   if (activeModule === "archive") {
-    return <ModuleFrame onBack={() => setActiveModule(null)}><PublicationArchiveModule /></ModuleFrame>;
+    return <ModuleFrame onBack={() => setActiveModule(null)}><PublicationArchiveModule onOpenModule={setActiveModule} /></ModuleFrame>;
   }
   if (activeModule === "mailbox") {
     return <ModuleFrame onBack={() => setActiveModule(null)}><MailboxModule onOpenModule={setActiveModule} /></ModuleFrame>;
