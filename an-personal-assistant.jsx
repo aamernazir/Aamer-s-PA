@@ -7932,9 +7932,8 @@ function App() {
     setTab("archive");
     if (!route.startsWith("cv-section:")) return;
     const section = route.slice("cv-section:".length).toLowerCase();
-    if (["projects", "summary", "education", "achievements"].includes(section)) {
-      setCollapsedCvSections((previous) => ({ ...previous, [section]: false }));
-    }
+    const sourceSection = `source-${section.replace(/[^a-z0-9]+/g, "-")}`;
+    setCollapsedCvSections((previous) => ({ ...previous, [section]: false, [sourceSection]: false }));
     const outputTypes = {
       publications: ["Journal Paper", "Conference Paper", "Book Chapter"],
       papers: ["Journal Paper", "Conference Paper", "Book Chapter"],
@@ -7949,7 +7948,7 @@ function App() {
       /award|recognition/.test(section) ? ["Award / Certificate", "Professional Recognition / Ranking"] :
       /teaching|supervision/.test(section) ? outputTypes.teaching :
       /outreach|community/.test(section) ? outputTypes.community : []);
-    if (targets.length) setCollapsedCategories((previous) => Object.fromEntries(Object.entries(previous).filter(([type]) => !targets.includes(type))));
+    if (targets.length) setCollapsedCategories((previous) => ({ ...previous, ...Object.fromEntries(targets.map((type) => [type, false])) }));
     let attempts = 0;
     const scroll = () => {
       const ids = [

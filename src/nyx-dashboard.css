@@ -43,19 +43,40 @@
 
 
 /* Customizable CV snapshot tiles */
-.nyx-custom-summary { margin:0 0 12px; }
-.nyx-custom-summary-heading { display:flex; align-items:baseline; gap:10px; margin:0 0 7px; color:#233b63; }
-.nyx-custom-summary-heading strong { font:600 12px 'IBM Plex Mono',monospace; letter-spacing:.04em; text-transform:uppercase; }
-.nyx-custom-summary-heading span { color:#718096; font-size:11px; }
-.nyx-custom-tile-grid { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:8px; }
-.nyx-custom-tile { display:flex; min-width:0; aspect-ratio:1.12 / 1; flex-direction:column; align-items:stretch; justify-content:space-between; padding:10px; overflow:hidden; border:1px solid #dce5ef; border-radius:8px; background:linear-gradient(150deg,#fff,#f7faff); box-shadow:0 2px 6px rgba(44,94,145,.045); }
-.nyx-custom-tile-label { color:#8190a2; font:600 9px 'IBM Plex Mono',monospace; letter-spacing:.05em; text-transform:uppercase; }
-.nyx-custom-tile select { width:100%; min-width:0; padding:4px 18px 4px 6px; border:1px solid #dce5ef; border-radius:5px; color:#244a70; background:#fff; font:600 10px 'DM Sans',sans-serif; text-overflow:ellipsis; cursor:pointer; }
-.nyx-custom-tile-value { display:block; overflow:hidden; color:#092e55; font:700 clamp(22px,2.2vw,33px)/.95 'Source Serif 4',serif; text-overflow:ellipsis; white-space:nowrap; }
-.nyx-custom-tile small { display:block; overflow:hidden; color:#6b7d90; font-size:9px; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
-@media (max-width:1130px) { .nyx-custom-tile-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }.nyx-custom-tile { aspect-ratio:1.5 / 1; } }
-@media (max-width:640px) { .nyx-custom-tile-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }.nyx-custom-tile { aspect-ratio:1.55 / 1; padding:9px; }.nyx-custom-tile-value { font-size:25px; } }
 
-.nyx-custom-tile-link { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.nyx-custom-tile-link:hover strong, .nyx-custom-tile-link:focus-visible strong { color: #195B89; text-decoration: underline; }
-.nyx-custom-tile-link:focus-visible { outline: 2px solid #195B89; outline-offset: 3px; }
+.nyx-custom-summary { margin:0 0 17px; }
+.nyx-custom-summary-heading { display:flex; justify-content:space-between; align-items:end; gap:12px; margin:0 0 10px; color:#233b63; }
+.nyx-custom-summary-heading > div { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px; }
+.nyx-custom-summary-heading strong { font:600 12px 'IBM Plex Mono',monospace; letter-spacing:.04em; text-transform:uppercase; }
+.nyx-custom-summary-heading span,.nyx-custom-summary-heading small { color:#718096; font-size:11px; }
+.nyx-custom-tile-grid { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:9px; }
+.nyx-custom-tile { display:flex; min-width:0; min-height:175px; flex-direction:column; align-items:stretch; padding:11px; overflow:hidden; border:1px solid #dce5ef; border-top:3px solid var(--tile-accent); border-radius:9px; background:linear-gradient(155deg,#fff 45%,var(--tile-soft)); box-shadow:0 3px 9px rgba(44,94,145,.06); }
+.nyx-custom-tile-top { display:flex; justify-content:space-between; align-items:flex-start; gap:4px; margin-bottom:7px; }
+.nyx-custom-tile-icon { display:grid; place-items:center; flex:none; width:31px; height:31px; border-radius:50%; background:var(--tile-soft); color:var(--tile-accent); }
+.nyx-custom-tile-scope { padding-top:2px; color:#607386; font:600 9px/1.2 'IBM Plex Mono',monospace; text-align:right; }
+.nyx-custom-tile-link { display:flex; flex:1; flex-direction:column; align-items:flex-start; gap:3px; width:100%; min-width:0; padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.nyx-custom-tile-value { display:block; max-width:100%; overflow:hidden; color:#132f50; font:700 clamp(25px,2.3vw,36px)/1 'Source Serif 4',serif; text-overflow:ellipsis; white-space:nowrap; }
+.nyx-custom-tile-name { color:var(--tile-accent); font-size:11px; font-weight:700; line-height:1.2; }
+.nyx-custom-tile-link small { display:-webkit-box; overflow:hidden; color:#64768a; font-size:9px; line-height:1.25; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.nyx-custom-tile select { width:100%; min-width:0; margin-top:8px; padding:5px 18px 5px 6px; border:1px solid #dce5ef; border-radius:5px; color:#244a70; background:#fff; font:600 10px 'DM Sans',sans-serif; text-overflow:ellipsis; cursor:pointer; }
+.nyx-custom-tile-link:hover .nyx-custom-tile-name,.nyx-custom-tile-link:focus-visible .nyx-custom-tile-name { text-decoration:underline; }
+.nyx-custom-tile-link:focus-visible,.nyx-custom-tile select:focus-visible { outline:2px solid var(--tile-accent); outline-offset:2px; }
+.nyx-visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+.nyx-highlights { margin:0 0 17px; padding:15px 17px 17px; border:1px solid #dbe6ef; border-radius:10px; background:linear-gradient(115deg,#102f4e,#17486d); color:#fff; }
+.nyx-highlights-heading { display:flex; justify-content:space-between; align-items:end; gap:12px; margin-bottom:12px; }
+.nyx-highlights-heading > div > span { color:#9ed8ed; font:600 9px 'IBM Plex Mono',monospace; letter-spacing:.11em; }
+.nyx-highlights-heading h2 { margin:3px 0 0; font:600 19px 'Source Serif 4',serif; }
+.nyx-highlights-heading > span { color:#b7d3e5; font-size:10px; }
+.nyx-highlight-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.nyx-highlight-card { display:flex; flex-direction:column; min-width:0; min-height:112px; padding:12px; border:1px solid rgba(220,237,249,.35); border-radius:7px; background:rgba(255,255,255,.09); color:#fff; text-align:left; cursor:pointer; }
+.nyx-highlight-card:hover,.nyx-highlight-card:focus-visible { background:rgba(255,255,255,.17); border-color:#e2c887; }
+.nyx-highlight-card:focus-visible,.nyx-highlights-empty:focus-visible { outline:2px solid #e2c887; outline-offset:2px; }
+.nyx-highlight-ordinal { color:#e2c887; font:600 10px 'IBM Plex Mono',monospace; }
+.nyx-highlight-card strong { display:-webkit-box; overflow:hidden; margin:6px 0 10px; font-size:12px; line-height:1.4; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.nyx-highlight-meta { display:flex; align-items:center; gap:5px; margin-top:auto; color:#b9d9ec; font-size:10px; }
+.nyx-highlight-meta svg { margin-left:auto; }
+.nyx-highlights-empty { display:flex; align-items:center; gap:7px; padding:8px 0; border:0; background:transparent; color:#d5e9f5; font:500 12px 'DM Sans',sans-serif; text-align:left; cursor:pointer; }
+@media (max-width:1250px) { .nyx-custom-tile-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media (max-width:700px) { .nyx-highlight-grid { grid-template-columns:1fr; } .nyx-highlight-card { min-height:90px; } }
+@media (max-width:640px) { .nyx-custom-tile-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }.nyx-custom-tile { min-height:163px; padding:9px; }.nyx-custom-tile-value { font-size:28px; }.nyx-custom-summary-heading,.nyx-highlights-heading { align-items:flex-start; flex-direction:column; gap:3px; } }

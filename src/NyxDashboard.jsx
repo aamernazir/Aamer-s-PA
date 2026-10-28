@@ -31,6 +31,7 @@ import {
 import { hasProjectNumber, projectIsActiveForWorkload } from "./project-workload.js";
 import { pendingCvEntries } from "./cv-matching.js";
 import { apsQualityReviewItems, buildCvLiveData, countCvPublications } from "./cv-live.js";
+import { selectCvHighlights } from "./dashboard-highlights.js";
 import worldMap from "./assets/nyx-world-map.jpg";
 import "./nyx-dashboard.css";
 
@@ -81,6 +82,22 @@ const DASHBOARD_TILE_OPTIONS = [
   { id: "metric:mentoring", label: "Mentoring" },
   { id: "metric:professional-development", label: "Professional development" },
 ];
+const DASHBOARD_TILE_VISUALS = {
+  "metric:publications": { icon: BookOpen, color: "#1568A5", soft: "#E8F3FC" },
+  "metric:active-projects": { icon: FolderKanban, color: "#0A8A75", soft: "#E5F6F1" },
+  "metric:completed-projects": { icon: Briefcase, color: "#5E54AD", soft: "#F0EDFA" },
+  "metric:achievements": { icon: Award, color: "#A86B0F", soft: "#FFF3DC" },
+  "metric:contributions": { icon: HeartHandshake, color: "#9B4B74", soft: "#FBEAF2" },
+  "metric:research-products": { icon: Package, color: "#087D93", soft: "#E4F5F8" },
+  "metric:conferences": { icon: Users, color: "#7062B8", soft: "#F0EDFA" },
+  "metric:education": { icon: GraduationCap, color: "#B27315", soft: "#FFF3DF" },
+  "metric:summary": { icon: FileText, color: "#4568A1", soft: "#E9F0FA" },
+  "metric:citations": { icon: MessageCircle, color: "#A04A61", soft: "#FCEBF0" },
+  "metric:teaching": { icon: GraduationCap, color: "#5368A8", soft: "#EDF0FC" },
+  "metric:community": { icon: HeartHandshake, color: "#0B8878", soft: "#E5F6F1" },
+  "metric:mentoring": { icon: Users, color: "#835AA4", soft: "#F5EDFA" },
+  "metric:professional-development": { icon: TrendingUp, color: "#167794", soft: "#E7F4F9" },
+};
 const DEFAULT_DASHBOARD_TILES = [
   "metric:publications", "metric:active-projects", "metric:completed-projects", "metric:achievements",
   "metric:education", "metric:research-products", "metric:conferences", "metric:citations",
@@ -502,6 +519,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const apsTypes = raw.archive?.cvRegistry?.apsTypes || {};
   const approvedAps = apsCandidates.filter((entry) => apsDecisions[entry.id] === "approved");
   const pendingAps = apsCandidates.filter((entry) => !apsDecisions[entry.id]);
+  const cvHighlights = selectCvHighlights({ cvEntries, outputs, approvedAps, period });
   const selectedCvEntries = cvEntries.filter((entry) => inSelectedYear(entry, period));
   const selectedOutputs = outputs.filter((output) => inSelectedYear(output, period));
   const selectedApprovedAps = approvedAps.filter((entry) => inSelectedYear(entry, period));
@@ -589,22 +607,36 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
       <header className="nyx-topbar"><div><h1>Welcome back, Aamer.</h1><p>Design for additive manufacturing to develop cutting-edge mechanical metamaterials and structures that are cost-effective to use in biomedical, automotive, UxVs, energy, and consumer applications.</p></div><div className="nyx-top-actions"><strong>{displayDate}</strong><div><span className={loading ? "is-loading" : "nyx-live-dot"} />{loading ? "Updating data" : `Data updated ${updatedAt?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "now"}`}</div><button className="nyx-refresh-button" onClick={loadDashboard} disabled={loading}><RefreshCw size={14} className={loading ? "nyx-spin" : ""} /><span>{loading ? "Updating" : "Refresh"}</span></button></div></header>
       <section style={{ marginBottom: 16 }}><button onClick={() => setChatOpen(true)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", background: "#fff", border: "1px solid #C7D2DC", borderRadius: 8, color: BLUE, cursor: "pointer", textAlign: "left" }}><MessageCircle size={18} /><span style={{ flex: 1, color: "#536273" }}>Ask Nyx about your projects, APS, publications, impact, skills, or mailbox…</span><strong>Ask Nyx</strong></button></section>
       <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
-      <section className="nyx-custom-summary" aria-label="Customizable CV dashboard tiles">
-        <div className="nyx-custom-summary-heading"><strong>CV snapshot</strong><span>Choose what each tile shows</span></div>
+      <section className="nyx-custom-summary" aria-label="Customizable live indicators">
+        <div className="nyx-custom-summary-heading"><div><strong>Live indicators</strong><span>Choose what each tile shows</span></div><small>{selectedLabel(period)} view · linked to Nyx records</small></div>
         <div className="nyx-custom-tile-grid">{selectedDashboardTiles.map((id, index) => {
           const metric = dashboardTileValues[id] || { value: 0, detail: "CV entries" };
-          return <article className="nyx-custom-tile" key={index}>
-            <label className="nyx-custom-tile-label" htmlFor={`nyx-dashboard-tile-${index}`}>Tile {index + 1}</label>
+          const option = dashboardTileOptions.find((item) => item.id === id);
+          const visual = DASHBOARD_TILE_VISUALS[id] || { icon: FileText, color: "#426D91", soft: "#EAF2F8" };
+          const Icon = visual.icon;
+          const scope = id === "metric:active-projects" ? "Live" : id === "metric:citations" ? "Latest snapshot" : selectedLabel(period);
+          return <article className="nyx-custom-tile" key={index} style={{ "--tile-accent": visual.color, "--tile-soft": visual.soft }}>
+            <div className="nyx-custom-tile-top"><span className="nyx-custom-tile-icon"><Icon size={18} strokeWidth={2.2} /></span><span className="nyx-custom-tile-scope">{scope}</span></div>
+            <button type="button" className="nyx-custom-tile-link" onClick={() => openModule(metric.module || "archive", metric.route || "cv-evidence")} title={`Open ${option?.label || "CV section"}`}>
+              <strong className="nyx-custom-tile-value">{metric.value}</strong>
+              <span className="nyx-custom-tile-name">{option?.label || "CV section"}</span>
+              <small title={metric.detail}>{metric.detail}</small>
+            </button>
+            <label className="nyx-visually-hidden" htmlFor={`nyx-dashboard-tile-${index}`}>Choose tile {index + 1} indicator</label>
             <select id={`nyx-dashboard-tile-${index}`} aria-label={`Choose what tile ${index + 1} shows`} value={id} onChange={(event) => saveDashboardTile(index, event.target.value)}>
               <optgroup label="Dashboard metrics">{DASHBOARD_TILE_OPTIONS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</optgroup>
               {cvSectionOptions.length > 0 && <optgroup label="CV sections">{cvSectionOptions.map((section) => <option value={`cv-section:${section}`} key={section}>{section}</option>)}</optgroup>}
             </select>
-            <button type="button" className="nyx-custom-tile-link" onClick={() => openModule(metric.module || "archive", metric.route || "cv-evidence")} title={`Open ${dashboardTileOptions.find((option) => option.id === id)?.label || "CV section"}`}>
-              <strong className="nyx-custom-tile-value">{metric.value}</strong>
-              <small title={metric.detail}>{metric.detail} · Open ↗</small>
-            </button>
           </article>;
         })}</div>
+      </section>
+      <section className="nyx-highlights" aria-labelledby="nyx-highlights-title">
+        <div className="nyx-highlights-heading"><div><span>FROM YOUR LIVE CV</span><h2 id="nyx-highlights-title">Featured achievements</h2></div><span>{selectedLabel(period)} · validated records</span></div>
+        {cvHighlights.length ? <div className="nyx-highlight-grid">{cvHighlights.map((item, index) => <button type="button" key={`${item.source}-${item.title}`} className="nyx-highlight-card" onClick={() => openModule("archive", "cv-section:achievements")}>
+          <span className="nyx-highlight-ordinal">{String(index + 1).padStart(2, "0")}</span>
+          <strong>{item.title}</strong>
+          <span className="nyx-highlight-meta">{item.source}{item.year ? ` · ${item.year}` : ""}<ChevronRight size={15} /></span>
+        </button>)}</div> : <button type="button" className="nyx-highlights-empty" onClick={() => openModule("archive", "cv-section:achievements")}>No validated achievements dated to {selectedLabel(period).toLowerCase()} yet. Open Achievements <ChevronRight size={15} /></button>}
       </section>
       <section className="nyx-attention-strip"><article className="nyx-panel nyx-attention-panel"><header><div><h2>Needs attention today <span className="nyx-attention-count">{attentionItems.length}</span></h2></div><button onClick={() => attentionItems[0] && openModule(attentionItems[0].moduleId, attentionItems[0].route)}>View all <ChevronRight size={16} /></button></header><div className="nyx-attention-heading"><span>Item</span><span>Type</span><span>Module</span><span>Due date</span><span>Status</span><span>Action</span></div><div className="nyx-attention-list">{attentionItems.slice(0, 3).map((item, index) => <button className="nyx-attention-item" key={`${item.label}-${item.detail}`} onClick={() => openModule(item.moduleId, item.route)}><i className={`nyx-attention-dot ${item.tone}`} /><strong>{item.label}</strong><small>{item.detail}</small><span>{item.moduleId === "aps" ? "APS" : item.moduleId === "projects" ? "Project Dashboard" : item.moduleId === "archive" ? "CV" : "Mailbox"}</span><em>{index === 0 ? "Today" : "Upcoming"}</em><StatusPill tone={item.tone === "warn" ? "warn" : "info"}>{item.tone === "warn" ? "Action required" : "In progress"}</StatusPill><ChevronRight size={15} /></button>)}{!attentionItems.length && <div className="nyx-attention-empty"><CircleDot size={15} />No linked issues need action today.</div>}</div></article></section>
       <section className="nyx-insight-grid"><article className="nyx-panel nyx-chart-panel"><header><div><span>RESEARCH PORTFOLIO</span><h2>Publications and approved projects</h2></div><div className="nyx-chart-legend"><span><i className="journal" />Journal papers</span><span><i className="conference" />Conference papers</span><span><i className="projects" />Approved projects</span></div></header><CombinedBarChart activePeriod={period} outputs={outputs} /><ResearchProducts products={products} /><footer><TrendingUp size={14} /><span>Publications: CV research records · projects: historical baseline.</span></footer></article><AffiliationFootprint outputs={outputs} period={period} /></section>
