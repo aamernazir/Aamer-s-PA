@@ -8232,6 +8232,7 @@ function App() {
     .filter((line) => !cvLiveProjectItems.some((project) =>
       project.title && line.toLowerCase().includes(project.title.toLowerCase())
     ))
+    .filter((line) => !/^(research grants|undergraduate research projects)[:.]?$/i.test(line.trim()))
     .sort((a, b) => {
       const year = (line) => Number(line.match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0);
       return year(b) - year(a);
@@ -8244,7 +8245,7 @@ function App() {
     "Community Engagement": "Media / Outreach",
   })[section] || "Other";
   const sourceOnlyCvSections = [...new Set(cvEntries.map((entry) => String(entry.section || "").trim()).filter(Boolean))]
-    .filter((section) => !/summary|profile|education|project|grant|achievement|award|recognition/i.test(section))
+    .filter((section) => !/summary|profile|education|project|grant|achievement|award|recognition/i.test(section) && !/^(books?\s*\/\s*chapters?|reviewer of book\s*\/\s*research proposals)$/i.test(section.trim()))
     .map((section) => ({
       section,
       entries: cvEntries.filter((entry) => entry.section === section && !data.outputs.some((output) =>
@@ -9197,7 +9198,13 @@ function App() {
         <ChevronDown size={17} color={MUTED} style={{ marginLeft: "auto", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
       </button>
       {!collapsed && <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderTop: 0, borderRadius: "0 0 6px 6px", padding: "12px 16px", color: INK, fontSize: 12.5, lineHeight: 1.5 }}>
-        {sectionCount ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
+        {id === "projects" ? <div className="pa-output-columns">
+          {liveItems.map((item) => <article key={item.id} className="pa-output-column-item pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "12px 14px" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}><div style={{ width: 30, height: 30, borderRadius: 5, background: TEAL + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><FolderKanban size={15} color={TEAL} /></div><div><strong style={{ fontSize: 14, color: INK }}>{item.title}</strong><div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{[item.status, item.role, item.program, item.projectNumber ? `Project ${item.projectNumber}` : "", item.duration].filter(Boolean).join(" · ")}</div><div style={{ fontSize: 10.5, color: TEAL, marginTop: 5 }}>{item.source}</div></div></div>
+          </article>)}
+          {lines.map((line, index) => <article key={`cv-project-${index}`} className="pa-output-column-item pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "12px 14px" }}><div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}><div style={{ width: 30, height: 30, borderRadius: 5, background: TEAL + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><FolderKanban size={15} color={TEAL} /></div><div><div style={{ fontSize: 13.5, color: INK, fontWeight: 600 }}>{line}</div><div style={{ fontSize: 10.5, color: GREEN, marginTop: 5 }}>Validated · Word CV</div></div></div></article>)}
+          {!sectionCount && <div style={{ color: MUTED }}>{empty}</div>}
+        </div> : sectionCount ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
           const cells = line.split("\t").map((part) => part.trim()).filter(Boolean);
           const parts = cells.length > 1 ? cells : [line];
           const colonAt = parts.length === 1 ? parts[0].indexOf(":") : -1;
