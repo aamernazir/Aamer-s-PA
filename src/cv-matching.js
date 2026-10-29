@@ -57,8 +57,8 @@ function collectRecordCandidates(records) {
 }
 
 export function recordMatchesCvEntry(record, entry) {
-  if (record?.type && entry.type && record.type !== entry.type && (CONFERENCE_KINDS.has(record.type) || CONFERENCE_KINDS.has(entry.type))) return false;
   if (record?.cvEntryId && record.cvEntryId === entry.id) return true;
+  if (record?.type && entry.type && record.type !== entry.type && (CONFERENCE_KINDS.has(record.type) || CONFERENCE_KINDS.has(entry.type))) return false;
   const recordText = searchableRecordText(record);
   const entryText = `${entry.title || ""} ${entry.section || ""}`;
   const entryDois = extractDois(entryText);

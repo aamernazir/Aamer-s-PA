@@ -3,7 +3,7 @@ import { cvEntryKey, pendingCvEntries as findPendingCvEntries, recordMatchesCvEn
 import { createCvDocx, updateOriginalCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
 import { parseWordCvProjects } from "./src/cv-projects.js";
-import { applyCvEntryEdits, renderCvTextWithEdits, sectionForCvType } from "./src/cv-entry-edits.js";
+import { applyCvEntryEdits, renderCvTextWithEdits, sectionForCvType, findCvEntryForRecord, visibleCvRecordType } from "./src/cv-entry-edits.js";
 import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
 
 function isDocxUpload(file) {
@@ -7893,6 +7893,26 @@ function App() {
           if (output.type === "Conference Paper" && !output.publicationStatus && /accepted[^)]*to be published/i.test(output.title || "")) return { ...output, publicationStatus: "Accepted, to be published" };
           return output;
         });
+        // Older CV approvals may retain a stale section or entry ID after a
+        // manual correction. Reconcile those records before rendering the CV.
+        if (loadedData.cvRegistry?.entries?.length) {
+          const registry = loadedData.cvRegistry;
+          const edits = { ...(registry.entryEdits || {}) };
+          loadedData.outputs = loadedData.outputs.map((output) => {
+            if (output.evidenceStatus !== "approved_without_evidence") return output;
+            const entry = findCvEntryForRecord(registry.entries, output);
+            if (!entry) return output;
+            const saved = edits[entry.id];
+            if (saved) return { ...output, type: saved.type || output.type, cvEntryId: entry.id, cvSection: saved.section || entry.section, cvEditedAt: saved.editedAt || output.cvEditedAt };
+            if (!output.type || output.type === typeForCvSection(entry.section)) return output;
+            const editedAt = output.cvEditedAt || new Date().toISOString();
+            const section = sectionForCvType(output.type, entry.section);
+            edits[entry.id] = { title: entry.title, type: output.type, section, year: output.year, editedAt };
+            return { ...output, cvEntryId: entry.id, cvSection: section, cvEditedAt: editedAt };
+          });
+          registry.entryEdits = edits;
+          registry.entries = applyCvEntryEdits(registry.entries, edits);
+        }
         setData(loadedData);
       } catch (e) {
         setData(SEED_DATA);
@@ -8261,7 +8281,7 @@ function App() {
     .map((section) => ({
       section,
       entries: cvEntries.filter((entry) => entry.section === section && !data.outputs.some((output) =>
-        output.cvEntryId === entry.id || String(output.title || "").trim().toLowerCase() === String(entry.title || "").trim().toLowerCase()
+        output.cvEntryId === entry.id || (output.cvEditedAt && findCvEntryForRecord(cvEntries, output)?.id === entry.id) || String(output.title || "").trim().toLowerCase() === String(entry.title || "").trim().toLowerCase()
       ) && !pendingCvEntries.some((pending) => pending.id === entry.id)),
     }))
     .filter((group) => group.entries.length && typeForCvSection(group.section) === "Other");
@@ -8837,14 +8857,17 @@ function App() {
   function saveLinkedCvEdit(previous, output, oldOutput, cvEntryId) {
     if (!cvEntryId) return { ...previous, outputs: previous.outputs.map((record) => record.id === output.id ? output : record) };
     const registry = previous.cvRegistry || {};
-    const entry = (registry.entries || []).find((item) => item.id === cvEntryId);
-    if (!entry) return { ...previous, outputs: previous.outputs.map((record) => record.id === output.id ? output : record) };
+    const entry = findCvEntryForRecord(registry.entries, { ...(oldOutput || output), cvEntryId });
+    if (!entry) {
+      const updated = { ...output, cvSection: sectionForCvType(output.type, output.cvSection), cvEditedAt: new Date().toISOString() };
+      return { ...previous, outputs: previous.outputs.map((record) => record.id === updated.id ? updated : record) };
+    }
     const oldType = oldOutput?.type || entry.type || typeForCvSection(entry.section);
     const section = output.type !== oldType ? sectionForCvType(output.type, entry.section) : entry.section;
     const contentChanged = oldOutput
       ? ["title", "venue", "year", "authors"].some((field) => String(output[field] || "") !== String(oldOutput[field] || ""))
       : output.title !== entry.title || Boolean(output.venue || output.authors) || Number(output.year) !== Number(String(entry.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || output.year);
-    const priorEdit = registry.entryEdits?.[cvEntryId] || {};
+    const priorEdit = registry.entryEdits?.[entry.id] || {};
     const edit = {
       ...priorEdit,
       title: contentChanged ? output.title : entry.title,
@@ -8854,7 +8877,7 @@ function App() {
       editedAt: new Date().toISOString(),
       ...(contentChanged ? { exportText: [output.authors, output.title, output.venue, output.year].filter(Boolean).join(" · ") } : {}),
     };
-    const updated = { ...output, cvEntryId, cvSection: section, cvEditedAt: edit.editedAt };
+    const updated = { ...output, cvEntryId: entry.id, cvSection: section, cvEditedAt: edit.editedAt };
     return {
       ...previous,
       outputs: previous.outputs.some((record) => record.id === updated.id)
@@ -8862,8 +8885,8 @@ function App() {
         : [updated, ...previous.outputs],
       cvRegistry: {
         ...registry,
-        entryEdits: { ...(registry.entryEdits || {}), [cvEntryId]: edit },
-        entries: applyCvEntryEdits(registry.entries || [], { [cvEntryId]: edit }),
+        entryEdits: { ...(registry.entryEdits || {}), [entry.id]: edit },
+        entries: applyCvEntryEdits(registry.entries || [], { [entry.id]: edit }),
       },
     };
   }
@@ -8872,17 +8895,23 @@ function App() {
     if (!draft.title.trim()) return;
     if (editingId || editingCvEntryId) {
       const oldOutput = editingId ? data.outputs.find((record) => record.id === editingId) : null;
-      const cvEntryId = oldOutput?.cvEntryId || editingCvEntryId;
-      const updatedOutput = { ...draft, id: editingId || Date.now().toString(), addedAt: oldOutput?.addedAt || new Date().toISOString(), evidenceStatus: oldOutput?.evidenceStatus || draft.evidenceStatus };
+      const matchedEntry = oldOutput ? findCvEntryForRecord(data.cvRegistry?.entries, oldOutput) : null;
+      const cvEntryId = matchedEntry?.id || oldOutput?.cvEntryId || editingCvEntryId;
+      const typeChanged = oldOutput && draft.type !== oldOutput.type;
+      const updatedOutput = { ...draft, subtype: typeChanged && OUTPUT_TYPES.includes(draft.subtype) ? "" : draft.subtype, id: editingId || Date.now().toString(), addedAt: oldOutput?.addedAt || new Date().toISOString(), evidenceStatus: oldOutput?.evidenceStatus || draft.evidenceStatus };
       const nextState = cvEntryId
         ? saveLinkedCvEdit(data, updatedOutput, oldOutput, cvEntryId)
         : { ...data, outputs: data.outputs.map((record) => record.id === editingId ? updatedOutput : record) };
       setData(nextState);
-      const syncResult = await syncNewOutputsToProjects(nextState.outputs);
-      if (syncResult.added > 0) setSyncMessage("Also added — " + syncResult.added + " publication" + (syncResult.added === 1 ? "" : "s") + " to Project Dashboard (matched by project number).");
-      else if (cvEntryId) setSyncMessage("Live CV entry updated. Its classification and details now drive the CV view and dashboard.");
       setShowForm(false);
       setEditingCvEntryId(null);
+      setCollapsedCategories((previous) => ({ ...previous, [updatedOutput.type]: false }));
+      setExpandedId(updatedOutput.id);
+      setSyncMessage("Saved as " + updatedOutput.type + " in Live CV.");
+      window.setTimeout(() => document.getElementById("nyx-cv-output-" + updatedOutput.type.replace(/[^a-z0-9]/gi, "-"))?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
+      syncNewOutputsToProjects(nextState.outputs).then((result) => {
+        if (result.added > 0) setSyncMessage("Saved in Live CV · linked " + result.added + " matching project" + (result.added === 1 ? "" : "s") + ".");
+      });
       return;
     }
     if (!skipDupCheck) {
@@ -9075,7 +9104,7 @@ function App() {
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
     pending: [],
     cvItems: ["Other", "Project / Grant Evidence", "Award / Certificate", "Professional Recognition / Ranking"].includes(type) ? [] : cvEntries.filter((entry) => typeForCvSection(entry.section) === type && !data.outputs.some((output) =>
-      output.cvEntryId === entry.id || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title) || recordMatchesCvEntry(output, { ...entry, type })
+      output.cvEntryId === entry.id || (output.cvEditedAt && findCvEntryForRecord(cvEntries, output)?.id === entry.id) || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title) || recordMatchesCvEntry(output, { ...entry, type })
     )),
     apsPending: pendingApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
     apsApproved: approvedApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
@@ -9120,7 +9149,7 @@ function App() {
                 </select>
               )}
             </div>
-            {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
+            <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{visibleCvRecordType(o, OUTPUT_TYPES)}</div>
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>{o.cvEditedAt ? "Updated in Live CV" : "Approved from CV"} · no file uploaded</div>}
             {o.evidenceStatus === "linked" && o.sourceFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 3 }}>Processed: {o.sourceFile} · extracted details saved, original file not stored</div>}
             {evidenceFeedback && evidenceFeedback.id === o.cvEntryId && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ fontSize: 11.5, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL, marginTop: 4 }}>{evidenceFeedback.message}</div>}
@@ -9764,7 +9793,7 @@ function App() {
             <div style={{ display: "flex", gap: 12 }}>
               <div style={{ flex: 1, marginBottom: 14 }}>
                 <Label>Type</Label>
-                <select style={inputStyle} value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
+                <select style={inputStyle} value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value, subtype: OUTPUT_TYPES.includes(draft.subtype) ? "" : draft.subtype })}>
                   {OUTPUT_TYPES.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </div>

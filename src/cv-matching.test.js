@@ -22,3 +22,9 @@ test("a research paper matches its full Word CV citation by title", () => {
     year: 2025,
   }, entry), false);
 });
+
+test("explicit CV link remains matched after a manual conference reclassification", () => {
+  const entry = { id: "cv1", title: "Aamer Nazir. Design for Additive Manufacturing of Customized Springs. ICIEA 2024", type: "Conference Paper" };
+  const record = { cvEntryId: "cv1", title: "Design for Additive Manufacturing of Customized Springs", type: "Conference Presentation" };
+  assert.equal(recordMatchesCvEntry(record, entry), true);
+});

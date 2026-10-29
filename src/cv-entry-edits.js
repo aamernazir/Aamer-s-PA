@@ -54,3 +54,24 @@ export function renderCvTextWithEdits(sourceText, originalEntries, edits = {}) {
   }
   return result.join("\n");
 }
+
+export function findCvEntryForRecord(entries, record) {
+  const list = Array.isArray(entries) ? entries : [];
+  const byId = list.find((entry) => entry.id && String(entry.id) === String(record?.cvEntryId || ""));
+  if (byId) return byId;
+  const byLinkedOutput = list.find((entry) => entry.linkedOutputId && String(entry.linkedOutputId) === String(record?.id || ""));
+  if (byLinkedOutput) return byLinkedOutput;
+  const title = normalize(record?.title);
+  if (title.length < 18) return null;
+  const matches = list.filter((entry) => {
+    const citation = normalize(entry.title);
+    return citation === title || citation.includes(title);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+export function visibleCvRecordType(record, knownTypes) {
+  const type = String(record?.type || "Other");
+  const subtype = String(record?.subtype || "");
+  return subtype && subtype !== type && !knownTypes.includes(subtype) ? type + " · " + subtype : type;
+}

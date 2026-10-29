@@ -98,3 +98,9 @@ test("a manually corrected CV-linked presentation is excluded from publication c
   assert.equal(countCvPublications([entry], [output]), 0);
   assert.equal(countCvPublications([{ ...entry, type: "Conference Presentation", section: "Conference Presentations", editedAt: "2026-10-29" }], [output]), 0);
 });
+
+test("publication count follows a corrected presentation despite an older CV entry ID", () => {
+  const entry = { id: "new-id", title: "Aamer Nazir. Design for Additive Manufacturing of Customized Springs. ICIEA 2024", section: "Conference Papers" };
+  const output = { id: "o1", cvEntryId: "old-id", title: "Design for Additive Manufacturing of Customized Springs", type: "Conference Presentation", cvSection: "Conference Presentations", cvEditedAt: "2026-10-29" };
+  assert.equal(countCvPublications([entry], [output]), 0);
+});

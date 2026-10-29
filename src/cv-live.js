@@ -1,3 +1,4 @@
+import { findCvEntryForRecord } from "./cv-entry-edits.js";
 const APS_CV_FIELDS = [
   { section: "Papers", group: "research", fields: ["r1Publications"] },
   { section: "Achievements", group: "research", fields: ["r6Recognitions", "r6Leading"] },
@@ -211,8 +212,9 @@ export function countCvPublications(entries = [], outputs = [], additionalRecord
   const entryById = new Map(cvEntries.filter((entry) => entry?.id).map((entry) => [String(entry.id), entry]));
   const titleByEntryId = new Map(cvEntries.filter((entry) => entry?.id && entry?.title).map((entry) => [String(entry.id), normalized(entry.title)]));
   const manualByEntryId = new Map((Array.isArray(outputs) ? outputs : [])
-    .filter((output) => output?.cvEntryId && output?.cvEditedAt)
-    .map((output) => [String(output.cvEntryId), output]));
+    .filter((output) => output?.cvEditedAt)
+    .map((output) => [findCvEntryForRecord(cvEntries, output)?.id, output])
+    .filter(([id]) => id));
   const records = [
     ...cvEntries.map((entry) => ({
       ...entry,
@@ -220,12 +222,12 @@ export function countCvPublications(entries = [], outputs = [], additionalRecord
         (entry.editedAt ? entry.type : cvPublicationTypeFromSection(entry?.section)),
     })),
     ...(Array.isArray(outputs) ? outputs : []).map((output) => {
-      const linkedEntry = output?.cvEntryId ? entryById.get(String(output.cvEntryId)) : null;
+      const linkedEntry = (output?.cvEntryId ? entryById.get(String(output.cvEntryId)) : null) || (output?.cvEditedAt ? findCvEntryForRecord(cvEntries, output) : null);
       const section = output?.cvSection || linkedEntry?.section;
       return {
         ...output,
         type: output?.cvEditedAt ? output.type : section ? cvPublicationTypeFromSection(section) : output?.type,
-        title: (output?.cvEntryId && titleByEntryId.get(String(output.cvEntryId))) || output?.title,
+        title: (linkedEntry?.id && titleByEntryId.get(String(linkedEntry.id))) || output?.title,
       };
     }),
     ...(Array.isArray(additionalRecords) ? additionalRecords : []),
