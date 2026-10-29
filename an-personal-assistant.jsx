@@ -7762,21 +7762,6 @@ function SkillDevelopmentTab() {
           </div>
         </div>
       </div>}
-      {cvSourceDraft && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 70 }} onClick={() => setCvSourceDraft(null)}>
-          <div role="dialog" aria-modal="true" aria-label="Edit Live CV copy" onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
-            <h2 className="pa-display" style={{ fontSize: 18, margin: "0 0 7px", color: INK }}>Edit Live CV copy</h2>
-            <p style={{ fontSize: 12, color: MUTED, margin: "0 0 17px" }}>Changes here update your Live CV only. The source record stays as it is.</p>
-            <Label>{cvSourceDraft.kind === "aps" ? "CV entry" : "Project title"}</Label>
-            <textarea style={{ ...inputStyle, minHeight: 80, marginBottom: 14 }} value={cvSourceDraft.title} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, title: e.target.value })} />
-            {cvSourceDraft.kind === "aps" ? <><Label>CV classification</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={cvSourceDraft.type} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, type: e.target.value })}>{OUTPUT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></> : <>
-              {["status", "role", "program", "projectNumber", "duration"].map((field) => <div key={field} style={{ marginBottom: 12 }}><Label>{{ status: "Status", role: "Role", program: "Program", projectNumber: "Project number", duration: "Duration" }[field]}</Label><input style={inputStyle} value={cvSourceDraft[field] || ""} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, [field]: e.target.value })} /></div>)}
-            </>}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" onClick={() => setCvSourceDraft(null)} style={{ padding: "8px 12px", background: "#fff", border: "1px solid #C7CCD3", borderRadius: 4, cursor: "pointer" }}>Cancel</button><button type="button" disabled={!cvSourceDraft.title.trim()} onClick={saveCvSourceEdit} style={{ padding: "8px 12px", background: TEAL, color: "#fff", border: 0, borderRadius: 4, cursor: "pointer" }}>Save CV changes</button></div>
-          </div>
-        </div>
-      )}
-
       {showForm && draft && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowForm(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 460, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
@@ -9817,6 +9802,21 @@ function App() {
             >
               {finding ? <Loader2 size={16} className="pa-spin" /> : <Search size={16} />} {finding ? (findProgress ? `Searching ${findProgress.current} of ${findProgress.total}…` : "Searching…") : "Find and add"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {cvSourceDraft && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 70 }} onClick={() => setCvSourceDraft(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Edit Live CV copy" onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <h2 className="pa-display" style={{ fontSize: 18, margin: "0 0 7px", color: INK }}>Edit Live CV copy</h2>
+            <p style={{ fontSize: 12, color: MUTED, margin: "0 0 17px" }}>Changes here update your Live CV only. The source record stays as it is.</p>
+            <Label>{cvSourceDraft.kind === "aps" ? "CV entry" : "Project title"}</Label>
+            <textarea style={{ ...inputStyle, minHeight: 80, marginBottom: 14 }} value={cvSourceDraft.title} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, title: e.target.value })} />
+            {cvSourceDraft.kind === "aps" ? <><Label>CV classification</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={cvSourceDraft.type} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, type: e.target.value })}>{OUTPUT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></> : <>
+              {["status", "role", "program", "projectNumber", "duration"].map((field) => <div key={field} style={{ marginBottom: 12 }}><Label>{{ status: "Status", role: "Role", program: "Program", projectNumber: "Project number", duration: "Duration" }[field]}</Label><input style={inputStyle} value={cvSourceDraft[field] || ""} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, [field]: e.target.value })} /></div>)}
+            </>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" onClick={() => setCvSourceDraft(null)} style={{ padding: "8px 12px", background: "#fff", border: "1px solid #C7CCD3", borderRadius: 4, cursor: "pointer" }}>Cancel</button><button type="button" disabled={!cvSourceDraft.title.trim()} onClick={saveCvSourceEdit} style={{ padding: "8px 12px", background: TEAL, color: "#fff", border: 0, borderRadius: 4, cursor: "pointer" }}>Save CV changes</button></div>
           </div>
         </div>
       )}
