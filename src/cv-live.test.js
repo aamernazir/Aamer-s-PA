@@ -91,3 +91,10 @@ test("APS attention is section-specific, limited to entered records, and respect
   assert.match(reviews[0].detail, /only one short entry/);
   assert.equal(apsQualityReviewItems({ activeCycle: "APS27", cycles: { APS27: { status: "Submitted", research: { r6Recognitions: ["Won award"] } } } }).length, 0);
 });
+
+test("a manually corrected CV-linked presentation is excluded from publication counts", () => {
+  const entry = { id: "talk1", title: "Design for Additive Manufacturing of Customized Springs", section: "Conference Papers" };
+  const output = { id: "o1", cvEntryId: "talk1", title: entry.title, type: "Conference Presentation", cvSection: "Conference Presentations", cvEditedAt: "2026-10-29" };
+  assert.equal(countCvPublications([entry], [output]), 0);
+  assert.equal(countCvPublications([{ ...entry, type: "Conference Presentation", section: "Conference Presentations", editedAt: "2026-10-29" }], [output]), 0);
+});

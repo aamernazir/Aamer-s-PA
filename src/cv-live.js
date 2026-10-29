@@ -210,14 +210,21 @@ export function countCvPublications(entries = [], outputs = [], additionalRecord
   const cvEntries = Array.isArray(entries) ? entries : [];
   const entryById = new Map(cvEntries.filter((entry) => entry?.id).map((entry) => [String(entry.id), entry]));
   const titleByEntryId = new Map(cvEntries.filter((entry) => entry?.id && entry?.title).map((entry) => [String(entry.id), normalized(entry.title)]));
+  const manualByEntryId = new Map((Array.isArray(outputs) ? outputs : [])
+    .filter((output) => output?.cvEntryId && output?.cvEditedAt)
+    .map((output) => [String(output.cvEntryId), output]));
   const records = [
-    ...cvEntries.map((entry) => ({ ...entry, type: cvPublicationTypeFromSection(entry?.section) })),
+    ...cvEntries.map((entry) => ({
+      ...entry,
+      type: manualByEntryId.get(String(entry.id))?.type ||
+        (entry.editedAt ? entry.type : cvPublicationTypeFromSection(entry?.section)),
+    })),
     ...(Array.isArray(outputs) ? outputs : []).map((output) => {
       const linkedEntry = output?.cvEntryId ? entryById.get(String(output.cvEntryId)) : null;
       const section = output?.cvSection || linkedEntry?.section;
       return {
         ...output,
-        type: section ? cvPublicationTypeFromSection(section) : output?.type,
+        type: output?.cvEditedAt ? output.type : section ? cvPublicationTypeFromSection(section) : output?.type,
         title: (output?.cvEntryId && titleByEntryId.get(String(output.cvEntryId))) || output?.title,
       };
     }),

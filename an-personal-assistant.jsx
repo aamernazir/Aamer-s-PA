@@ -3,6 +3,7 @@ import { cvEntryKey, pendingCvEntries as findPendingCvEntries, recordMatchesCvEn
 import { createCvDocx, updateOriginalCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
 import { parseWordCvProjects } from "./src/cv-projects.js";
+import { applyCvEntryEdits, renderCvTextWithEdits, sectionForCvType } from "./src/cv-entry-edits.js";
 import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
 
 function isDocxUpload(file) {
@@ -6726,7 +6727,7 @@ function SummaryStat({ label, value }) {
 
 const PublicationArchiveModule = (function() {
 const STORAGE_KEY = "am2r-publication-archive-v1";
-const CV_PARSER_VERSION = 4;
+const CV_PARSER_VERSION = 5;
 
 
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
@@ -7750,6 +7751,17 @@ function SkillDevelopmentTab() {
         ))
       )}
 
+      {editingCvText && <div style={{ position: "fixed", inset: 0, zIndex: 61, background: "rgba(26,35,50,.48)", display: "grid", placeItems: "center", padding: 16 }} onClick={() => setEditingCvText(false)}>
+        <div className="pa-card" onClick={(event) => event.stopPropagation()} style={{ width: "min(850px, 96vw)", maxHeight: "92vh", overflow: "auto", background: "#fff", padding: 20, borderRadius: 6 }}>
+          <h2 className="pa-display" style={{ margin: "0 0 8px", fontSize: 19 }}>Edit Live CV text</h2>
+          <p style={{ color: MUTED, fontSize: 12, lineHeight: 1.5 }}>Edit the imported sections and save. The next Word export uses a regenerated layout.</p>
+          <textarea aria-label="Live CV text" value={cvDraftText} onChange={(event) => setCvDraftText(event.target.value)} style={{ ...inputStyle, width: "100%", height: "min(60vh, 600px)", fontFamily: "monospace", lineHeight: 1.5, resize: "vertical" }} />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 12 }}>
+            <button type="button" onClick={() => setEditingCvText(false)} style={{ padding: "8px 13px", border: "1px solid #C7CCD3", background: "#fff", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+            <button type="button" onClick={saveCvText} style={{ padding: "8px 13px", border: 0, background: TEAL, color: "#fff", borderRadius: 4, cursor: "pointer" }}>Save CV text</button>
+          </div>
+        </div>
+      </div>}
       {showForm && draft && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowForm(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 460, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
@@ -7838,6 +7850,7 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [editingCvEntryId, setEditingCvEntryId] = useState(null);
   const [manualDupWarning, setManualDupWarning] = useState("");
 
   const [generatingSynthesis, setGeneratingSynthesis] = useState(false);
@@ -7864,7 +7877,7 @@ function App() {
         if (loadedData.cvRegistry?.sourceText && loadedData.cvRegistry.parserVersion !== CV_PARSER_VERSION) {
           loadedData.cvRegistry = {
             ...loadedData.cvRegistry,
-            entries: parseCvEntries(loadedData.cvRegistry.sourceText),
+            entries: applyCvEntryEdits(parseCvEntries(loadedData.cvRegistry.sourceText), loadedData.cvRegistry.entryEdits || {}),
             parserVersion: CV_PARSER_VERSION,
             reparsedAt: new Date().toISOString(),
           };
@@ -8150,7 +8163,7 @@ function App() {
     };
     const hasExplicitCatalogLead = (line) => /^(?:Authors?\s*:|Book (?:Title|Chapter)\s*:)/i.test(line);
     const allowsUnnumberedEntries = () => /publication|journal|conference|conf\.|committee|patent|book|chapter|grant|funding|project|award|honou?r|editorial|review/i.test(section);
-    for (const line of lines) {
+    for (const [sourceIndex, line] of lines.entries()) {
       if (heading(line) && !entryStart(line)) { section = line.replace(/[:.]+$/, ""); current = null; continue; }
       const isPublicationSection = /publication|journal/i.test(section);
       const isConferenceSection = /conference|conf\./i.test(section);
@@ -8172,9 +8185,9 @@ function App() {
         const title = line.replace(/^(\d{1,3}[.)]|[-•])\s+/, "");
         let hash = 0;
         for (const character of `${section}|${title}`) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
-        current = { id: `cv-${entries.length}-${Math.abs(hash).toString(36)}`, section, title, type: typeForCvSection(section), importedAt: new Date().toISOString() };
+        current = { id: `cv-${entries.length}-${Math.abs(hash).toString(36)}`, section, title, type: typeForCvSection(section), sourceStart: sourceIndex, sourceEnd: sourceIndex + 1, importedAt: new Date().toISOString() };
         entries.push(current);
-      } else if (current) current.title += " " + line;
+      } else if (current) { current.title += " " + line; current.sourceEnd = sourceIndex + 1; }
     }
     return entries.filter((entry) => entry.title.length > 8);
   }
@@ -8189,15 +8202,15 @@ function App() {
       const sourceText = await extractDocxUploadText(file);
       const sourceBytes = new Uint8Array(await file.arrayBuffer());
       const sourceDocxBase64 = Array.from({ length: Math.ceil(sourceBytes.length / 32766) }, (_, index) => String.fromCharCode(...sourceBytes.subarray(index * 32766, (index + 1) * 32766))).map((chunk) => btoa(chunk)).join("");
-      const entries = parseCvEntries(sourceText);
+      const entries = applyCvEntryEdits(parseCvEntries(sourceText), data.cvRegistry?.entryEdits || {});
       if (!entries.length) throw new Error("Nyx could not identify recognizable CV entries. Please use the current CV Word file with its sections and lists intact.");
-      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), sourceDocxBase64, entries, apsDecisions: previous.cvRegistry?.apsDecisions || {}, apsTypes: previous.cvRegistry?.apsTypes || {}, dismissedEntries: previous.cvRegistry?.dismissedEntries || [], parserVersion: CV_PARSER_VERSION } }));
+      setData((previous) => ({ ...previous, cvRegistry: { sourceFile: file.name, importedAt: new Date().toISOString(), sourceText: sourceText.slice(0, 750000), sourceDocxBase64, entries, entryEdits: previous.cvRegistry?.entryEdits || {}, apsDecisions: previous.cvRegistry?.apsDecisions || {}, apsTypes: previous.cvRegistry?.apsTypes || {}, dismissedEntries: previous.cvRegistry?.dismissedEntries || [], parserVersion: CV_PARSER_VERSION } }));
       setSyncMessage(`CV master list imported: ${entries.length} entries. Nyx has kept the complete text and will now show only entries without an Intelligence record.`);
     } catch (error) { setExtractError(error.message || "Could not import the CV."); }
     finally { setImportingCv(false); if (cvInputRef.current) cvInputRef.current.value = ""; }
   }
 
-  const cvEntries = Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [];
+  const cvEntries = applyCvEntryEdits(Array.isArray(data.cvRegistry?.entries) ? data.cvRegistry.entries : [], data.cvRegistry?.entryEdits || {});
   const dismissedCvEntries = Array.isArray(data.cvRegistry?.dismissedEntries) ? data.cvRegistry.dismissedEntries : [];
   const pendingCvEntries = []; // Imported Word CV entries are validated; missing PDFs do not make them pending.
   const cvSourceText = String(data.cvRegistry?.sourceText || "");
@@ -8264,12 +8277,12 @@ function App() {
   function saveCvText() {
     const sourceText = cvDraftText.trim();
     if (!sourceText) { setExtractError("The CV cannot be empty."); return; }
-    const entries = parseCvEntries(sourceText);
+    const entries = applyCvEntryEdits(parseCvEntries(sourceText), data.cvRegistry?.entryEdits || {});
     if (!entries.length) { setExtractError("Nyx could not identify CV entries. Keep the original section headings and lists, then try again."); return; }
     setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, sourceText: sourceText.slice(0, 750000), sourceDocxBase64: null, entries, parserVersion: CV_PARSER_VERSION, editedAt: new Date().toISOString() } }));
     setEditingCvText(false);
     setExtractError("");
-    setSyncMessage("CV text saved. Re-import the original Word file to preserve its layout on export.");
+    setSyncMessage("Live CV text saved. Word exports will use an updated layout.");
   }
 
   async function exportCvAsWord() {
@@ -8287,9 +8300,12 @@ function App() {
         const title = normalizedCvTitle(item.title);
         return title && !knownTitles.has(title) && !normalizedCvTitle(sourceText).includes(title);
       });
-      const blob = data.cvRegistry?.sourceDocxBase64
+      const entryEdits = data.cvRegistry?.entryEdits || {};
+      const hasCvEdits = Object.keys(entryEdits).length > 0;
+      const updatedText = hasCvEdits ? renderCvTextWithEdits(sourceText, parseCvEntries(sourceText), entryEdits) : sourceText;
+      const blob = data.cvRegistry?.sourceDocxBase64 && !hasCvEdits
         ? await updateOriginalCvDocx(data.cvRegistry.sourceDocxBase64, additions, cvEntries.map((entry) => entry.section))
-        : await createCvDocx(sourceText + (additions.length ? "\n" + additions.map((item) => `${item.section}\n${item.text}`).join("\n") : ""), cvEntries.map((entry) => entry.section));
+        : await createCvDocx(updatedText + (additions.length ? "\n" + additions.map((item) => `${item.section}\n${item.text}`).join("\n") : ""), cvEntries.map((entry) => entry.section));
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       const baseName = String(data.cvRegistry?.sourceFile || "Aamer_Nazir_CV").replace(/\.docx$/i, "").replace(/[^a-z0-9_-]+/gi, "_");
@@ -8297,7 +8313,7 @@ function App() {
       anchor.download = `${baseName || "Aamer_Nazir_CV"}_Nyx.docx`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setSyncMessage(data.cvRegistry?.sourceDocxBase64 ? "Updated copy exported from your original Word CV." : "Updated Word CV exported. Re-import the original DOCX to preserve its formatting on future exports.");
+      setSyncMessage(hasCvEdits ? "Edited Live CV exported in a generated Word layout." : data.cvRegistry?.sourceDocxBase64 ? "Updated copy exported from your original Word CV." : "Updated Word CV exported. Re-import the original DOCX to preserve its formatting on future exports.");
     } catch (error) {
       setExtractError(error?.message || "Could not create the Word CV.");
     } finally { setExportingCv(false); }
@@ -8788,8 +8804,16 @@ function App() {
 
   // ---------- Manual add/edit ----------
   const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", authorAffiliations: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "", summary: "", methods: "", keywords: [], qRank: "" });
-  function openNew() { setDraft(emptyOutput()); setEditingId(null); setManualDupWarning(""); setShowForm(true); }
-  function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setShowForm(true); }
+  function openNew() { setDraft(emptyOutput()); setEditingId(null); setEditingCvEntryId(null); setManualDupWarning(""); setShowForm(true); }
+  function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setEditingCvEntryId(null); setManualDupWarning(""); setShowForm(true); }
+  function openWordCvEdit(entry) {
+    const year = Number(String(entry.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || new Date().getFullYear());
+    setDraft({ ...emptyOutput(), title: entry.title, type: entry.type || typeForCvSection(entry.section), year, cvEntryId: entry.id, cvSection: entry.section, evidenceStatus: "approved_without_evidence" });
+    setEditingId(null);
+    setEditingCvEntryId(entry.id);
+    setManualDupWarning("");
+    setShowForm(true);
+  }
   async function reprocessOutput(output) {
     if (reprocessingId) return;
     setReprocessingId(output.id);
@@ -8804,20 +8828,61 @@ function App() {
       if (!OUTPUT_TYPES.includes(proposed.type)) proposed.type = "Other";
       setDraft({ ...proposed, keywords: proposed.keywords || [] });
       setEditingId(output.id);
+      setEditingCvEntryId(null);
       setShowForm(true);
     } catch (error) { setReprocessError("Could not reprocess this record: " + (error.message || "unknown error")); }
     finally { setReprocessingId(null); }
   }
 
+  function saveLinkedCvEdit(previous, output, oldOutput, cvEntryId) {
+    if (!cvEntryId) return { ...previous, outputs: previous.outputs.map((record) => record.id === output.id ? output : record) };
+    const registry = previous.cvRegistry || {};
+    const entry = (registry.entries || []).find((item) => item.id === cvEntryId);
+    if (!entry) return { ...previous, outputs: previous.outputs.map((record) => record.id === output.id ? output : record) };
+    const oldType = oldOutput?.type || entry.type || typeForCvSection(entry.section);
+    const section = output.type !== oldType ? sectionForCvType(output.type, entry.section) : entry.section;
+    const contentChanged = oldOutput
+      ? ["title", "venue", "year", "authors"].some((field) => String(output[field] || "") !== String(oldOutput[field] || ""))
+      : output.title !== entry.title || Boolean(output.venue || output.authors) || Number(output.year) !== Number(String(entry.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || output.year);
+    const priorEdit = registry.entryEdits?.[cvEntryId] || {};
+    const edit = {
+      ...priorEdit,
+      title: contentChanged ? output.title : entry.title,
+      type: output.type,
+      section,
+      year: output.year,
+      editedAt: new Date().toISOString(),
+      ...(contentChanged ? { exportText: [output.authors, output.title, output.venue, output.year].filter(Boolean).join(" · ") } : {}),
+    };
+    const updated = { ...output, cvEntryId, cvSection: section, cvEditedAt: edit.editedAt };
+    return {
+      ...previous,
+      outputs: previous.outputs.some((record) => record.id === updated.id)
+        ? previous.outputs.map((record) => record.id === updated.id ? updated : record)
+        : [updated, ...previous.outputs],
+      cvRegistry: {
+        ...registry,
+        entryEdits: { ...(registry.entryEdits || {}), [cvEntryId]: edit },
+        entries: applyCvEntryEdits(registry.entries || [], { [cvEntryId]: edit }),
+      },
+    };
+  }
+
   async function saveOutput(skipDupCheck) {
     if (!draft.title.trim()) return;
-    if (editingId) {
-      const updatedOutput = { ...draft, id: editingId };
-      const nextOutputs = data.outputs.map((o) => (o.id === editingId ? updatedOutput : o));
-      setData((p) => ({ ...p, outputs: nextOutputs }));
-      const syncResult = await syncNewOutputsToProjects(nextOutputs);
+    if (editingId || editingCvEntryId) {
+      const oldOutput = editingId ? data.outputs.find((record) => record.id === editingId) : null;
+      const cvEntryId = oldOutput?.cvEntryId || editingCvEntryId;
+      const updatedOutput = { ...draft, id: editingId || Date.now().toString(), addedAt: oldOutput?.addedAt || new Date().toISOString(), evidenceStatus: oldOutput?.evidenceStatus || draft.evidenceStatus };
+      const nextState = cvEntryId
+        ? saveLinkedCvEdit(data, updatedOutput, oldOutput, cvEntryId)
+        : { ...data, outputs: data.outputs.map((record) => record.id === editingId ? updatedOutput : record) };
+      setData(nextState);
+      const syncResult = await syncNewOutputsToProjects(nextState.outputs);
       if (syncResult.added > 0) setSyncMessage("Also added — " + syncResult.added + " publication" + (syncResult.added === 1 ? "" : "s") + " to Project Dashboard (matched by project number).");
+      else if (cvEntryId) setSyncMessage("Live CV entry updated. Its classification and details now drive the CV view and dashboard.");
       setShowForm(false);
+      setEditingCvEntryId(null);
       return;
     }
     if (!skipDupCheck) {
@@ -9056,7 +9121,7 @@ function App() {
               )}
             </div>
             {o.subtype && <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{o.subtype}</div>}
-            {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>Approved from CV · no file uploaded</div>}
+            {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>{o.cvEditedAt ? "Updated in Live CV" : "Approved from CV"} · no file uploaded</div>}
             {o.evidenceStatus === "linked" && o.sourceFile && <div style={{ fontSize: 11, color: GREEN, marginTop: 3 }}>Processed: {o.sourceFile} · extracted details saved, original file not stored</div>}
             {evidenceFeedback && evidenceFeedback.id === o.cvEntryId && <div role={evidenceFeedback.kind === "error" ? "alert" : "status"} style={{ fontSize: 11.5, color: evidenceFeedback.kind === "error" ? RED : evidenceFeedback.kind === "success" ? GREEN : TEAL, marginTop: 4 }}>{evidenceFeedback.message}</div>}
             {o.referencedEntityTitle && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}><strong>Recognized work:</strong> {o.referencedEntityTitle}{o.referencedEntityDoi ? ` · DOI ${o.referencedEntityDoi}` : ""}</div>}
@@ -9184,13 +9249,13 @@ function App() {
     const buttonStyle = { background: "none", border: 0, width: 24, height: 24, display: "grid", placeItems: "center", cursor: "pointer" };
     const changeSource = (nextTitle) => setData((previous) => {
       const sourceText = String(previous.cvRegistry?.sourceText || "").replace(entry.title, nextTitle);
-      return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: parseCvEntries(sourceText) } };
+      return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: applyCvEntryEdits(parseCvEntries(sourceText), previous.cvRegistry?.entryEdits || {}) } };
     });
     return <div className="pa-card" style={{ padding: 12, border: "1px solid " + LINE, borderRadius: 6, background: "#fff" }}><div style={{ display: "flex", gap: 8 }}>
       <div style={{ flex: 1 }}><strong style={{ fontSize: 13 }}>{entry.title}</strong><div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>Validated · Word CV</div><button type="button" onClick={() => requestEvidenceUpload(entry)} style={{ marginTop: 8, border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: TEAL, padding: "6px 9px", cursor: "pointer" }}>Add evidence</button></div>
       <div style={{ display: "flex", flexDirection: "column" }}>
-        <button style={buttonStyle} aria-label="Refresh CV record" title="Refresh from Word CV text" onClick={() => setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: parseCvEntries(previous.cvRegistry?.sourceText || "") } }))}><RefreshCw size={13} color={TEAL} /></button>
-        <button style={buttonStyle} aria-label="Edit CV record" title="Edit CV record" onClick={() => { const value = window.prompt("Edit this Word CV entry. The next export will use a generated Word layout.", entry.title); if (value?.trim() && value.trim() !== entry.title) changeSource(value.trim()); }}><Pencil size={13} color={MUTED} /></button>
+        <button style={buttonStyle} aria-label="Refresh CV record" title="Refresh from Word CV text" onClick={() => setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: applyCvEntryEdits(parseCvEntries(previous.cvRegistry?.sourceText || ""), previous.cvRegistry?.entryEdits || {}) } }))}><RefreshCw size={13} color={TEAL} /></button>
+        <button style={buttonStyle} aria-label="Edit CV record" title="Edit CV record" onClick={() => openWordCvEdit(entry)}><Pencil size={13} color={MUTED} /></button>
         <button style={buttonStyle} aria-label="Remove CV record" title="Remove from CV" onClick={() => { if (window.confirm("Remove this entry from the CV master text?")) changeSource(""); }}><Trash2 size={13} color={MUTED} /></button>
         <button style={buttonStyle} aria-label={open ? "Collapse CV record" : "Expand CV record"} aria-expanded={open} onClick={() => setExpandedProjectId(open ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
       </div>
@@ -9234,8 +9299,8 @@ function App() {
                 <div style={{ width: 30, height: 30, borderRadius: 5, background: TEAL + "22", display: "grid", placeItems: "center", flexShrink: 0 }}><FolderKanban size={15} color={TEAL} /></div>
                 <div style={{ minWidth: 0, flex: 1 }}><strong style={{ fontSize: 14, color: INK }}>{item.title}</strong><div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{[item.status, item.role, item.program, item.projectNumber ? `Project ${item.projectNumber}` : "", item.duration].filter(Boolean).join(" · ")}</div><div style={{ fontSize: 10.5, color: TEAL, marginTop: 5 }}>{item.source}</div></div>
                 <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
-                  <button type="button" aria-label="Refresh project" title="Refresh from source" style={iconStyle} onClick={async () => { if (fromWord) { setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: parseCvEntries(previous.cvRegistry?.sourceText || "") } })); } else { const result = await window.storage.get(PROJECTS_STORAGE_KEY); if (result?.value) setLiveCvSources((previous) => ({ ...previous, projects: JSON.parse(result.value) })); } }}><RefreshCw size={13} color={TEAL} /></button>
-                  <button type="button" aria-label="Edit project" title={fromWord ? "Edit Word CV project text" : "Edit in Project Dashboard"} style={iconStyle} onClick={() => { if (!fromWord) return onOpenModule?.("projects"); const value = window.prompt("Edit project title in the CV. This will require a new Word export layout.", item.title); if (!value?.trim() || value.trim() === item.title) return; setData((previous) => { const sourceText = String(previous.cvRegistry?.sourceText || "").replace(item.title, value.trim()); return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: parseCvEntries(sourceText) } }; }); }}><Pencil size={13} color="#9AA2AF" /></button>
+                  <button type="button" aria-label="Refresh project" title="Refresh from source" style={iconStyle} onClick={async () => { if (fromWord) { setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: applyCvEntryEdits(parseCvEntries(previous.cvRegistry?.sourceText || ""), previous.cvRegistry?.entryEdits || {}) } })); } else { const result = await window.storage.get(PROJECTS_STORAGE_KEY); if (result?.value) setLiveCvSources((previous) => ({ ...previous, projects: JSON.parse(result.value) })); } }}><RefreshCw size={13} color={TEAL} /></button>
+                  <button type="button" aria-label="Edit project" title={fromWord ? "Edit Word CV project text" : "Edit in Project Dashboard"} style={iconStyle} onClick={() => { if (!fromWord) return onOpenModule?.("projects"); const value = window.prompt("Edit project title in the CV. This will require a new Word export layout.", item.title); if (!value?.trim() || value.trim() === item.title) return; setData((previous) => { const sourceText = String(previous.cvRegistry?.sourceText || "").replace(item.title, value.trim()); return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: applyCvEntryEdits(parseCvEntries(sourceText), previous.cvRegistry?.entryEdits || {}) } }; }); }}><Pencil size={13} color="#9AA2AF" /></button>
                   <button type="button" aria-label="Remove project from Live CV" title="Hide from Live CV; keep the source record" style={iconStyle} onClick={() => { if (!window.confirm("Hide this project from Live CV? Its source record will remain available.")) return; setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, hiddenProjectCards: [...(previous.cvRegistry?.hiddenProjectCards || []), item.id] } })); }}><Trash2 size={13} color="#9AA2AF" /></button>
                   <button type="button" aria-label={open ? "Collapse project" : "Expand project"} aria-expanded={open} title={open ? "Collapse details" : "Expand details"} style={iconStyle} onClick={() => setExpandedProjectId(open ? null : item.id)}><ChevronDown size={16} color="#9AA2AF" style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
                 </div>
@@ -9245,13 +9310,16 @@ function App() {
           })}
           {!sectionCount && <div style={{ color: MUTED }}>{empty}</div>}
         </div> : sectionCount ? <div style={{ display: "grid", gap: 5 }}>{lines.map((line, index) => {
-          const cells = line.split("\t").map((part) => part.trim()).filter(Boolean);
-          const parts = cells.length > 1 ? cells : [line];
+          const cvEntry = typeof line === "object" && line !== null ? line : null;
+          const lineText = cvEntry ? cvEntry.title : String(line);
+          const cells = lineText.split("\t").map((part) => part.trim()).filter(Boolean);
+          const parts = cells.length > 1 ? cells : [lineText];
           const colonAt = parts.length === 1 ? parts[0].indexOf(":") : -1;
           const subheading = id === "projects" && ["research grants", "undergraduate research projects"].includes(parts[0].trim().toLowerCase());
           if (subheading) return <h3 key={`${id}-${index}`} className="pa-display" style={{ color: TEAL, fontSize: 15, margin: "9px 0 3px" }}>{parts[0]}</h3>;
           return <div key={`${id}-${index}`} style={{ display: "grid", gridTemplateColumns: parts.length > 1 ? "minmax(110px, 0.8fr) minmax(0, 2fr)" : "1fr", gap: "4px 10px", paddingBottom: 4, borderBottom: "1px solid #EEF0F2" }}>
             {parts.length > 1 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0]}</strong><span>{parts.slice(1).join(" · ")}</span></> : colonAt > 0 && colonAt < 45 ? <><strong style={{ color: MUTED, fontWeight: 600 }}>{parts[0].slice(0, colonAt + 1)}</strong><span>{parts[0].slice(colonAt + 1).trim()}</span></> : <span>{parts[0]}</span>}
+            {cvEntry && <button type="button" title="Edit this CV entry" aria-label={`Edit ${cvEntry.title}`} onClick={() => openWordCvEdit(cvEntry)} style={{ justifySelf: "end", border: 0, background: "transparent", color: TEAL, cursor: "pointer" }}><Pencil size={14} /></button>}
           </div>;
         })}{liveItems.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(140px, 0.8fr) minmax(0, 2fr)", gap: "4px 10px", alignItems: "start", padding: "7px 0", borderBottom: "1px solid #EEF0F2" }}>
           <strong style={{ color: TEAL, fontWeight: 600 }}>{item.role ? `${item.role} · ` : ""}{item.status || item.source}</strong>
@@ -9286,7 +9354,9 @@ function App() {
               <input ref={cvInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={importCv} style={{ display: "none" }} />
               <button type="button" onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>{importingCv ? "Importing…" : data.cvRegistry ? "Replace Word CV" : "Import Word CV"}</button>
               <button type="button" onClick={exportCvAsWord} disabled={!data.cvRegistry?.sourceText || exportingCv} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>{exportingCv ? "Preparing…" : "Export Word CV"}</button>
+              <button type="button" onClick={() => { setCvDraftText(data.cvRegistry?.sourceText || ""); setEditingCvText(true); }} disabled={!data.cvRegistry?.sourceText} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>Edit CV text</button>
               {data.cvRegistry?.sourceFile && <span style={{ alignSelf: "center", fontSize: 11.5, color: MUTED }}>Source: {data.cvRegistry.sourceFile}</span>}
+              {(Object.keys(data.cvRegistry?.entryEdits || {}).length > 0 || (!data.cvRegistry?.sourceDocxBase64 && data.cvRegistry?.sourceText)) && <span style={{ alignSelf: "center", fontSize: 11.5, color: MUTED }}>Edited entries export in an updated Word layout.</span>}
             </div>
             {extractError && <div role="alert" style={{ color: RED, fontSize: 12, marginBottom: 8 }}>{extractError}</div>}
             {syncMessage && <div role="status" style={{ color: GREEN, fontSize: 12, marginBottom: 8 }}>{syncMessage}</div>}
@@ -9425,7 +9495,7 @@ function App() {
             {(achievementEntries.length > 0 || achievementGroups.length > 0 || pendingApsEntries.some((entry) => entry.section === "Achievements") || approvedApsEntries.some((entry) => entry.section === "Achievements")) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries.map((entry) => entry.title), "CV achievements appear here.", <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}{pendingApsEntries.filter((entry) => entry.section === "Achievements").map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Achievements").map((entry) => renderApsCard(entry))}</div>)}
 
 
-            {sourceOnlyCvSections.map(({ section, entries }) => renderImportedCvSection(`source-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, section, entries.map((entry) => entry.title), "CV entries appear here."))}
+            {sourceOnlyCvSections.map(({ section, entries }) => renderImportedCvSection(`source-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, section, entries, "CV entries appear here."))}
             {nonProjectOutputGroups.length === 0 ? (
               <EmptyState text="No CV records or CV gaps yet." />
             ) : (
@@ -9686,7 +9756,7 @@ function App() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => { setShowForm(false); setManualDupWarning(""); }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h2 className="pa-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingId ? "Edit output" : "Add output"}</h2>
+              <h2 className="pa-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingId || editingCvEntryId ? "Edit Live CV record" : "Add output"}</h2>
               <button onClick={() => { setShowForm(false); setManualDupWarning(""); }} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
             </div>
             <Label>Title</Label>
@@ -9743,7 +9813,7 @@ function App() {
               </div>
             )}
             <button onClick={() => saveOutput(!!manualDupWarning)} style={{ width: "100%", background: manualDupWarning ? AMBER : INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-              {editingId ? "Save changes" : manualDupWarning ? "Add anyway" : "Add"}
+              {editingId || editingCvEntryId ? "Save CV changes" : manualDupWarning ? "Add anyway" : "Add"}
             </button>
           </div>
         </div>
