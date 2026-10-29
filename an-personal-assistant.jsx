@@ -7852,6 +7852,7 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [editingCvEntryId, setEditingCvEntryId] = useState(null);
   const [cvSourceDraft, setCvSourceDraft] = useState(null);
+  const [editingCvSourceId, setEditingCvSourceId] = useState(null);
   const [manualDupWarning, setManualDupWarning] = useState("");
 
   const [generatingSynthesis, setGeneratingSynthesis] = useState(false);
@@ -8259,10 +8260,56 @@ function App() {
     } }));
   }
   function openCvSourceEdit(entry, kind) {
-    setCvSourceDraft({ kind, id: entry.id, title: kind === "aps" ? entry.text : entry.title, type: kind === "aps" ? apsTypeForEntry(entry) : "Project / Grant Evidence", status: entry.status || "", role: entry.role || "", program: entry.program || "", projectNumber: entry.projectNumber || "", duration: entry.duration || "" });
+    if (kind === "aps") {
+      const saved = data.cvRegistry?.sourceEdits?.[entry.id] || {};
+      const year = Number(String(entry.text || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || new Date().getFullYear());
+      setDraft({ ...emptyOutput(), title: saved.text || entry.text, type: saved.cvType || apsTypeForEntry(entry), year: saved.year || year, ...saved, keywords: saved.keywords || [] });
+      setEditingCvSourceId(entry.id);
+      setEditingId(null);
+      setEditingCvEntryId(null);
+      setManualDupWarning("");
+      setShowForm(true);
+      return;
+    }
+    setCvSourceDraft({ kind, id: entry.id, title: entry.title, type: "Project / Grant Evidence", status: entry.status || "", role: entry.role || "", program: entry.program || "", projectNumber: entry.projectNumber || "", duration: entry.duration || "" });
   }
   async function reprocessCvSource(entry, kind) {
     const id = entry.id;
+    if (kind === "word") {
+      if (reprocessingId) return;
+      setReprocessingId(id);
+      const existing = { ...emptyOutput(), title: entry.title, type: entry.type || typeForCvSection(entry.section), year: Number(String(entry.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || new Date().getFullYear()), cvEntryId: id, cvSection: entry.section, evidenceStatus: "approved_without_evidence" };
+      try {
+        const parsed = await claudeExtractJSON([{ type: "text", text: "Review this Word CV entry using only the supplied text. Distinguish journal articles, proceedings papers, presentations, committee service, projects and achievements. Do not invent facts. Choose type from: " + OUTPUT_TYPES.join(", ") + ". Return ONLY JSON with fields title, type, year, venue, authors, summary, reason. Entry: " + JSON.stringify({ text: entry.title, section: entry.section }) }]);
+        setDraft({ ...existing, title: String(parsed.title || existing.title).trim() || existing.title, type: OUTPUT_TYPES.includes(parsed.type) ? parsed.type : existing.type, year: Number(parsed.year) || existing.year, venue: String(parsed.venue || ""), authors: String(parsed.authors || ""), summary: String(parsed.summary || ""), cvReviewNote: String(parsed.reason || "Review the fields before saving.") });
+      } catch (error) {
+        setDraft({ ...existing, cvReviewNote: "Reprocessing failed: " + (error.message || "unknown error") + ". You can still edit this entry manually." });
+      } finally { setReprocessingId(null); }
+      setEditingCvEntryId(id);
+      setEditingCvSourceId(null);
+      setEditingId(null);
+      setShowForm(true);
+      return;
+    }
+
+    if (kind === "aps") {
+      if (reprocessingId) return;
+      setReprocessingId(id);
+      const saved = data.cvRegistry?.sourceEdits?.[id] || {};
+      const existing = { ...emptyOutput(), title: saved.text || entry.text, type: saved.cvType || apsTypeForEntry(entry), year: saved.year || Number(String(entry.text || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || new Date().getFullYear()), ...saved };
+      try {
+        const parsed = await claudeExtractJSON([{ type: "text", text: "Review this existing Live CV entry based ONLY on the source text. Classify what the entry proves: conference committee service is not a proceedings paper or presentation merely because it mentions a conference. Do not invent details. Choose type from: " + OUTPUT_TYPES.join(", ") + ". Return ONLY JSON with fields title, type, year, venue, authors, summary, reason. Preserve unknown fields as blank. Entry: " + JSON.stringify({ text: entry.text, section: entry.section, source: entry.source, sourceField: entry.sourceField, currentType: existing.type }) }]);
+        setDraft({ ...existing, title: String(parsed.title || existing.title).trim() || existing.title, type: OUTPUT_TYPES.includes(parsed.type) ? parsed.type : existing.type, year: Number(parsed.year) || existing.year, venue: String(parsed.venue || existing.venue || ""), authors: String(parsed.authors || existing.authors || ""), summary: String(parsed.summary || existing.summary || ""), cvReviewNote: String(parsed.reason || "Review the classification and details before saving.") });
+      } catch (error) {
+        setDraft({ ...existing, cvReviewNote: "Reprocessing failed: " + (error.message || "unknown error") + ". You can still edit this CV entry manually." });
+      } finally { setReprocessingId(null); }
+      setEditingCvSourceId(id);
+      setEditingId(null);
+      setEditingCvEntryId(null);
+      setManualDupWarning("");
+      setShowForm(true);
+      return;
+    }
     const initial = { kind, id, title: kind === "aps" ? entry.text : entry.title, type: kind === "aps" ? apsTypeForEntry(entry) : kind === "word" ? (entry.type || typeForCvSection(entry.section)) : "Project / Grant Evidence", status: entry.status || "", role: entry.role || "", program: entry.program || "", projectNumber: entry.projectNumber || "", duration: entry.duration || "", year: Number(String(entry.title || "").match(/\\b(?:19|20)\\d{2}\\b/g)?.at(-1) || new Date().getFullYear()), reprocessing: true, review: "", reviewError: "" };
     setCvSourceDraft(initial);
     try {
@@ -8876,14 +8923,22 @@ function App() {
   }
 
   // ---------- Manual add/edit ----------
+  function cvEditorKind(type) {
+    if (["Journal Paper", "Conference Paper", "Book Chapter"].includes(type)) return "paper";
+    if (["Conference Presentation", "Conference Participation", "Conference Committee Service", "Conference / Professional Service"].includes(type)) return "conference";
+    if (type === "Project / Grant Evidence") return "project";
+    if (["Award / Certificate", "Professional Recognition / Ranking"].includes(type)) return "achievement";
+    return "other";
+  }
   const emptyOutput = () => ({ title: "", type: "Journal Paper", venue: "", year: new Date().getFullYear(), authors: "", authorAffiliations: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "", summary: "", methods: "", keywords: [], qRank: "" });
-  function openNew() { setDraft(emptyOutput()); setEditingId(null); setEditingCvEntryId(null); setManualDupWarning(""); setShowForm(true); }
-  function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setEditingCvEntryId(null); setManualDupWarning(""); setShowForm(true); }
+  function openNew() { setDraft(emptyOutput()); setEditingId(null); setEditingCvEntryId(null); setEditingCvSourceId(null); setManualDupWarning(""); setShowForm(true); }
+  function openEdit(o) { setDraft({ ...o, keywords: o.keywords || [] }); setEditingId(o.id); setEditingCvEntryId(null); setEditingCvSourceId(null); setManualDupWarning(""); setShowForm(true); }
   function openWordCvEdit(entry) {
     const year = Number(String(entry.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || new Date().getFullYear());
     setDraft({ ...emptyOutput(), title: entry.title, type: entry.type || typeForCvSection(entry.section), year, cvEntryId: entry.id, cvSection: entry.section, evidenceStatus: "approved_without_evidence" });
     setEditingId(null);
     setEditingCvEntryId(entry.id);
+    setEditingCvSourceId(null);
     setManualDupWarning("");
     setShowForm(true);
   }
@@ -8902,6 +8957,7 @@ function App() {
       setDraft({ ...proposed, keywords: proposed.keywords || [] });
       setEditingId(output.id);
       setEditingCvEntryId(null);
+      setEditingCvSourceId(null);
       setShowForm(true);
     } catch (error) { setReprocessError("Could not reprocess this record: " + (error.message || "unknown error")); }
     finally { setReprocessingId(null); }
@@ -8946,6 +9002,16 @@ function App() {
 
   async function saveOutput(skipDupCheck) {
     if (!draft.title.trim()) return;
+    if (editingCvSourceId) {
+      const { title, type, cvReviewNote, ...fields } = draft;
+      const edit = { ...fields, text: title.trim(), cvType: type, cvEditedAt: new Date().toISOString() };
+      setData((previous) => ({ ...previous, cvRegistry: { ...(previous.cvRegistry || {}), sourceEdits: { ...(previous.cvRegistry?.sourceEdits || {}), [editingCvSourceId]: edit } } }));
+      setShowForm(false);
+      setEditingCvSourceId(null);
+      setCollapsedCategories((previous) => ({ ...previous, [type]: false }));
+      setSyncMessage("Live CV changes saved. The APS record was not changed.");
+      return;
+    }
     if (editingId || editingCvEntryId) {
       const oldOutput = editingId ? data.outputs.find((record) => record.id === editingId) : null;
       const matchedEntry = oldOutput ? findCvEntryForRecord(data.cvRegistry?.entries, oldOutput) : null;
@@ -9310,14 +9376,14 @@ function App() {
       <div style={{ display: "flex", gap: 8 }}><div style={{ flex: 1 }}>
       <div style={{ fontSize: 10.5, color: pending ? AMBER : GREEN, fontWeight: 700 }}>{pending ? "APS · PENDING YOUR APPROVAL" : "APS · APPROVED FOR CV"}</div>
       <div style={{ fontSize: 13, color: INK, margin: "6px 0" }}>{entry.text}</div>
-      <div style={{ fontSize: 11, color: MUTED }}>{entry.source}</div>
+      <div style={{ fontSize: 11, color: MUTED }}>{entry.source}{entry.cvEditedAt ? " · Edited in Live CV" : ""}</div>
       </div><div style={{ display: "flex", flexDirection: "column" }}>
-        <button aria-label="Reprocess APS item for Live CV" title="Reprocess classification and review before saving" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => reprocessCvSource(entry, "aps")}><RefreshCw size={13} color={TEAL} /></button>
+        <button aria-label="Reprocess APS item for Live CV" title="Reprocess classification and review before saving" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => reprocessCvSource(entry, "aps")}>{reprocessingId === entry.id ? <Loader2 size={13} className="pa-spin" /> : <RefreshCw size={13} color={TEAL} />}</button>
         <button aria-label="Edit Live CV APS item" title="Edit Live CV copy" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => openCvSourceEdit(entry, "aps")}><Pencil size={13} color={MUTED} /></button>
         <button aria-label="Remove APS item from Live CV" title="Remove from Live CV" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { if (window.confirm("Remove this APS item from Live CV? It remains in APS.")) setApsDecision(entry, "removed"); }}><Trash2 size={13} color={MUTED} /></button>
         <button aria-label={expandedProjectId === entry.id ? "Collapse APS item" : "Expand APS item"} aria-expanded={expandedProjectId === entry.id} style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => setExpandedProjectId(expandedProjectId === entry.id ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: expandedProjectId === entry.id ? "rotate(180deg)" : "none" }} /></button>
       </div></div>
-      {expandedProjectId === entry.id && <div style={{ fontSize: 11, color: MUTED, borderTop: "1px solid " + LINE, marginTop: 8, paddingTop: 8 }}>{entry.source} · {entry.section} · {entry.sourceField}</div>}
+      {expandedProjectId === entry.id && <div style={{ fontSize: 11, color: MUTED, borderTop: "1px solid " + LINE, marginTop: 8, paddingTop: 8 }}>{entry.source} · {entry.section} · {entry.sourceField}{entry.cvType ? " · CV type: " + entry.cvType : ""}{entry.summary ? <p>{entry.summary}</p> : null}</div>}
       {pending && entry.section === "Papers" && <select aria-label="APS publication type" value={apsTypes[entry.id] || ""} onChange={(event) => setApsPublicationType(entry, event.target.value)} style={{ marginTop: 8, padding: 6 }}><option value="">Choose publication type</option><option value="Journal Paper">Journal paper</option><option value="Conference Paper">Conference proceedings</option><option value="Book Chapter">Book chapter</option></select>}
       {pending && <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
         <button type="button" onClick={() => setApsDecision(entry, "approved")} disabled={entry.section === "Papers" && !apsTypes[entry.id]} style={{ border: "1px solid #9CC9AA", borderRadius: 4, background: "#fff", color: GREEN, padding: "6px 9px", cursor: "pointer" }}>Approve for CV</button>
@@ -9336,7 +9402,7 @@ function App() {
     return <div className="pa-card" style={{ padding: 12, border: "1px solid " + LINE, borderRadius: 6, background: "#fff" }}><div style={{ display: "flex", gap: 8 }}>
       <div style={{ flex: 1 }}><strong style={{ fontSize: 13 }}>{entry.title}</strong><div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>Validated · Word CV</div><button type="button" onClick={() => requestEvidenceUpload(entry)} style={{ marginTop: 8, border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: TEAL, padding: "6px 9px", cursor: "pointer" }}>Add evidence</button></div>
       <div style={{ display: "flex", flexDirection: "column" }}>
-        <button style={buttonStyle} aria-label="Reprocess Word CV record" title="Reprocess classification and review before saving" onClick={() => reprocessCvSource(entry, "word")}><RefreshCw size={13} color={TEAL} /></button>
+        <button style={buttonStyle} aria-label="Reprocess Word CV record" title="Reprocess classification and review before saving" onClick={() => reprocessCvSource(entry, "word")}>{reprocessingId === entry.id ? <Loader2 size={13} className="pa-spin" /> : <RefreshCw size={13} color={TEAL} />}</button>
         <button style={buttonStyle} aria-label="Edit CV record" title="Edit CV record" onClick={() => openWordCvEdit(entry)}><Pencil size={13} color={MUTED} /></button>
         <button style={buttonStyle} aria-label="Remove CV record" title="Remove from CV" onClick={() => { if (window.confirm("Remove this entry from the CV master text?")) changeSource(""); }}><Trash2 size={13} color={MUTED} /></button>
         <button style={buttonStyle} aria-label={open ? "Collapse CV record" : "Expand CV record"} aria-expanded={open} onClick={() => setExpandedProjectId(open ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
@@ -9854,12 +9920,13 @@ function App() {
       )}
 
       {showForm && draft && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => { setShowForm(false); setManualDupWarning(""); }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => { setShowForm(false); setEditingCvSourceId(null); setManualDupWarning(""); }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h2 className="pa-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingId || editingCvEntryId ? "Edit Live CV record" : "Add output"}</h2>
-              <button onClick={() => { setShowForm(false); setManualDupWarning(""); }} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+              <h2 className="pa-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingId || editingCvEntryId || editingCvSourceId ? "Edit Live CV record" : "Add output"}</h2>
+              <button onClick={() => { setShowForm(false); setEditingCvSourceId(null); setManualDupWarning(""); }} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
             </div>
+            {(editingCvSourceId || draft.cvReviewNote) && <div style={{ fontSize: 12, color: TEAL, background: "#EDF4F8", padding: 10, marginBottom: 12 }}>{editingCvSourceId ? "APS sourced Live CV entry. Editing here does not change APS." : "Review the proposed CV details before saving."}{draft.cvReviewNote && <p style={{ margin: "7px 0 0" }}>{draft.cvReviewNote}</p>}</div>}
             <Label>Title</Label>
             <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.title} onChange={(e) => { setDraft({ ...draft, title: e.target.value }); setManualDupWarning(""); }} />
             <div style={{ display: "flex", gap: 12 }}>
@@ -9874,47 +9941,54 @@ function App() {
                 <input type="number" style={inputStyle} value={draft.year} onChange={(e) => setDraft({ ...draft, year: Number(e.target.value) })} />
               </div>
             </div>
-            <Label>Venue</Label>
-            <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.venue} onChange={(e) => setDraft({ ...draft, venue: e.target.value })} />
-            <Label>Funding / project number in acknowledgment</Label>
-            <input
-              style={{ ...inputStyle, marginBottom: 14 }}
-              value={draft.fundingProjectNumber || ""}
-              onChange={(e) => setDraft({ ...draft, fundingProjectNumber: e.target.value })}
-              placeholder="e.g. SB211010"
-            />
-            {draft.type === "Journal Paper" && (
-              <>
-                <Label>Scopus Q-rank</Label>
-                <select style={{ ...inputStyle, marginBottom: 14 }} value={draft.qRank || ""} onChange={(e) => setDraft({ ...draft, qRank: e.target.value })}>
-                  <option value="">Not set</option>
-                  {Q_RANKS.map((q) => <option key={q} value={q}>{q}</option>)}
-                </select>
-              </>
-            )}
-            <Label>Authors</Label>
-            <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.authors} onChange={(e) => setDraft({ ...draft, authors: e.target.value })} />
-            <Label>Author affiliations</Label>
-            <textarea style={{ ...inputStyle, minHeight: 70, marginBottom: 14 }} value={draft.authorAffiliations || ""} onChange={(e) => setDraft({ ...draft, authorAffiliations: e.target.value })} placeholder="Author — institution / department; one mapping per line" />
-            <Label>Corresponding author(s)</Label>
-            <input style={{ ...inputStyle, marginBottom: 8 }} value={draft.correspondingAuthors} onChange={(e) => setDraft({ ...draft, correspondingAuthors: e.target.value })} />
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: MUTED, marginBottom: 14 }}>
-              <input type="checkbox" checked={!!draft.isOwnerCorresponding} onChange={(e) => setDraft({ ...draft, isOwnerCorresponding: e.target.checked })} />
-              I was a corresponding author on this
-            </label>
-            <Label>Summary</Label>
-            <textarea style={{ ...inputStyle, minHeight: 60, marginBottom: 14 }} value={draft.summary} onChange={(e) => setDraft({ ...draft, summary: e.target.value })} />
-            <Label>Methods</Label>
-            <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.methods} onChange={(e) => setDraft({ ...draft, methods: e.target.value })} />
-            <Label>Keywords (comma-separated)</Label>
-            <input style={{ ...inputStyle, marginBottom: 16 }} value={(draft.keywords || []).join(", ")} onChange={(e) => { setDraft({ ...draft, keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) }); setManualDupWarning(""); }} />
+            {cvEditorKind(draft.type) === "paper" && <>
+              <Label>{draft.type === "Journal Paper" ? "Journal" : draft.type === "Conference Paper" ? "Proceedings / conference" : "Book / publisher"}</Label>
+              <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.venue || ""} onChange={(e) => setDraft({ ...draft, venue: e.target.value })} />
+              <Label>Authors</Label>
+              <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.authors || ""} onChange={(e) => setDraft({ ...draft, authors: e.target.value })} />
+              <Label>DOI / publication link</Label>
+              <input style={{ ...inputStyle, marginBottom: 14 }} value={draft.doi || ""} onChange={(e) => setDraft({ ...draft, doi: e.target.value })} />
+              {draft.type === "Journal Paper" && <><Label>Scopus Q-rank</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={draft.qRank || ""} onChange={(e) => setDraft({ ...draft, qRank: e.target.value })}><option value="">Not set</option>{Q_RANKS.map((q) => <option key={q} value={q}>{q}</option>)}</select></>}
+              <details style={{ marginBottom: 14, fontSize: 12, color: MUTED }}><summary style={{ cursor: "pointer" }}>More paper details</summary>
+                <div style={{ paddingTop: 12 }}>
+                  <Label>Funding / project number in acknowledgment</Label><input style={{ ...inputStyle, marginBottom: 12 }} value={draft.fundingProjectNumber || ""} onChange={(e) => setDraft({ ...draft, fundingProjectNumber: e.target.value })} />
+                  <Label>Author affiliations</Label><textarea style={{ ...inputStyle, minHeight: 55, marginBottom: 12 }} value={draft.authorAffiliations || ""} onChange={(e) => setDraft({ ...draft, authorAffiliations: e.target.value })} />
+                  <Label>Corresponding author(s)</Label><input style={{ ...inputStyle, marginBottom: 8 }} value={draft.correspondingAuthors || ""} onChange={(e) => setDraft({ ...draft, correspondingAuthors: e.target.value })} />
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 12 }}><input type="checkbox" checked={!!draft.isOwnerCorresponding} onChange={(e) => setDraft({ ...draft, isOwnerCorresponding: e.target.checked })} />I was a corresponding author</label>
+                  <Label>Methods</Label><input style={inputStyle} value={draft.methods || ""} onChange={(e) => setDraft({ ...draft, methods: e.target.value })} />
+                </div>
+              </details>
+            </>}
+            {cvEditorKind(draft.type) === "conference" && <>
+              <Label>Conference / organization</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.venue || ""} onChange={(e) => setDraft({ ...draft, venue: e.target.value })} />
+              <Label>Role</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.participationRole || ""} onChange={(e) => setDraft({ ...draft, participationRole: e.target.value })} placeholder={draft.type === "Conference Committee Service" ? "e.g. Technical committee member" : "e.g. Presenter, attendee, organizer"} />
+              {draft.type === "Conference Presentation" && <><Label>Presenter(s)</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.authors || ""} onChange={(e) => setDraft({ ...draft, authors: e.target.value })} /></>}
+              <Label>Place / date (optional)</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.location || ""} onChange={(e) => setDraft({ ...draft, location: e.target.value })} />
+            </>}
+            {cvEditorKind(draft.type) === "project" && <>
+              <Label>Status</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={draft.status || ""} onChange={(e) => setDraft({ ...draft, status: e.target.value })}><option value="">Not specified</option><option>In progress</option><option>Awarded</option><option>Completed</option></select>
+              <Label>Role</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.role || ""} onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
+              <Label>Funder / program</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.program || ""} onChange={(e) => setDraft({ ...draft, program: e.target.value })} />
+              <Label>Project number</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.projectNumber || ""} onChange={(e) => setDraft({ ...draft, projectNumber: e.target.value })} />
+              <Label>Duration</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.duration || ""} onChange={(e) => setDraft({ ...draft, duration: e.target.value })} />
+            </>}
+            {cvEditorKind(draft.type) === "achievement" && <>
+              <Label>Awarding organization / source</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.venue || ""} onChange={(e) => setDraft({ ...draft, venue: e.target.value })} />
+              <Label>Recognition / award details</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.recognitionDetails || ""} onChange={(e) => setDraft({ ...draft, recognitionDetails: e.target.value })} />
+              <Label>Related work (optional)</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.referencedEntityTitle || ""} onChange={(e) => setDraft({ ...draft, referencedEntityTitle: e.target.value })} />
+            </>}
+            {cvEditorKind(draft.type) === "other" && <><Label>Organization / venue</Label><input style={{ ...inputStyle, marginBottom: 14 }} value={draft.venue || ""} onChange={(e) => setDraft({ ...draft, venue: e.target.value })} /></>}
+            <Label>{cvEditorKind(draft.type) === "paper" ? "Brief research summary" : cvEditorKind(draft.type) === "project" ? "Project description" : "CV description"}</Label>
+            <textarea style={{ ...inputStyle, minHeight: 65, marginBottom: 14 }} value={draft.summary || ""} onChange={(e) => setDraft({ ...draft, summary: e.target.value })} />
+            <Label>Keywords (optional, comma-separated)</Label>
+            <input style={{ ...inputStyle, marginBottom: 16 }} value={(draft.keywords || []).join(", ")} onChange={(e) => { setDraft({ ...draft, keywords: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }); setManualDupWarning(""); }} />
             {manualDupWarning && (
               <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 12 }}>
                 This looks like a duplicate of "{manualDupWarning}", already in the archive. Add it anyway?
               </div>
             )}
             <button onClick={() => saveOutput(!!manualDupWarning)} style={{ width: "100%", background: manualDupWarning ? AMBER : INK, color: PAPER, border: "none", borderRadius: 3, padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-              {editingId || editingCvEntryId ? "Save CV changes" : manualDupWarning ? "Add anyway" : "Add"}
+              {editingId || editingCvEntryId || editingCvSourceId ? "Save CV changes" : manualDupWarning ? "Add anyway" : "Add"}
             </button>
           </div>
         </div>
