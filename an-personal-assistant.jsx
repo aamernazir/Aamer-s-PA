@@ -7762,6 +7762,21 @@ function SkillDevelopmentTab() {
           </div>
         </div>
       </div>}
+      {cvSourceDraft && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 70 }} onClick={() => setCvSourceDraft(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Edit Live CV copy" onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+            <h2 className="pa-display" style={{ fontSize: 18, margin: "0 0 7px", color: INK }}>Edit Live CV copy</h2>
+            <p style={{ fontSize: 12, color: MUTED, margin: "0 0 17px" }}>Changes here update your Live CV only. The source record stays as it is.</p>
+            <Label>{cvSourceDraft.kind === "aps" ? "CV entry" : "Project title"}</Label>
+            <textarea style={{ ...inputStyle, minHeight: 80, marginBottom: 14 }} value={cvSourceDraft.title} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, title: e.target.value })} />
+            {cvSourceDraft.kind === "aps" ? <><Label>CV classification</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={cvSourceDraft.type} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, type: e.target.value })}>{OUTPUT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></> : <>
+              {["status", "role", "program", "projectNumber", "duration"].map((field) => <div key={field} style={{ marginBottom: 12 }}><Label>{{ status: "Status", role: "Role", program: "Program", projectNumber: "Project number", duration: "Duration" }[field]}</Label><input style={inputStyle} value={cvSourceDraft[field] || ""} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, [field]: e.target.value })} /></div>)}
+            </>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" onClick={() => setCvSourceDraft(null)} style={{ padding: "8px 12px", background: "#fff", border: "1px solid #C7CCD3", borderRadius: 4, cursor: "pointer" }}>Cancel</button><button type="button" disabled={!cvSourceDraft.title.trim()} onClick={saveCvSourceEdit} style={{ padding: "8px 12px", background: TEAL, color: "#fff", border: 0, borderRadius: 4, cursor: "pointer" }}>Save CV changes</button></div>
+          </div>
+        </div>
+      )}
+
       {showForm && draft && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowForm(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 460, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
@@ -7851,6 +7866,7 @@ function App() {
   const [draft, setDraft] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editingCvEntryId, setEditingCvEntryId] = useState(null);
+  const [cvSourceDraft, setCvSourceDraft] = useState(null);
   const [manualDupWarning, setManualDupWarning] = useState("");
 
   const [generatingSynthesis, setGeneratingSynthesis] = useState(false);
@@ -8241,11 +8257,14 @@ function App() {
   const cvSourceLines = cvSourceText.split(/\r?\n/);
   const cvSectionNames = new Set(cvEntries.map((entry) => String(entry.section || "").trim().replace(/[:.]+$/, "").toLowerCase()).filter(Boolean));
   const liveCvData = buildCvLiveData({ projects: liveCvSources.projects, aps: liveCvSources.aps, outputs: data.outputs, skills: liveCvSources.skills, fundingOpportunities: [], cvEntries });
+  const cvSourceEdits = data.cvRegistry?.sourceEdits || {};
+  const cvProjectRecord = (project) => ({ ...project, ...(cvSourceEdits[project.id] || {}) });
+  const cvApsRecord = (entry) => ({ ...entry, ...(cvSourceEdits[entry.id] || {}) });
   const apsDecisions = data.cvRegistry?.apsDecisions || {};
   const apsTypes = data.cvRegistry?.apsTypes || {};
   const normalizedCvTitle = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const existingCvTitles = new Set([...cvEntries, ...data.outputs, ...liveCvData.projects].map((item) => normalizedCvTitle(item.title)).filter(Boolean));
-  const apsCandidates = liveCvData.apsEntries.filter((entry) => !existingCvTitles.has(normalizedCvTitle(entry.text)));
+  const apsCandidates = liveCvData.apsEntries.filter((entry) => !existingCvTitles.has(normalizedCvTitle(entry.text))).map(cvApsRecord);
   const approvedApsEntries = apsCandidates.filter((entry) => apsDecisions[entry.id] === "approved");
   const pendingApsEntries = apsCandidates.filter((entry) => !apsDecisions[entry.id]);
   function setApsDecision(entry, decision) {
@@ -8254,6 +8273,19 @@ function App() {
       apsDecisions: { ...(previous.cvRegistry?.apsDecisions || {}), [entry.id]: decision },
     } }));
   }
+  function openCvSourceEdit(entry, kind) {
+    setCvSourceDraft({ kind, id: entry.id, title: kind === "aps" ? entry.text : entry.title, type: kind === "aps" ? apsTypeForEntry(entry) : "Project / Grant Evidence", status: entry.status || "", role: entry.role || "", program: entry.program || "", projectNumber: entry.projectNumber || "", duration: entry.duration || "" });
+  }
+  function saveCvSourceEdit() {
+    if (!cvSourceDraft?.title?.trim()) return;
+    const { kind, id, title, type, status, role, program, projectNumber, duration } = cvSourceDraft;
+    const edit = kind === "aps" ? { text: title.trim(), cvType: type, cvEditedAt: new Date().toISOString() } : { title: title.trim(), status, role, program, projectNumber, duration, cvEditedAt: new Date().toISOString() };
+    setData((previous) => ({ ...previous, cvRegistry: { ...(previous.cvRegistry || {}), sourceEdits: { ...(previous.cvRegistry?.sourceEdits || {}), [id]: edit } } }));
+    if (kind === "aps") setCollapsedCategories((previous) => ({ ...previous, [type]: false }));
+    else setCollapsedCvSections((previous) => ({ ...previous, projects: false }));
+    setCvSourceDraft(null);
+    setSyncMessage("Live CV changes saved. The source module was not changed.");
+  }
   function setApsPublicationType(entry, type) {
     setData((previous) => ({ ...previous, cvRegistry: {
       ...(previous.cvRegistry || {}),
@@ -8261,8 +8293,9 @@ function App() {
     } }));
   }
   // Project Dashboard is the live source; show current status before CV-only history.
-  const cvLiveProjectItems = liveCvData.projects;
-  const cvProjectDisplayLines = parseWordCvProjects(cvProjectLines)
+  const cvLiveProjectItems = liveCvData.projects.map(cvProjectRecord);
+  const wordCvProjects = parseWordCvProjects(cvProjectLines);
+  const cvProjectDisplayLines = wordCvProjects
     .filter((item) => !cvLiveProjectItems.some((project) => project.title && normalizedCvTitle(item.title).includes(normalizedCvTitle(project.title))))
     .sort((a, b) => {
       const priority = (item) => item.status === "In progress" ? 0 : 1;
@@ -8313,16 +8346,23 @@ function App() {
     try {
       const knownTitles = new Set(cvEntries.map((entry) => String(entry.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()));
       const additions = [
-        ...liveCvData.projects.map((project) => ({ section: "RESEARCH GRANTS AND FUNDING", title: project.title, text: [project.title, project.role, project.status, project.projectNumber].filter(Boolean).join(" · ") })),
+        ...cvLiveProjectItems.map((project) => ({ section: "RESEARCH GRANTS AND FUNDING", title: project.title, text: [project.title, project.role, project.status, project.projectNumber].filter(Boolean).join(" · ") })),
         ...data.outputs.filter((output) => !output.cvEntryId).map((output) => ({ section: output.cvSection || output.type || "Other CV records", title: output.title, text: [output.title, output.year].filter(Boolean).join(" · ") })),
-        ...approvedApsEntries.map((entry) => ({ section: entry.section === "Papers" ? ({ "Journal Paper": "Journal Articles", "Conference Paper": "Conference Proceedings", "Book Chapter": "Book Chapters" }[apsTypes[entry.id]] || "Publications") : entry.section, title: entry.text, text: entry.text })),
+        ...approvedApsEntries.map((entry) => ({ section: ({ "Journal Paper": "Journal Articles", "Conference Paper": "Conference Proceedings", "Book Chapter": "Book Chapters", "Conference Presentation": "Conference Presentations", "Award / Certificate": "Achievements", "Professional Recognition / Ranking": "Achievements", "Project / Grant Evidence": "RESEARCH GRANTS AND FUNDING" })[apsTypeForEntry(entry)] || entry.section, title: entry.text, text: entry.text })),
       ].filter((item) => {
         const title = normalizedCvTitle(item.title);
         return title && !knownTitles.has(title) && !normalizedCvTitle(sourceText).includes(title);
       });
       const entryEdits = data.cvRegistry?.entryEdits || {};
-      const hasCvEdits = Object.keys(entryEdits).length > 0;
-      const updatedText = hasCvEdits ? renderCvTextWithEdits(sourceText, parseCvEntries(sourceText), entryEdits) : sourceText;
+      const hasCvEdits = Object.keys(entryEdits).length > 0 || Object.keys(cvSourceEdits).length > 0;
+      let updatedText = Object.keys(entryEdits).length ? renderCvTextWithEdits(sourceText, parseCvEntries(sourceText), entryEdits) : sourceText;
+      for (const project of wordCvProjects) {
+        const edit = cvSourceEdits[project.id];
+        if (!edit) continue;
+        for (const field of ["title", "role", "duration"]) {
+          if (edit[field] && project[field] && edit[field] !== project[field]) updatedText = updatedText.replace(project[field], edit[field]);
+        }
+      }
       const blob = data.cvRegistry?.sourceDocxBase64 && !hasCvEdits
         ? await updateOriginalCvDocx(data.cvRegistry.sourceDocxBase64, additions, cvEntries.map((entry) => entry.section))
         : await createCvDocx(updatedText + (additions.length ? "\n" + additions.map((item) => `${item.section}\n${item.text}`).join("\n") : ""), cvEntries.map((entry) => entry.section));
@@ -9098,7 +9138,7 @@ function App() {
     }
   }
 
-  const apsTypeForEntry = (entry) => entry.section === "Papers" ? (apsTypes[entry.id] || "Journal Paper") : apsTypeForSection(entry.section);
+  const apsTypeForEntry = (entry) => entry.cvType || (entry.section === "Papers" ? (apsTypes[entry.id] || "Journal Paper") : entry.section === "Projects" ? "Project / Grant Evidence" : entry.section === "Achievements" ? "Award / Certificate" : apsTypeForSection(entry.section));
   const groupedOutputs = OUTPUT_TYPES.map((type) => ({
     type,
     items: data.outputs.filter((o) => o.type === type).sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0)),
@@ -9106,8 +9146,8 @@ function App() {
     cvItems: ["Other", "Project / Grant Evidence", "Award / Certificate", "Professional Recognition / Ranking"].includes(type) ? [] : cvEntries.filter((entry) => typeForCvSection(entry.section) === type && !data.outputs.some((output) =>
       output.cvEntryId === entry.id || (output.cvEditedAt && findCvEntryForRecord(cvEntries, output)?.id === entry.id) || normalizedCvTitle(output.title) === normalizedCvTitle(entry.title) || recordMatchesCvEntry(output, { ...entry, type })
     )),
-    apsPending: pendingApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
-    apsApproved: approvedApsEntries.filter((entry) => apsTypeForEntry(entry) === type),
+    apsPending: pendingApsEntries.filter((entry) => apsTypeForEntry(entry) === type && !((entry.section === "Projects" && type === "Project / Grant Evidence") || (entry.section === "Achievements" && ["Award / Certificate", "Professional Recognition / Ranking"].includes(type)))),
+    apsApproved: approvedApsEntries.filter((entry) => apsTypeForEntry(entry) === type && !((entry.section === "Projects" && type === "Project / Grant Evidence") || (entry.section === "Achievements" && ["Award / Certificate", "Professional Recognition / Ranking"].includes(type)))),
   })).filter((g) => g.items.length || g.cvItems.length || g.apsPending.length || g.apsApproved.length);
   const projectEvidenceGroup = groupedOutputs.find((group) => group.type === "Project / Grant Evidence") || null;
   const achievementGroups = groupedOutputs.filter((group) => ["Award / Certificate", "Professional Recognition / Ranking"].includes(group.type));
@@ -9260,7 +9300,7 @@ function App() {
       <div style={{ fontSize: 11, color: MUTED }}>{entry.source}</div>
       </div><div style={{ display: "flex", flexDirection: "column" }}>
         <button aria-label="Refresh APS record" title="Refresh from APS" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={async () => { const result = await window.storage.get("am2r-aps-v1"); if (result?.value) setLiveCvSources((previous) => ({ ...previous, aps: JSON.parse(result.value) })); }}><RefreshCw size={13} color={TEAL} /></button>
-        <button aria-label="Edit APS record" title="Edit in APS" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => onOpenModule?.("aps")}><Pencil size={13} color={MUTED} /></button>
+        <button aria-label="Edit Live CV APS item" title="Edit Live CV copy" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => openCvSourceEdit(entry, "aps")}><Pencil size={13} color={MUTED} /></button>
         <button aria-label="Remove APS item from Live CV" title="Remove from Live CV" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { if (window.confirm("Remove this APS item from Live CV? It remains in APS.")) setApsDecision(entry, "removed"); }}><Trash2 size={13} color={MUTED} /></button>
         <button aria-label={expandedProjectId === entry.id ? "Collapse APS item" : "Expand APS item"} aria-expanded={expandedProjectId === entry.id} style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => setExpandedProjectId(expandedProjectId === entry.id ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: expandedProjectId === entry.id ? "rotate(180deg)" : "none" }} /></button>
       </div></div>
@@ -9319,7 +9359,7 @@ function App() {
       </button>
       {!collapsed && <div className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderTop: 0, borderRadius: "0 0 6px 6px", padding: "12px 16px", color: INK, fontSize: 12.5, lineHeight: 1.5 }}>
         {id === "projects" ? <div className="pa-output-columns">
-          {[...liveItems, ...lines].filter((item) => !(data.cvRegistry?.hiddenProjectCards || []).includes(item.id)).sort((a, b) => { const priority = (item) => item.status === "In progress" ? 0 : item.status === "Awarded" ? 1 : 2; const year = (item) => Number(String(item.completedAt || item.startedAt || item.role || item.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0); return priority(a) - priority(b) || year(b) - year(a); }).map((item) => {
+          {[...liveItems, ...lines.map(cvProjectRecord)].filter((item) => !(data.cvRegistry?.hiddenProjectCards || []).includes(item.id)).sort((a, b) => { const priority = (item) => item.status === "In progress" ? 0 : item.status === "Awarded" ? 1 : 2; const year = (item) => Number(String(item.completedAt || item.startedAt || item.role || item.title || "").match(/\b(?:19|20)\d{2}\b/g)?.at(-1) || 0); return priority(a) - priority(b) || year(b) - year(a); }).map((item) => {
             const fromWord = item.source === "Validated · Word CV";
             const open = expandedProjectId === item.id;
             const iconStyle = { background: "none", border: 0, width: 24, height: 24, display: "grid", placeItems: "center", cursor: "pointer" };
@@ -9329,7 +9369,7 @@ function App() {
                 <div style={{ minWidth: 0, flex: 1 }}><strong style={{ fontSize: 14, color: INK }}>{item.title}</strong><div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{[item.status, item.role, item.program, item.projectNumber ? `Project ${item.projectNumber}` : "", item.duration].filter(Boolean).join(" · ")}</div><div style={{ fontSize: 10.5, color: TEAL, marginTop: 5 }}>{item.source}</div></div>
                 <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
                   <button type="button" aria-label="Refresh project" title="Refresh from source" style={iconStyle} onClick={async () => { if (fromWord) { setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: applyCvEntryEdits(parseCvEntries(previous.cvRegistry?.sourceText || ""), previous.cvRegistry?.entryEdits || {}) } })); } else { const result = await window.storage.get(PROJECTS_STORAGE_KEY); if (result?.value) setLiveCvSources((previous) => ({ ...previous, projects: JSON.parse(result.value) })); } }}><RefreshCw size={13} color={TEAL} /></button>
-                  <button type="button" aria-label="Edit project" title={fromWord ? "Edit Word CV project text" : "Edit in Project Dashboard"} style={iconStyle} onClick={() => { if (!fromWord) return onOpenModule?.("projects"); const value = window.prompt("Edit project title in the CV. This will require a new Word export layout.", item.title); if (!value?.trim() || value.trim() === item.title) return; setData((previous) => { const sourceText = String(previous.cvRegistry?.sourceText || "").replace(item.title, value.trim()); return { ...previous, cvRegistry: { ...previous.cvRegistry, sourceText, sourceDocxBase64: null, entries: applyCvEntryEdits(parseCvEntries(sourceText), previous.cvRegistry?.entryEdits || {}) } }; }); }}><Pencil size={13} color="#9AA2AF" /></button>
+                  <button type="button" aria-label="Edit project" title="Edit Live CV copy" style={iconStyle} onClick={() => openCvSourceEdit(item, "project")}><Pencil size={13} color="#9AA2AF" /></button>
                   <button type="button" aria-label="Remove project from Live CV" title="Hide from Live CV; keep the source record" style={iconStyle} onClick={() => { if (!window.confirm("Hide this project from Live CV? Its source record will remain available.")) return; setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, hiddenProjectCards: [...(previous.cvRegistry?.hiddenProjectCards || []), item.id] } })); }}><Trash2 size={13} color="#9AA2AF" /></button>
                   <button type="button" aria-label={open ? "Collapse project" : "Expand project"} aria-expanded={open} title={open ? "Collapse details" : "Expand details"} style={iconStyle} onClick={() => setExpandedProjectId(open ? null : item.id)}><ChevronDown size={16} color="#9AA2AF" style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
                 </div>
@@ -9520,8 +9560,8 @@ function App() {
 
             {renderImportedCvSection("summary", "Summary", cvSummaryDisplayLines, "Import your CV Word file to show the front-page summary here.")}
             {renderImportedCvSection("education", "Education", cvEducationLines, "Education details will appear here when the CV Word file is imported.")}
-            {renderImportedCvSection("projects", "Projects", cvProjectDisplayLines, "Projects appear here when added in Project Dashboard or imported from the CV.", <>{projectEvidenceGroup && renderOutputGroup(projectEvidenceGroup)}{pendingApsEntries.filter((entry) => entry.section === "Projects").map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Projects").map((entry) => renderApsCard(entry))}</>, cvLiveProjectItems)}
-            {(achievementEntries.length > 0 || achievementGroups.length > 0 || pendingApsEntries.some((entry) => entry.section === "Achievements") || approvedApsEntries.some((entry) => entry.section === "Achievements")) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries.map((entry) => entry.title), "CV achievements appear here.", <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}{pendingApsEntries.filter((entry) => entry.section === "Achievements").map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Achievements").map((entry) => renderApsCard(entry))}</div>)}
+            {renderImportedCvSection("projects", "Projects", cvProjectDisplayLines, "Projects appear here when added in Project Dashboard or imported from the CV.", <>{projectEvidenceGroup && renderOutputGroup(projectEvidenceGroup)}{pendingApsEntries.filter((entry) => entry.section === "Projects" && apsTypeForEntry(entry) === "Project / Grant Evidence").map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Projects" && apsTypeForEntry(entry) === "Project / Grant Evidence").map((entry) => renderApsCard(entry))}</>, cvLiveProjectItems)}
+            {(achievementEntries.length > 0 || achievementGroups.length > 0 || pendingApsEntries.some((entry) => entry.section === "Achievements") || approvedApsEntries.some((entry) => entry.section === "Achievements")) && renderImportedCvSection("achievements", "Achievements", unmatchedAchievementEntries, "CV achievements appear here.", <div style={{ marginTop: 14 }}>{achievementGroups.map(renderOutputGroup)}{pendingApsEntries.filter((entry) => entry.section === "Achievements" && ["Award / Certificate", "Professional Recognition / Ranking"].includes(apsTypeForEntry(entry))).map((entry) => renderApsCard(entry, true))}{approvedApsEntries.filter((entry) => entry.section === "Achievements" && ["Award / Certificate", "Professional Recognition / Ranking"].includes(apsTypeForEntry(entry))).map((entry) => renderApsCard(entry))}</div>)}
 
 
             {sourceOnlyCvSections.map(({ section, entries }) => renderImportedCvSection(`source-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, section, entries, "CV entries appear here."))}
