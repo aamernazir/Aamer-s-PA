@@ -8261,13 +8261,41 @@ function App() {
   function openCvSourceEdit(entry, kind) {
     setCvSourceDraft({ kind, id: entry.id, title: kind === "aps" ? entry.text : entry.title, type: kind === "aps" ? apsTypeForEntry(entry) : "Project / Grant Evidence", status: entry.status || "", role: entry.role || "", program: entry.program || "", projectNumber: entry.projectNumber || "", duration: entry.duration || "" });
   }
+  async function reprocessCvSource(entry, kind) {
+    const id = entry.id;
+    const initial = { kind, id, title: kind === "aps" ? entry.text : entry.title, type: kind === "aps" ? apsTypeForEntry(entry) : kind === "word" ? (entry.type || typeForCvSection(entry.section)) : "Project / Grant Evidence", status: entry.status || "", role: entry.role || "", program: entry.program || "", projectNumber: entry.projectNumber || "", duration: entry.duration || "", year: Number(String(entry.title || "").match(/\\b(?:19|20)\\d{2}\\b/g)?.at(-1) || new Date().getFullYear()), reprocessing: true, review: "", reviewError: "" };
+    setCvSourceDraft(initial);
+    try {
+      const parsed = await claudeExtractJSON([{ type: "text", text:
+        "Review this Live CV entry using ONLY the supplied record. Distinguish conference presentations, proceedings papers, committee service, participation, awards, and projects by what the text actually proves. Do not add unsupported facts or infer a publication from a conference role. Choose type from: " + OUTPUT_TYPES.join(", ") + ". Return ONLY JSON with fields title, type, status, role, program, projectNumber, duration, reason. Keep title faithful to the source. For projects, type must remain Project / Grant Evidence and do not invent status, dates or funding. If uncertain, preserve the existing field and explain uncertainty in reason. Record: " + JSON.stringify({ kind, text: initial.title, type: initial.type, section: entry.section, source: entry.source, sourceField: entry.sourceField, status: initial.status, role: initial.role, program: initial.program, projectNumber: initial.projectNumber, duration: initial.duration })
+      }]);
+      setCvSourceDraft((current) => current?.id === id && current.kind === kind ? {
+        ...current,
+        title: String(parsed.title || current.title).trim() || current.title,
+        type: kind === "project" ? "Project / Grant Evidence" : OUTPUT_TYPES.includes(parsed.type) ? parsed.type : current.type,
+        ...(kind === "project" ? Object.fromEntries(["status", "role", "program", "projectNumber", "duration"].filter((field) => typeof parsed[field] === "string" && parsed[field].trim()).map((field) => [field, parsed[field].trim()])) : {}),
+        review: String(parsed.reason || "Review the proposed text and classification before saving."),
+        reprocessing: false,
+      } : current);
+    } catch (error) {
+      setCvSourceDraft((current) => current?.id === id && current.kind === kind ? { ...current, reprocessing: false, reviewError: error.message || "Could not reprocess this entry." } : current);
+    }
+  }
   function saveCvSourceEdit() {
-    if (!cvSourceDraft?.title?.trim()) return;
-    const { kind, id, title, type, status, role, program, projectNumber, duration } = cvSourceDraft;
-    const edit = kind === "aps" ? { text: title.trim(), cvType: type, cvEditedAt: new Date().toISOString() } : { title: title.trim(), status, role, program, projectNumber, duration, cvEditedAt: new Date().toISOString() };
-    setData((previous) => ({ ...previous, cvRegistry: { ...(previous.cvRegistry || {}), sourceEdits: { ...(previous.cvRegistry?.sourceEdits || {}), [id]: edit } } }));
-    if (kind === "aps") setCollapsedCategories((previous) => ({ ...previous, [type]: false }));
-    else setCollapsedCvSections((previous) => ({ ...previous, projects: false }));
+    if (!cvSourceDraft?.title?.trim() || cvSourceDraft.reprocessing) return;
+    const { kind, id, title, type, status, role, program, projectNumber, duration, year } = cvSourceDraft;
+    if (kind === "word") {
+      const entry = cvEntries.find((item) => item.id === id);
+      if (!entry) { setCvSourceDraft({ ...cvSourceDraft, reviewError: "This Word CV entry changed. Reopen it and try again." }); return; }
+      const output = { ...emptyOutput(), id: Date.now().toString(), title: title.trim(), type, year, cvEntryId: id, cvSection: entry.section, evidenceStatus: "approved_without_evidence", addedAt: new Date().toISOString() };
+      setData((previous) => saveLinkedCvEdit(previous, output, null, id));
+      setCollapsedCategories((previous) => ({ ...previous, [type]: false }));
+    } else {
+      const edit = kind === "aps" ? { text: title.trim(), cvType: type, cvEditedAt: new Date().toISOString() } : { title: title.trim(), status, role, program, projectNumber, duration, cvEditedAt: new Date().toISOString() };
+      setData((previous) => ({ ...previous, cvRegistry: { ...(previous.cvRegistry || {}), sourceEdits: { ...(previous.cvRegistry?.sourceEdits || {}), [id]: edit } } }));
+      if (kind === "aps") setCollapsedCategories((previous) => ({ ...previous, [type]: false }));
+      else setCollapsedCvSections((previous) => ({ ...previous, projects: false }));
+    }
     setCvSourceDraft(null);
     setSyncMessage("Live CV changes saved. The source module was not changed.");
   }
@@ -9285,6 +9313,7 @@ function App() {
       <div style={{ fontSize: 11, color: MUTED }}>{entry.source}</div>
       </div><div style={{ display: "flex", flexDirection: "column" }}>
         <button aria-label="Refresh APS record" title="Refresh from APS" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={async () => { const result = await window.storage.get("am2r-aps-v1"); if (result?.value) setLiveCvSources((previous) => ({ ...previous, aps: JSON.parse(result.value) })); }}><RefreshCw size={13} color={TEAL} /></button>
+        <button aria-label="Reprocess APS item for Live CV" title="Reprocess classification and review before saving" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => reprocessCvSource(entry, "aps")}><Sparkles size={13} color={TEAL} /></button>
         <button aria-label="Edit Live CV APS item" title="Edit Live CV copy" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => openCvSourceEdit(entry, "aps")}><Pencil size={13} color={MUTED} /></button>
         <button aria-label="Remove APS item from Live CV" title="Remove from Live CV" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => { if (window.confirm("Remove this APS item from Live CV? It remains in APS.")) setApsDecision(entry, "removed"); }}><Trash2 size={13} color={MUTED} /></button>
         <button aria-label={expandedProjectId === entry.id ? "Collapse APS item" : "Expand APS item"} aria-expanded={expandedProjectId === entry.id} style={{ border: 0, background: "none", cursor: "pointer" }} onClick={() => setExpandedProjectId(expandedProjectId === entry.id ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: expandedProjectId === entry.id ? "rotate(180deg)" : "none" }} /></button>
@@ -9309,6 +9338,7 @@ function App() {
       <div style={{ flex: 1 }}><strong style={{ fontSize: 13 }}>{entry.title}</strong><div style={{ fontSize: 11, color: GREEN, marginTop: 5 }}>Validated · Word CV</div><button type="button" onClick={() => requestEvidenceUpload(entry)} style={{ marginTop: 8, border: "1px solid #C7CCD3", borderRadius: 4, background: "#fff", color: TEAL, padding: "6px 9px", cursor: "pointer" }}>Add evidence</button></div>
       <div style={{ display: "flex", flexDirection: "column" }}>
         <button style={buttonStyle} aria-label="Refresh CV record" title="Refresh from Word CV text" onClick={() => setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: applyCvEntryEdits(parseCvEntries(previous.cvRegistry?.sourceText || ""), previous.cvRegistry?.entryEdits || {}) } }))}><RefreshCw size={13} color={TEAL} /></button>
+        <button style={buttonStyle} aria-label="Reprocess Word CV record" title="Reprocess classification and review before saving" onClick={() => reprocessCvSource(entry, "word")}><Sparkles size={13} color={TEAL} /></button>
         <button style={buttonStyle} aria-label="Edit CV record" title="Edit CV record" onClick={() => openWordCvEdit(entry)}><Pencil size={13} color={MUTED} /></button>
         <button style={buttonStyle} aria-label="Remove CV record" title="Remove from CV" onClick={() => { if (window.confirm("Remove this entry from the CV master text?")) changeSource(""); }}><Trash2 size={13} color={MUTED} /></button>
         <button style={buttonStyle} aria-label={open ? "Collapse CV record" : "Expand CV record"} aria-expanded={open} onClick={() => setExpandedProjectId(open ? null : entry.id)}><ChevronDown size={16} color={MUTED} style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
@@ -9354,6 +9384,7 @@ function App() {
                 <div style={{ minWidth: 0, flex: 1 }}><strong style={{ fontSize: 14, color: INK }}>{item.title}</strong><div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{[item.status, item.role, item.program, item.projectNumber ? `Project ${item.projectNumber}` : "", item.duration].filter(Boolean).join(" · ")}</div><div style={{ fontSize: 10.5, color: TEAL, marginTop: 5 }}>{item.source}</div></div>
                 <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
                   <button type="button" aria-label="Refresh project" title="Refresh from source" style={iconStyle} onClick={async () => { if (fromWord) { setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, entries: applyCvEntryEdits(parseCvEntries(previous.cvRegistry?.sourceText || ""), previous.cvRegistry?.entryEdits || {}) } })); } else { const result = await window.storage.get(PROJECTS_STORAGE_KEY); if (result?.value) setLiveCvSources((previous) => ({ ...previous, projects: JSON.parse(result.value) })); } }}><RefreshCw size={13} color={TEAL} /></button>
+                  <button type="button" aria-label="Reprocess project for Live CV" title="Reprocess details and review before saving" style={iconStyle} onClick={() => reprocessCvSource(item, "project")}><Sparkles size={13} color={TEAL} /></button>
                   <button type="button" aria-label="Edit project" title="Edit Live CV copy" style={iconStyle} onClick={() => openCvSourceEdit(item, "project")}><Pencil size={13} color="#9AA2AF" /></button>
                   <button type="button" aria-label="Remove project from Live CV" title="Hide from Live CV; keep the source record" style={iconStyle} onClick={() => { if (!window.confirm("Hide this project from Live CV? Its source record will remain available.")) return; setData((previous) => ({ ...previous, cvRegistry: { ...previous.cvRegistry, hiddenProjectCards: [...(previous.cvRegistry?.hiddenProjectCards || []), item.id] } })); }}><Trash2 size={13} color="#9AA2AF" /></button>
                   <button type="button" aria-label={open ? "Collapse project" : "Expand project"} aria-expanded={open} title={open ? "Collapse details" : "Expand details"} style={iconStyle} onClick={() => setExpandedProjectId(open ? null : item.id)}><ChevronDown size={16} color="#9AA2AF" style={{ transform: open ? "rotate(180deg)" : "none" }} /></button>
@@ -9811,12 +9842,16 @@ function App() {
           <div role="dialog" aria-modal="true" aria-label="Edit Live CV copy" onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 520, padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <h2 className="pa-display" style={{ fontSize: 18, margin: "0 0 7px", color: INK }}>Edit Live CV copy</h2>
             <p style={{ fontSize: 12, color: MUTED, margin: "0 0 17px" }}>Changes here update your Live CV only. The source record stays as it is.</p>
-            <Label>{cvSourceDraft.kind === "aps" ? "CV entry" : "Project title"}</Label>
+            <Label>{cvSourceDraft.kind === "project" ? "Project title" : "CV entry"}</Label>
             <textarea style={{ ...inputStyle, minHeight: 80, marginBottom: 14 }} value={cvSourceDraft.title} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, title: e.target.value })} />
-            {cvSourceDraft.kind === "aps" ? <><Label>CV classification</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={cvSourceDraft.type} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, type: e.target.value })}>{OUTPUT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></> : <>
+            {cvSourceDraft.kind !== "project" ? <><Label>CV classification</Label><select style={{ ...inputStyle, marginBottom: 14 }} value={cvSourceDraft.type} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, type: e.target.value })}>{OUTPUT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></> : <>
               {["status", "role", "program", "projectNumber", "duration"].map((field) => <div key={field} style={{ marginBottom: 12 }}><Label>{{ status: "Status", role: "Role", program: "Program", projectNumber: "Project number", duration: "Duration" }[field]}</Label><input style={inputStyle} value={cvSourceDraft[field] || ""} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, [field]: e.target.value })} /></div>)}
             </>}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" onClick={() => setCvSourceDraft(null)} style={{ padding: "8px 12px", background: "#fff", border: "1px solid #C7CCD3", borderRadius: 4, cursor: "pointer" }}>Cancel</button><button type="button" disabled={!cvSourceDraft.title.trim()} onClick={saveCvSourceEdit} style={{ padding: "8px 12px", background: TEAL, color: "#fff", border: 0, borderRadius: 4, cursor: "pointer" }}>Save CV changes</button></div>
+            {cvSourceDraft.kind === "word" && <div style={{ marginBottom: 12 }}><Label>Year</Label><input type="number" style={inputStyle} value={cvSourceDraft.year || ""} onChange={(e) => setCvSourceDraft({ ...cvSourceDraft, year: Number(e.target.value) })} /></div>}
+            {cvSourceDraft.reprocessing && <div role="status" style={{ color: TEAL, marginBottom: 12, fontSize: 12 }}>Reprocessing classification for your review…</div>}
+            {cvSourceDraft.review && <div role="status" style={{ color: INK, background: "#EDF4F8", padding: 10, marginBottom: 12, fontSize: 12 }}>Suggested review: {cvSourceDraft.review}<br />Check the fields above. Nothing changes until you save.</div>}
+            {cvSourceDraft.reviewError && <div role="alert" style={{ color: RED, marginBottom: 12, fontSize: 12 }}>{cvSourceDraft.reviewError}</div>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" onClick={() => setCvSourceDraft(null)} style={{ padding: "8px 12px", background: "#fff", border: "1px solid #C7CCD3", borderRadius: 4, cursor: "pointer" }}>Cancel</button><button type="button" disabled={!cvSourceDraft.title.trim() || cvSourceDraft.reprocessing} onClick={saveCvSourceEdit} style={{ padding: "8px 12px", background: TEAL, color: "#fff", border: 0, borderRadius: 4, cursor: "pointer" }}>Save CV changes</button></div>
           </div>
         </div>
       )}
