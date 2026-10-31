@@ -100,7 +100,7 @@ const DASHBOARD_TILE_VISUALS = {
 };
 const DEFAULT_DASHBOARD_TILES = [
   "metric:publications", "metric:active-projects", "metric:completed-projects", "metric:achievements",
-  "metric:education", "metric:research-products", "metric:conferences", "metric:citations",
+  "metric:contributions", "metric:research-products", "metric:conferences", "metric:citations",
 ];
 
 const PERIODS = [
@@ -487,6 +487,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   const [raw, setRaw] = useState({ projects: [], aps: null, archive: null, impact: null, skills: null, mailbox: null, mailboxScan: null, funding: [], dashboardTiles: null });
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [tileSaveError, setTileSaveError] = useState("");
   const [activeNav, setActiveNav] = useState("home");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
@@ -570,11 +571,13 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
   });
 
   const navModules = [{ id: "home", name: "Nyx Dashboard", icon: LayoutDashboard }, ...modules];
-  function saveDashboardTile(index, nextId) {
+  async function saveDashboardTile(index, nextId) {
     const next = [...selectedDashboardTiles];
     next[index] = nextId;
     setRaw((previous) => ({ ...previous, dashboardTiles: next }));
-    window.storage.set(STORAGE_KEYS.dashboardTiles, JSON.stringify(next)).catch(() => {});
+    setTileSaveError("");
+    try { await window.storage.set(STORAGE_KEYS.dashboardTiles, JSON.stringify(next)); }
+    catch (error) { setTileSaveError("Tile choices could not be saved. " + (error.message || "Try again after checking cloud sync.")); }
   }
   function openModule(moduleId, route) { if (route && moduleId === "archive") sessionStorage.setItem("nyx:archive-route", route); if (route && moduleId === "aps") sessionStorage.setItem("nyx:aps-section", route); setActiveNav(moduleId); onOpenModule(moduleId); }
   async function askNyx() {
@@ -609,6 +612,7 @@ export default function NyxDashboard({ onOpenModule, modules = [] }) {
       <section className="nyx-period-row"><strong>Reporting period</strong><div className="nyx-period-tabs" aria-label="Dashboard period">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "is-active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div></section>
       <section className="nyx-custom-summary" aria-label="Customizable live indicators">
         <div className="nyx-custom-summary-heading"><div><strong>Live indicators</strong><span>Choose what each tile shows</span></div><small>{selectedLabel(period)} view · linked to Nyx records</small></div>
+        {tileSaveError && <div role="alert" style={{ color: "#A12D29", fontSize: 12, paddingBottom: 8 }}>{tileSaveError}</div>}
         <div className="nyx-custom-tile-grid">{selectedDashboardTiles.map((id, index) => {
           const metric = dashboardTileValues[id] || { value: 0, detail: "CV entries" };
           const option = dashboardTileOptions.find((item) => item.id === id);

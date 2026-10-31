@@ -11,6 +11,7 @@ const APPLICATION_KEYS = new Set([
   "am2r-research-intelligence-skills-v1",
   "an2r-gmail-deadlines-v1",
   "an2r-mailbox-archive-v1",
+  "nyx-dashboard-tiles-v1",
 ]);
 
 export function isApplicationKey(key) {

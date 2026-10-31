@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { migrateLocalData } from "./migrate-local-data.js";
+import { migrateLocalData, isApplicationKey } from "./migrate-local-data.js";
 
 function adapters(entries, existing = new Map()) {
   const reads = [];
@@ -51,4 +51,14 @@ test("records removed during migration are skipped and cloud failures propagate"
   failing.cloud.get = async () => { throw new Error("permission-denied"); };
   await assert.rejects(migrateLocalData(failing.local, failing.cloud), /permission-denied/);
   assert.deepEqual(failing.writes, []);
+});
+
+
+test("dashboard tile preferences are an account-scoped application record", async () => {
+  const key = "nyx-dashboard-tiles-v1";
+  const value = JSON.stringify(["metric:publications", "metric:active-projects", "metric:completed-projects", "metric:achievements", "metric:contributions", "metric:research-products", "metric:conferences", "metric:citations"]);
+  assert.equal(isApplicationKey(key), true);
+  const fixture = adapters({ [key]: { value } });
+  await migrateLocalData(fixture.local, fixture.cloud);
+  assert.deepEqual(fixture.writes, [{ key, value, shared: false }]);
 });
