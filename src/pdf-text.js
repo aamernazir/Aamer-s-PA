@@ -20,3 +20,25 @@ export async function extractPdfText(bytes, { maxPages = 12, maxCharacters = 200
     await document.destroy();
   }
 }
+
+
+// Project proposals need complete coverage. Fail visibly at the cap instead of
+// returning a plausible-looking record from only the opening pages.
+export async function extractCompletePdfText(bytes, { maxPages = 300, maxCharacters = 300000 } = {}) {
+  const task = pdfjs.getDocument({ data: bytes });
+  const document = await task.promise;
+  try {
+    if (document.numPages > maxPages) throw new Error(`PDF has ${document.numPages} pages (limit ${maxPages}). Divide it before importing; no pages were skipped.`);
+    const pages = [];
+    let characters = 0;
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const text = content.items.map((item) => item.str || "").join(" ").replace(/\s+/g, " ").trim();
+      characters += text.length;
+      if (characters > maxCharacters) throw new Error(`PDF text exceeds ${maxCharacters.toLocaleString()} characters. Divide it before importing; no pages were skipped.`);
+      pages.push(`[Page ${pageNumber}] ${text}`);
+    }
+    return pages.join("\n").trim();
+  } finally { await document.destroy(); }
+}

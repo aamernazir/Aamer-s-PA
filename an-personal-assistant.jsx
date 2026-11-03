@@ -1,4 +1,5 @@
-import { extractPdfText } from "./src/pdf-text.js";
+import { extractPdfText, extractCompletePdfText } from "./src/pdf-text.js";
+import { splitProposalText, mergeProposalFragments, mergeProposalIntoProject, auditProposalExtraction } from "./src/project-proposal.js";
 import { cvEntryKey, pendingCvEntries as findPendingCvEntries, recordMatchesCvEntry } from "./src/cv-matching.js";
 import { createCvDocx, updateOriginalCvDocx } from "./src/cv-docx.js";
 import { extractCvSection } from "./src/cv-sections.js";
@@ -358,11 +359,11 @@ async function extractDocxUploadText(file) {
   return text;
 }
 
-async function claudeExtractJSON(content) {
+async function claudeExtractJSON(content, maxTokens = 1000) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content }] }),
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content }] }),
   });
   const result = await response.json();
   if (result.error) {
@@ -534,6 +535,7 @@ function App() {
   const [extractingProposal, setExtractingProposal] = useState(false);
   const [extractProposalError, setExtractProposalError] = useState("");
   const [extractPhase, setExtractPhase] = useState("");
+  const [proposalPreview, setProposalPreview] = useState(null);
   const proposalFileInputRef = useRef(null);
   const [sharedProjects, setSharedProjects] = useState([]);
 
@@ -707,165 +709,109 @@ function App() {
     if (!files.length) return;
     const unsupported = files.filter((file) => !isReadableProjectFile(file));
     if (unsupported.length) {
-      setExtractProposalError(`Unsupported file${unsupported.length === 1 ? "" : "s"}: ${unsupported.map((file) => file.name).join(", ")}. Upload PDF, DOCX, or image files.`);
+      setExtractProposalError("Unsupported files: " + unsupported.map((file) => file.name).join(", ") + ". Upload PDF, DOCX, or image files.");
       if (proposalFileInputRef.current) proposalFileInputRef.current.value = "";
       return;
     }
     setExtractingProposal(true);
+    setProposalPreview(null);
     setExtractProposalError("");
     try {
-      // Extract PDF text in-browser, avoiding large base64 PDF API payloads.
-      // All files contribute to one project; preserve provenance per document.
-      const docBlocks = [];
-      const notices = [];
-      let remaining = 80000;
+      const texts = [];
+      const images = [];
       for (const file of files) {
-        setExtractPhase("Reading " + file.name + "…");
+        setExtractPhase("Step 1 of 6 — reading " + file.name);
         if (isPdfFile(file)) {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          const extracted = await extractPdfText(bytes, { maxPages: 80, maxCharacters: 30000 });
-          if (!extracted) throw new Error(file.name + " is scanned/image-only and contains no selectable text. Upload readable page images or an OCR PDF.");
-          const excerpt = extracted.slice(0, remaining);
-          if (!excerpt) throw new Error("The combined files exceed the 80,000-character extraction budget. Please split the documents into smaller groups.");
-          if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
-          docBlocks.push({ type: "text", text: "SOURCE FILE: " + file.name + "\\n" + excerpt });
-          remaining -= excerpt.length;
+          const content = await extractCompletePdfText(new Uint8Array(await file.arrayBuffer()));
+          if (!content || !content.replace(/\[Page \d+\]/g, "").trim()) throw new Error(file.name + " has no selectable text. Upload an OCR PDF or readable page images.");
+          texts.push({ name: file.name, text: content });
         } else if (isDocxUpload(file)) {
-          const extracted = await extractDocxUploadText(file);
-          const excerpt = extracted.slice(0, remaining);
-          if (!excerpt) throw new Error("The combined files exceed the 80,000-character extraction budget. Please split the documents into smaller groups.");
-          if (excerpt.length < extracted.length) notices.push(file.name + " was truncated.");
-          docBlocks.push({ type: "text", text: "SOURCE FILE: " + file.name + "\\n" + excerpt });
-          remaining -= excerpt.length;
+          texts.push({ name: file.name, text: await extractDocxUploadText(file) });
         } else {
-          if (file.size > 8 * 1024 * 1024) throw new Error(file.name + " exceeds the 8 MB image limit. Compress the image before uploading.");
-          docBlocks.push({ type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: await fileToBase64(file) } });
-          docBlocks.push({ type: "text", text: "SOURCE IMAGE: " + file.name });
+          if (file.size > 8 * 1024 * 1024) throw new Error(file.name + " exceeds the 8 MB image limit.");
+          images.push({ name: file.name, mediaType: file.type || "image/jpeg", data: await fileToBase64(file) });
         }
       }
-      if (notices.length) setExtractProposalError("Extraction warning: " + notices.join(" "));
-      const commonRules =
-        "Do not fabricate information that isn't in the document; use empty string/array/0 where something isn't stated. " +
-        "Respond with ONLY raw JSON, no markdown fences, no preamble. ";
-
-      // Phase 1 of 4 — title, program, PI, duration, team, budget
-      setExtractPhase("Phase 1 of 4 — project details, team & budget…");
-      const p1 = await claudeExtractJSON([
-        ...docBlocks,
-        {
-          type: "text",
-          text: commonRules +
-            "From this proposal, extract the project's basic details, team, and budget. JSON shape:\n" +
-            '{"title":"","program":"","pi":"","duration":"","budgetTotal":0,"budgetCurrency":"SAR",' +
-            '"team":[{"name":"","role":"","center":""}],' +
-            '"budgetLines":[{"item":"","amount":0}]}',
-        },
-      ]);
-
-      // Phase 2 of 4 — objectives & risks
-      setExtractPhase("Phase 2 of 4 — objectives & risks…");
-      const p2 = await claudeExtractJSON([
-        ...docBlocks,
-        {
-          type: "text",
-          text: commonRules +
-            "From this proposal, extract the project's objectives (as written, one entry each) and its risk register. JSON shape:\n" +
-            '{"objectives":[{"text":""}],"risks":[{"risk":"","mitigation":""}]}',
-        },
-      ]);
-      const objectives = (p2.objectives || []).map((o) => ({ text: o.text || "", lead: "", notes: "" }));
-      const objectivesContext = objectives.length
-        ? objectives.map((o, i) => `${i}: ${o.text.slice(0, 140)}`).join(" | ")
-        : "(no objectives found)";
-
-      // Phase 3 of 4 — work package structure
-      setExtractPhase("Phase 3 of 4 — work package structure…");
-      const p3 = await claudeExtractJSON([
-        ...docBlocks,
-        {
-          type: "text",
-          text: commonRules +
-            "From this proposal, list every work package (WP) in order, with its lead, duration, timeline window, and milestone. " +
-            "Also mark which of these objectives each WP delivers, by index: " + objectivesContext + ". JSON shape:\n" +
-            '{"workPackages":[{"name":"","lead":"","durationMonths":0,"window":"","milestone":"","objectiveIdxs":[0]}]}',
-        },
-      ]);
-      const wpSkeleton = p3.workPackages || [];
-      const wpNameList = wpSkeleton.length
-        ? wpSkeleton.map((wp, i) => `WP${i + 1}: ${wp.name}`).join(" | ")
-        : "(none found)";
-
-      // Phase 4 of 4 — per-WP tasks, deliverables, KPIs
-      setExtractPhase("Phase 4 of 4 — tasks, deliverables & KPIs…");
-      const p4 = wpSkeleton.length
-        ? await claudeExtractJSON([
-            ...docBlocks,
-            {
-              type: "text",
-              text: commonRules +
-                "For each of these work packages, in this exact order, extract its deliverables, its tasks (short phrases, not sentences), and its KPIs (metric + target only): " +
-                wpNameList + ". Return one entry per work package, same order, same count. JSON shape:\n" +
-                '{"workPackages":[{"deliverables":["..."],"tasks":["..."],"kpis":[{"metric":"","target":""}]}]}',
-            },
-          ])
-        : { workPackages: [] };
-      const wpDetails = p4.workPackages || [];
-
-      const workPackages = wpSkeleton.map((wp, i) => {
-        const details = wpDetails[i] || {};
-        return {
-          id: "WP" + (i + 1),
-          name: wp.name || `Work Package ${i + 1}`,
-          lead: wp.lead || "",
-          execLead: "",
-          objectiveIdxs: (wp.objectiveIdxs || []).filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < objectives.length),
-          startDate: "",
-          dueDate: "",
-          durationMonths: Number(wp.durationMonths) || 0,
-          window: wp.window || "",
-          milestone: wp.milestone || "",
-          deliverables: details.deliverables || [],
-          tasks: (details.tasks || []).map((label, ti) => ({ id: `T${i + 1}.${ti + 1}`, label, done: false })),
-          kpis: (details.kpis || []).map((k) => ({ metric: k.metric || "", target: k.target || "", actual: "" })),
-        };
-      });
-
-      const newProject = {
-        id: Date.now().toString(),
-        title: p1.title || files[0].name,
-        projectNumber: p1.projectNumber || "",
-        program: p1.program || "",
-        pi: p1.pi || "",
-        projectLead: "",
-        duration: p1.duration || "",
-        budgetTotal: Number(p1.budgetTotal) || 0,
-        budgetCurrency: p1.budgetCurrency || "SAR",
-        team: p1.team || [],
-        budgetLines: (p1.budgetLines || []).map((b) => ({ item: b.item || "", amount: Number(b.amount) || 0 })),
-        objectives,
-        risks: p2.risks || [],
-        evidence: [],
-        receipts: [],
-        activityLog: [],
-        workPackages,
-        shared: false,
-      };
-
-      setProjects((prev) => [...prev, newProject]);
-      syncOneProjectFromArchive(newProject).then((linked) => {
-        if (linked && JSON.stringify(linked) !== JSON.stringify(newProject)) {
-          setProjects((prev) => prev.map((item) => (item.id === newProject.id ? linked : item)));
+      const chunks = splitProposalText(texts);
+      if (!chunks.length && !images.length) throw new Error("No readable proposal content was found.");
+      const instruction = "Read this section of a project proposal carefully. Extract EVERY explicit item, even if it continues another section. Do not invent facts. Preserve work package numbers, objectives, tasks, deliverables and KPI targets verbatim enough to distinguish them. Use empty values when absent. Return ONLY JSON with: " +
+        '{"title":"","projectNumber":"","program":"","pi":"","ownerRole":"","duration":"","budgetTotal":0,"budgetCurrency":"","team":[{"name":"","role":"","center":""}],"budgetLines":[{"item":"","amount":0}],"objectives":[{"text":""}],"risks":[{"risk":"","mitigation":""}],"workPackages":[{"number":"","name":"","lead":"","durationMonths":0,"window":"","milestone":"","objectiveRefs":["Objective 1"],"tasks":[""],"deliverables":[""],"kpis":[{"metric":"","target":""}]}]}.';
+      async function readChunk(chunk, depth = 0) {
+        try {
+          const facts = await claudeExtractJSON([{ type: "text", text: "SOURCE: " + chunk.source + " · section " + chunk.part + "\n" + chunk.text + "\n\n" + instruction }], 6000);
+          if (!facts || typeof facts !== "object" || Array.isArray(facts)) throw new Error("No structured facts returned.");
+          return [{ source: chunk.source, facts }];
+        } catch (error) {
+          if (depth < 3 && chunk.text.length > 5200 && /cut off|valid JSON|recognizable result|structured facts/i.test(error.message || "")) {
+            const halves = splitProposalText([{ name: chunk.source, text: chunk.text }], { chunkSize: Math.ceil(chunk.text.length / 2), maxCharacters: 300000 });
+            if (halves.length > 1) {
+              const nested = [];
+              for (const half of halves) nested.push(...await readChunk(half, depth + 1));
+              return nested;
+            }
+          }
+          throw new Error("Could not read " + chunk.source + " section " + chunk.part + ": " + (error.message || "unknown error"));
         }
+      }
+      const fragments = [];
+      for (let index = 0; index < chunks.length; index++) {
+        setExtractPhase("Step 2 of 6 — analyzing section " + (index + 1) + " of " + (chunks.length + images.length));
+        fragments.push(...await readChunk(chunks[index]));
+      }
+      for (let index = 0; index < images.length; index++) {
+        const file = images[index];
+        setExtractPhase("Step 2 of 6 — analyzing image " + (index + 1) + " of " + images.length);
+        const facts = await claudeExtractJSON([
+          { type: "image", source: { type: "base64", media_type: file.mediaType, data: file.data } },
+          { type: "text", text: "SOURCE IMAGE: " + file.name + ". " + instruction },
+        ], 6000);
+        fragments.push({ source: file.name, facts });
+      }
+      setExtractPhase("Step 3 of 6 — aligning team, funding and project details");
+      const merged = mergeProposalFragments(fragments);
+      setExtractPhase("Step 4 of 6 — reconciling objectives and risks");
+      const objectives = merged.objectives;
+      const risks = merged.risks;
+      setExtractPhase("Step 5 of 6 — linking work packages, tasks and deliverables");
+      const workPackages = merged.workPackages;
+      setExtractPhase("Step 6 of 6 — checking coverage for your review");
+      const warnings = auditProposalExtraction(merged);
+      if (!merged.title && !objectives.length && !workPackages.length) throw new Error("No recognizable project details were extracted. No project was saved.");
+      const normalizedTitle = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const existingMatch = projects.find((project) => merged.projectNumber && project.projectNumber && normalizedTitle(project.projectNumber) === normalizedTitle(merged.projectNumber)) || projects.find((project) => normalizedTitle(merged.title).length > 15 && normalizedTitle(project.title) === normalizedTitle(merged.title));
+      setProposalPreview({
+        replaceId: existingMatch?.id || "",
+        project: { ...merged, title: merged.title || files[0].name, ownerRole: ["PI", "Co-I"].includes(merged.ownerRole) ? merged.ownerRole : "",
+          objectives, risks, workPackages, evidence: [], receipts: [], activityLog: [], shared: false },
+        sources: files.map((file) => file.name),
+        sectionCount: chunks.length + images.length,
+        warnings,
       });
-      setShowNewProject(false);
-      setActiveId(newProject.id);
     } catch (err) {
-      setExtractProposalError("Could not extract the project: " + (err.message || "Unknown error") + ". Existing projects were not changed.");
+      setExtractProposalError("Could not complete the proposal import: " + (err.message || "Unknown error") + " Existing projects were not changed.");
     } finally {
       setExtractingProposal(false);
       setExtractPhase("");
       if (proposalFileInputRef.current) proposalFileInputRef.current.value = "";
     }
+  }
+
+  function saveProposalPreview() {
+    if (!proposalPreview?.project?.title?.trim()) {
+      setExtractProposalError("Add a project title before saving.");
+      return;
+    }
+    const existing = projects.find((item) => item.id === proposalPreview.replaceId);
+    const project = existing
+      ? mergeProposalIntoProject(existing, proposalPreview.project)
+      : { ...proposalPreview.project, id: Date.now().toString(), title: proposalPreview.project.title.trim() };
+    setProjects((prev) => existing ? prev.map((item) => item.id === existing.id ? project : item) : [...prev, project]);
+    syncOneProjectFromArchive(project).then((linked) => {
+      if (linked && JSON.stringify(linked) !== JSON.stringify(project)) setProjects((prev) => prev.map((item) => item.id === project.id ? linked : item));
+    });
+    setProposalPreview(null);
+    setShowNewProject(false);
+    setActiveId(project.id);
   }
 
   const active = projects.find((p) => p.id === activeId);
@@ -898,11 +844,11 @@ function App() {
       )}
 
       {showNewProject && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(42,36,32,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowNewProject(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(42,36,32,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => { setShowNewProject(false); setProposalPreview(null); }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 460, maxHeight: "88vh", overflowY: "auto", padding: 26, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h2 className="pd-display" style={{ fontSize: 19, fontWeight: 700, margin: 0, color: INK }}>New project</h2>
-              <button onClick={() => setShowNewProject(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
+              <button onClick={() => { setShowNewProject(false); setProposalPreview(null); }} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
             </div>
 
             <input ref={proposalFileInputRef} type="file" multiple accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" onChange={handleProposalFile} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }} />
@@ -916,6 +862,28 @@ function App() {
             {extractProposalError && (
               <div style={{ background: "#FAF1DE", border: "1px solid " + AMBER, color: "#6B5015", padding: "9px 12px", borderRadius: 3, fontSize: 12.5, marginBottom: 14 }}>{extractProposalError}</div>
             )}
+            {proposalPreview && <div style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 5, padding: 14, marginBottom: 16, fontSize: 12.5, color: INK }}>
+              <strong style={{ fontSize: 15 }}>Review extracted project before saving</strong>
+              <div style={{ color: MUTED, margin: "6px 0 12px" }}>Read {proposalPreview.sectionCount} sections across {proposalPreview.sources.join(", ")}. Nothing is saved yet.</div>
+              <FormField label="Save destination"><select style={inputStyle} value={proposalPreview.replaceId || ""} onChange={(e) => setProposalPreview((current) => ({ ...current, replaceId: e.target.value }))}><option value="">Create a new project</option>{projects.map((project) => <option key={project.id} value={project.id}>Update existing: {project.title}</option>)}</select><small style={{ color: MUTED }}>Updating preserves existing progress, evidence and manually edited details while adding missing extracted items.</small></FormField>
+              <FormField label="Project title"><input style={inputStyle} value={proposalPreview.project.title} onChange={(e) => setProposalPreview((current) => ({ ...current, project: { ...current.project, title: e.target.value } }))} /></FormField>
+              <FormField label="Project number"><input style={inputStyle} value={proposalPreview.project.projectNumber || ""} onChange={(e) => setProposalPreview((current) => ({ ...current, project: { ...current.project, projectNumber: e.target.value } }))} /></FormField>
+              <FormField label="Your role"><select style={inputStyle} value={proposalPreview.project.ownerRole || ""} onChange={(e) => setProposalPreview((current) => ({ ...current, project: { ...current.project, ownerRole: e.target.value } }))}><option value="">Not identified</option><option value="PI">PI</option><option value="Co-I">Co-I</option></select></FormField>
+              <div style={{ lineHeight: 1.6 }}>{[proposalPreview.project.program, proposalPreview.project.pi && "PI: " + proposalPreview.project.pi, proposalPreview.project.duration, proposalPreview.project.budgetTotal && "Budget: " + proposalPreview.project.budgetTotal + " " + proposalPreview.project.budgetCurrency].filter(Boolean).join(" · ")}</div>
+              <div style={{ margin: "9px 0" }}>{proposalPreview.project.team.length} team · {proposalPreview.project.budgetLines.length} budget lines · {proposalPreview.project.objectives.length} objectives · {proposalPreview.project.risks.length} risks · {proposalPreview.project.workPackages.length} work packages</div>
+              {proposalPreview.warnings.length > 0 && <div style={{ color: "#8A5B00", background: "#FFF7E8", padding: 9, marginBottom: 10 }}>Review gaps: {proposalPreview.warnings.join(" ")}</div>}
+              <details style={{ marginBottom: 8 }}><summary>Team, budget, objectives and risks</summary><div style={{ padding: "8px 0", whiteSpace: "pre-wrap" }}>
+                {proposalPreview.project.team.map((item) => item.name + (item.role ? " — " + item.role : "")).join("\n")}
+                {"\n"}{proposalPreview.project.budgetLines.map((item) => item.item + ": " + item.amount).join("\n")}
+                {"\n"}{proposalPreview.project.objectives.map((item, index) => (index + 1) + ". " + item.text).join("\n")}
+                {"\n"}{proposalPreview.project.risks.map((item) => item.risk + (item.mitigation ? " — " + item.mitigation : "")).join("\n")}
+              </div></details>
+              <details style={{ marginBottom: 12 }}><summary>Work packages, tasks, deliverables and KPIs</summary>
+                {proposalPreview.project.workPackages.map((wp) => <div key={wp.id} style={{ padding: "8px 0", borderBottom: "1px solid " + LINE, whiteSpace: "pre-wrap" }}><strong>{wp.id} · {wp.name}</strong><div>{[wp.lead, wp.window, wp.milestone].filter(Boolean).join(" · ")}</div><div>Tasks: {wp.tasks.map((item) => item.label).join("; ") || "—"}</div><div>Deliverables: {wp.deliverables.join("; ") || "—"}</div><div>KPIs: {wp.kpis.map((item) => item.metric + (item.target ? " → " + item.target : "")).join("; ") || "—"}</div></div>)}
+              </details>
+              <div style={{ display: "flex", gap: 8 }}><button type="button" onClick={() => setProposalPreview(null)} style={{ flex: 1, background: "#fff", border: "1px solid " + LINE, borderRadius: 4, padding: 10, cursor: "pointer" }}>Discard preview</button><button type="button" onClick={saveProposalPreview} style={{ flex: 1, background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: 10, cursor: "pointer" }}>{proposalPreview.replaceId ? "Update project" : "Save project"}</button></div>
+            </div>}
+            {!proposalPreview && <>
             <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px" }}>
               <div style={{ flex: 1, height: 1, background: LINE }} />
               <span style={{ fontSize: 11, color: "#9AA2AF", textTransform: "uppercase", letterSpacing: "0.06em" }}>or enter manually</span>
@@ -950,6 +918,7 @@ function App() {
             <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 10, lineHeight: 1.5 }}>
               Upload multiple PDFs, Word (.docx), and image files together. Nyx reads them as one project proposal and preserves each file's provenance.
             </div>
+            </>
           </div>
         </div>
       )}
