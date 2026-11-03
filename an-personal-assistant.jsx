@@ -918,7 +918,7 @@ function App() {
             <div style={{ fontSize: 11.5, color: "#9AA2AF", marginTop: 10, lineHeight: 1.5 }}>
               Upload multiple PDFs, Word (.docx), and image files together. Nyx reads them as one project proposal and preserves each file's provenance.
             </div>
-            </>
+            </>}
           </div>
         </div>
       )}
