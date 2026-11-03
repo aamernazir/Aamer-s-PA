@@ -313,6 +313,7 @@ function emptyProject(fields) {
     budgetTotal: Number(fields.budgetTotal) || 0,
     budgetCurrency: fields.budgetCurrency || "SAR",
     team: fields.pi ? [{ name: fields.pi, role: "PI", center: "" }] : [],
+    capabilities: [],
     budgetLines: [],
     objectives: [],
     risks: [],
@@ -720,7 +721,7 @@ function App() {
       const texts = [];
       const images = [];
       for (const file of files) {
-        setExtractPhase("Step 1 of 6 — reading " + file.name);
+        setExtractPhase("Step 1 of 7 — reading " + file.name);
         if (isPdfFile(file)) {
           const content = await extractCompletePdfText(new Uint8Array(await file.arrayBuffer()));
           if (!content || !content.replace(/\[Page \d+\]/g, "").trim()) throw new Error(file.name + " has no selectable text. Upload an OCR PDF or readable page images.");
@@ -736,17 +737,19 @@ function App() {
       if (!chunks.length && !images.length) throw new Error("No readable proposal content was found.");
       const instruction = "Read this section of a project proposal carefully. Extract EVERY explicit item, even if it continues another section. Do not invent facts. Preserve work package numbers, objectives, tasks, deliverables and KPI targets verbatim enough to distinguish them. Use empty values when absent. Return ONLY JSON with: " +
         '{"title":"","projectNumber":"","program":"","pi":"","ownerRole":"","duration":"","budgetTotal":0,"budgetCurrency":"","team":[{"name":"","role":"","center":""}],"budgetLines":[{"item":"","amount":0}],"objectives":[{"text":""}],"risks":[{"risk":"","mitigation":""}],"workPackages":[{"number":"","name":"","lead":"","durationMonths":0,"window":"","milestone":"","objectiveRefs":["Objective 1"],"tasks":[""],"deliverables":[""],"kpis":[{"metric":"","target":""}]}]}.';
-      async function readChunk(chunk, depth = 0) {
+      const peopleInstruction = "Read the ENTIRE source section for project team, investigators, collaborators, partners, facilities, equipment, resources, technical competencies, prior experience, and institutional capability. Capture EVERY named person individually, including tables and biographies. Preserve each person's explicit role, affiliation, designation, expertise, qualifications, experience and responsibilities. Capture each distinct project capability, facility, resource or equipment item with its description and owner. Do not infer or invent. Return ONLY JSON: " +
+        '{"team":[{"name":"","role":"","center":"","affiliation":"","designation":"","expertise":[""],"qualifications":[""],"experience":"","responsibilities":[""],"contribution":""}],"capabilities":[{"title":"","description":"","category":"","owner":""}]}.';
+      async function readChunk(chunk, depth = 0, focused = false) {
         try {
-          const facts = await claudeExtractJSON([{ type: "text", text: "SOURCE: " + chunk.source + " · section " + chunk.part + "\n" + chunk.text + "\n\n" + instruction }], 6000);
+          const facts = await claudeExtractJSON([{ type: "text", text: "SOURCE: " + chunk.source + " · section " + chunk.part + "\n" + chunk.text + "\n\n" + (focused ? peopleInstruction : instruction) }], focused ? 7000 : 6000);
           if (!facts || typeof facts !== "object" || Array.isArray(facts)) throw new Error("No structured facts returned.");
           return [{ source: chunk.source, facts }];
         } catch (error) {
           if (depth < 3 && chunk.text.length > 5200 && /cut off|valid JSON|recognizable result|structured facts/i.test(error.message || "")) {
-            const halves = splitProposalText([{ name: chunk.source, text: chunk.text }], { chunkSize: Math.ceil(chunk.text.length / 2), maxCharacters: 300000 });
+            const halves = splitProposalText([{ name: chunk.source, text: chunk.text }], { chunkSize: Math.ceil(chunk.text.length / 2), maxCharacters: 1000000 });
             if (halves.length > 1) {
               const nested = [];
-              for (const half of halves) nested.push(...await readChunk(half, depth + 1));
+              for (const half of halves) nested.push(...await readChunk(half, depth + 1, focused));
               return nested;
             }
           }
@@ -755,27 +758,43 @@ function App() {
       }
       const fragments = [];
       for (let index = 0; index < chunks.length; index++) {
-        setExtractPhase("Step 2 of 6 — analyzing section " + (index + 1) + " of " + (chunks.length + images.length));
+        setExtractPhase("Step 2 of 7 — analyzing section " + (index + 1) + " of " + (chunks.length + images.length));
         fragments.push(...await readChunk(chunks[index]));
       }
       for (let index = 0; index < images.length; index++) {
         const file = images[index];
-        setExtractPhase("Step 2 of 6 — analyzing image " + (index + 1) + " of " + images.length);
+        setExtractPhase("Step 2 of 7 — analyzing image " + (index + 1) + " of " + images.length);
         const facts = await claudeExtractJSON([
           { type: "image", source: { type: "base64", media_type: file.mediaType, data: file.data } },
           { type: "text", text: "SOURCE IMAGE: " + file.name + ". " + instruction },
         ], 6000);
         fragments.push({ source: file.name, facts });
       }
-      setExtractPhase("Step 3 of 6 — aligning team, funding and project details");
+      const teamSections = chunks.filter((chunk) => /team|capabilit|personnel|investigator|collaborator|partner|biograph|expertise|qualification|facilit|equipment|infrastructure|resource|staff|researcher|workforce|experience/i.test(chunk.text));
+      for (let index = 0; index < teamSections.length; index++) {
+        setExtractPhase("Step 3 of 7 — reading team and capability section " + (index + 1) + " of " + teamSections.length);
+        fragments.push(...await readChunk(teamSections[index], 0, true));
+      }
+      for (let index = 0; index < images.length; index++) {
+        const file = images[index];
+        setExtractPhase("Step 3 of 7 — reading team and capabilities in image " + (index + 1) + " of " + images.length);
+        const facts = await claudeExtractJSON([
+          { type: "image", source: { type: "base64", media_type: file.mediaType, data: file.data } },
+          { type: "text", text: "SOURCE IMAGE: " + file.name + ". " + peopleInstruction },
+        ], 7000);
+        fragments.push({ source: file.name, facts });
+      }
+      setExtractPhase("Step 4 of 7 — aligning team, capabilities and funding");
       const merged = mergeProposalFragments(fragments);
-      setExtractPhase("Step 4 of 6 — reconciling objectives and risks");
+      setExtractPhase("Step 5 of 7 — reconciling objectives and risks");
       const objectives = merged.objectives;
       const risks = merged.risks;
-      setExtractPhase("Step 5 of 6 — linking work packages, tasks and deliverables");
+      setExtractPhase("Step 6 of 7 — linking work packages, tasks and deliverables");
       const workPackages = merged.workPackages;
-      setExtractPhase("Step 6 of 6 — checking coverage for your review");
+      setExtractPhase("Step 7 of 7 — checking coverage for your review");
       const warnings = auditProposalExtraction(merged);
+      if (teamSections.length && !merged.team.length) warnings.push("Team-related sections were found, but no named team members were extracted. Review the source before saving.");
+      if (teamSections.some((chunk) => /capabilit|facilit|equipment|infrastructure/i.test(chunk.text)) && !merged.capabilities.length) warnings.push("Capability-related text was found, but no capability entries were extracted.");
       if (!merged.title && !objectives.length && !workPackages.length) throw new Error("No recognizable project details were extracted. No project was saved.");
       const normalizedTitle = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
       const existingMatch = projects.find((project) => merged.projectNumber && project.projectNumber && normalizedTitle(project.projectNumber) === normalizedTitle(merged.projectNumber)) || projects.find((project) => normalizedTitle(merged.title).length > 15 && normalizedTitle(project.title) === normalizedTitle(merged.title));
@@ -870,10 +889,11 @@ function App() {
               <FormField label="Project number"><input style={inputStyle} value={proposalPreview.project.projectNumber || ""} onChange={(e) => setProposalPreview((current) => ({ ...current, project: { ...current.project, projectNumber: e.target.value } }))} /></FormField>
               <FormField label="Your role"><select style={inputStyle} value={proposalPreview.project.ownerRole || ""} onChange={(e) => setProposalPreview((current) => ({ ...current, project: { ...current.project, ownerRole: e.target.value } }))}><option value="">Not identified</option><option value="PI">PI</option><option value="Co-I">Co-I</option></select></FormField>
               <div style={{ lineHeight: 1.6 }}>{[proposalPreview.project.program, proposalPreview.project.pi && "PI: " + proposalPreview.project.pi, proposalPreview.project.duration, proposalPreview.project.budgetTotal && "Budget: " + proposalPreview.project.budgetTotal + " " + proposalPreview.project.budgetCurrency].filter(Boolean).join(" · ")}</div>
-              <div style={{ margin: "9px 0" }}>{proposalPreview.project.team.length} team · {proposalPreview.project.budgetLines.length} budget lines · {proposalPreview.project.objectives.length} objectives · {proposalPreview.project.risks.length} risks · {proposalPreview.project.workPackages.length} work packages</div>
+              <div style={{ margin: "9px 0" }}>{proposalPreview.project.team.length} team · {proposalPreview.project.capabilities.length} capabilities · {proposalPreview.project.budgetLines.length} budget lines · {proposalPreview.project.objectives.length} objectives · {proposalPreview.project.risks.length} risks · {proposalPreview.project.workPackages.length} work packages</div>
               {proposalPreview.warnings.length > 0 && <div style={{ color: "#8A5B00", background: "#FFF7E8", padding: 9, marginBottom: 10 }}>Review gaps: {proposalPreview.warnings.join(" ")}</div>}
               <details style={{ marginBottom: 8 }}><summary>Team, budget, objectives and risks</summary><div style={{ padding: "8px 0", whiteSpace: "pre-wrap" }}>
-                {proposalPreview.project.team.map((item) => item.name + (item.role ? " — " + item.role : "")).join("\n")}
+                {proposalPreview.project.team.map((item) => [item.name, item.role, item.center, item.affiliation, item.designation, ...(item.expertise || []), ...(item.qualifications || []), item.experience, ...(item.responsibilities || []), item.contribution].filter(Boolean).join(" · ")).join("\n")}
+                {"\n"}{proposalPreview.project.capabilities.map((item) => [item.title, item.description, item.category, item.owner].filter(Boolean).join(" · ")).join("\n")}
                 {"\n"}{proposalPreview.project.budgetLines.map((item) => item.item + ": " + item.amount).join("\n")}
                 {"\n"}{proposalPreview.project.objectives.map((item, index) => (index + 1) + ". " + item.text).join("\n")}
                 {"\n"}{proposalPreview.project.risks.map((item) => item.risk + (item.mitigation ? " — " + item.mitigation : "")).join("\n")}
@@ -1227,6 +1247,9 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
   const [showRiskForm, setShowRiskForm] = useState(false);
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [teamDraft, setTeamDraft] = useState({ name: "", role: "", center: "" });
+  const [capabilityDraft, setCapabilityDraft] = useState({ title: "", description: "", category: "", owner: "" });
+  const [editingCapabilityIdx, setEditingCapabilityIdx] = useState(null);
+  const [showCapabilityForm, setShowCapabilityForm] = useState(false);
   const [editingTeamIdx, setEditingTeamIdx] = useState(null);
   const [riskDraft, setRiskDraft] = useState({ risk: "", mitigation: "" });
   const emptyEvidence = { title: "", type: "Report", date: "", dateType: "", authors: "", objectiveIdxs: [], summary: "" };
@@ -1451,6 +1474,27 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
     const name = data.team[idx]?.name || "team member";
     update((p) => ({ ...p, team: p.team.filter((_, i) => i !== idx) }));
     logChange(`Removed team member: ${name}`);
+  }
+  function openCapabilityForm(idx) {
+    setEditingCapabilityIdx(idx);
+    setCapabilityDraft(idx === null ? { title: "", description: "", category: "", owner: "" } : { ...data.capabilities[idx] });
+    setShowCapabilityForm(true);
+  }
+  function saveCapability() {
+    if (!capabilityDraft.title.trim()) return;
+    update((p) => {
+      const capabilities = [...(p.capabilities || [])];
+      if (editingCapabilityIdx === null) capabilities.push({ ...capabilityDraft });
+      else capabilities[editingCapabilityIdx] = { ...capabilityDraft };
+      return { ...p, capabilities };
+    });
+    logChange(`Saved capability: ${capabilityDraft.title}`);
+    setShowCapabilityForm(false);
+  }
+  function removeCapability(idx) {
+    const title = data.capabilities[idx]?.title || "capability";
+    update((p) => ({ ...p, capabilities: (p.capabilities || []).filter((_, i) => i !== idx) }));
+    logChange(`Removed capability: ${title}`);
   }
   function leadOptions(currentValue) {
     const names = Array.from(new Set(data.team.map((m) => m.name).filter(Boolean)));
@@ -2011,8 +2055,9 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
           <div style={{ marginBottom: 28 }}>
             {data.team.length === 0 && <EmptyState text="No team members yet." />}
             {data.team.map((m, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, padding: "8px 0", borderBottom: "1px solid #EAECF0" }}>
-                <span style={{ color: INK, fontWeight: 500 }}>{m.name} <span style={{ color: MUTED, fontWeight: 400 }}>· {m.role}</span></span>
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, fontSize: 13.5, padding: "8px 0", borderBottom: "1px solid #EAECF0" }}>
+                <div><span style={{ color: INK, fontWeight: 500 }}>{m.name} <span style={{ color: MUTED, fontWeight: 400 }}>· {m.role}</span></span>
+                  <div style={{ color: MUTED, fontSize: 12, whiteSpace: "pre-wrap" }}>{[m.designation, m.affiliation, ...(m.expertise || []), ...(m.qualifications || []), m.experience, ...(m.responsibilities || []), m.contribution].filter(Boolean).join(" · ")}</div></div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ color: MUTED }}>{m.center}</span>
                   <button onClick={() => openTeamForm(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pencil size={13} color="#9AA2AF" /></button>
@@ -2023,18 +2068,49 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
           </div>
           {showTeamForm && (
             <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={() => setShowTeamForm(false)}>
-              <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 400, padding: 24, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+              <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", padding: 24, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                   <h2 className="pd-display" style={{ fontSize: 18, fontWeight: 700, margin: 0, color: INK }}>{editingTeamIdx !== null ? "Edit team member" : "Add team member"}</h2>
                   <button onClick={() => setShowTeamForm(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} color={MUTED} /></button>
                 </div>
                 <FormField label="Name"><input style={inputStyle} value={teamDraft.name} onChange={(e) => setTeamDraft({ ...teamDraft, name: e.target.value })} placeholder="e.g. Dr. Jane Smith, or a student's name" /></FormField>
                 <FormField label="Role"><input style={inputStyle} value={teamDraft.role} onChange={(e) => setTeamDraft({ ...teamDraft, role: e.target.value })} placeholder="e.g. Co-I, PhD Student, Postdoc" /></FormField>
-                <FormField label="Center / department (optional)"><input style={inputStyle} value={teamDraft.center} onChange={(e) => setTeamDraft({ ...teamDraft, center: e.target.value })} /></FormField>
+                <FormField label="Center / department (optional)"><input style={inputStyle} value={teamDraft.center || ""} onChange={(e) => setTeamDraft({ ...teamDraft, center: e.target.value })} /></FormField>
+                <FormField label="Affiliation"><input style={inputStyle} value={teamDraft.affiliation || ""} onChange={(e) => setTeamDraft({ ...teamDraft, affiliation: e.target.value })} /></FormField>
+                <FormField label="Designation"><input style={inputStyle} value={teamDraft.designation || ""} onChange={(e) => setTeamDraft({ ...teamDraft, designation: e.target.value })} /></FormField>
+                <FormField label="Expertise (one per line)"><textarea style={inputStyle} value={(teamDraft.expertise || []).join("\n")} onChange={(e) => setTeamDraft({ ...teamDraft, expertise: e.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></FormField>
+                <FormField label="Qualifications (one per line)"><textarea style={inputStyle} value={(teamDraft.qualifications || []).join("\n")} onChange={(e) => setTeamDraft({ ...teamDraft, qualifications: e.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></FormField>
+                <FormField label="Experience"><textarea style={inputStyle} value={teamDraft.experience || ""} onChange={(e) => setTeamDraft({ ...teamDraft, experience: e.target.value })} /></FormField>
+                <FormField label="Responsibilities (one per line)"><textarea style={inputStyle} value={(teamDraft.responsibilities || []).join("\n")} onChange={(e) => setTeamDraft({ ...teamDraft, responsibilities: e.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></FormField>
+                <FormField label="Contribution"><textarea style={inputStyle} value={teamDraft.contribution || ""} onChange={(e) => setTeamDraft({ ...teamDraft, contribution: e.target.value })} /></FormField>
                 <button onClick={addTeamMember} style={{ width: "100%", background: INK, color: PAPER, border: "none", borderRadius: 3, padding: "10px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{editingTeamIdx !== null ? "Save changes" : "Add"}</button>
               </div>
             </div>
           )}
+
+          <SectionTitle title="Team and project capabilities" action={<GhostAddButton onClick={() => openCapabilityForm(null)} label="Add capability" />} />
+          <div style={{ marginBottom: 28 }}>
+            {(data.capabilities || []).length === 0 && <EmptyState text="No project capabilities yet." />}
+            {(data.capabilities || []).map((item, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: "1px solid #EAECF0" }}>
+                <div><strong>{item.title}</strong><div style={{ color: MUTED, fontSize: 12 }}>{[item.category, item.owner].filter(Boolean).join(" · ")}</div><div style={{ whiteSpace: "pre-wrap" }}>{item.description}</div></div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => openCapabilityForm(i)} style={{ background: "none", border: 0, cursor: "pointer" }}><Pencil size={13} color={MUTED} /></button>
+                  <button onClick={() => removeCapability(i)} style={{ background: "none", border: 0, cursor: "pointer" }}><Trash2 size={13} color={MUTED} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {showCapabilityForm && <div style={{ position: "fixed", inset: 0, background: "rgba(26,35,50,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setShowCapabilityForm(false)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: 6, width: "100%", maxWidth: 460, padding: 24 }}>
+              <h2 style={{ marginTop: 0 }}>Project capability</h2>
+              <FormField label="Title"><input style={inputStyle} value={capabilityDraft.title || ""} onChange={(e) => setCapabilityDraft({ ...capabilityDraft, title: e.target.value })} /></FormField>
+              <FormField label="Category"><input style={inputStyle} value={capabilityDraft.category || ""} onChange={(e) => setCapabilityDraft({ ...capabilityDraft, category: e.target.value })} /></FormField>
+              <FormField label="Owner or partner"><input style={inputStyle} value={capabilityDraft.owner || ""} onChange={(e) => setCapabilityDraft({ ...capabilityDraft, owner: e.target.value })} /></FormField>
+              <FormField label="Description"><textarea style={inputStyle} value={capabilityDraft.description || ""} onChange={(e) => setCapabilityDraft({ ...capabilityDraft, description: e.target.value })} /></FormField>
+              <button onClick={saveCapability} style={{ ...inputStyle, cursor: "pointer" }}>Save capability</button>
+            </div>
+          </div>}
 
           <SectionTitle title="Duration" />
           <div style={{ marginBottom: 8 }}>
@@ -10502,3 +10578,4 @@ function AssistantHub({ onOpenModule }) {
     </div>
   );
 }
+

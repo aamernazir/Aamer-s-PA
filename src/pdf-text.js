@@ -21,10 +21,7 @@ export async function extractPdfText(bytes, { maxPages = 12, maxCharacters = 200
   }
 }
 
-
-// Project proposals need complete coverage. Fail visibly at the cap instead of
-// returning a plausible-looking record from only the opening pages.
-export async function extractCompletePdfText(bytes, { maxPages = 300, maxCharacters = 300000 } = {}) {
+export async function extractCompletePdfText(bytes, { maxPages = 1000, maxCharacters = 1000000 } = {}) {
   const task = pdfjs.getDocument({ data: bytes });
   const document = await task.promise;
   try {

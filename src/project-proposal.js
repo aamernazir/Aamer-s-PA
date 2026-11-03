@@ -3,7 +3,7 @@
 const keyOf = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const list = (value) => Array.isArray(value) ? value : [];
 
-export function splitProposalText(sources, { chunkSize = 15000, maxCharacters = 300000, maxChunks = 40 } = {}) {
+export function splitProposalText(sources, { chunkSize = 12000, maxCharacters = 1000000, maxChunks = 100 } = {}) {
   const chunks = [];
   let total = 0;
   for (const source of sources) {
@@ -53,6 +53,41 @@ function mergeObjects(items, keyFn, fields) {
   return [...result.values()];
 }
 
+const teamFields = ["name", "role", "center", "affiliation", "designation", "experience", "contribution"];
+const teamLists = ["expertise", "responsibilities", "qualifications"];
+function mergeTeam(items) {
+  const result = new Map();
+  for (const item of items) {
+    if (!item || !keyOf(item.name)) continue;
+    const key = keyOf(item.name);
+    const previous = result.get(key) || {};
+    const next = { ...previous };
+    for (const field of teamFields) if (!next[field] && item[field]) next[field] = String(item[field]).trim();
+    for (const field of teamLists) {
+      const values = (value) => Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n|;/) : [];
+      next[field] = distinctStrings([...values(previous[field]), ...values(item[field])]);
+    }
+    result.set(key, next);
+  }
+  return [...result.values()];
+}
+function mergeCapabilities(items) {
+  const result = new Map();
+  for (const item of items) {
+    if (!item || !keyOf(item.title || item.name)) continue;
+    const title = String(item.title || item.name).trim();
+    const key = keyOf(title);
+    const previous = result.get(key) || {};
+    result.set(key, {
+      title: previous.title || title,
+      description: previous.description || String(item.description || "").trim(),
+      category: previous.category || String(item.category || "").trim(),
+      owner: previous.owner || String(item.owner || "").trim(),
+    });
+  }
+  return [...result.values()];
+}
+
 function wpKey(wp) {
   const number = String(wp.number || wp.id || "").match(/\b(?:WP\s*)?(\d{1,2})\b/i)?.[1]
     || String(wp.name || "").match(/^\s*(?:WP|work package)\s*(\d{1,2})\b/i)?.[1];
@@ -63,7 +98,8 @@ export function mergeProposalFragments(fragments) {
   const parts = list(fragments).map((part) => part?.facts || part).filter((part) => part && typeof part === "object");
   const first = (field) => parts.map((part) => part[field]).find((value) => value != null && value !== "" && value !== 0) || "";
   const budgetTotal = parts.map((part) => Number(part.budgetTotal) || 0).reduce((highest, value) => Math.max(highest, value), 0);
-  const team = mergeObjects(parts.flatMap((part) => list(part.team)), (item) => keyOf(item.name), ["name", "role", "center"]);
+  const team = mergeTeam(parts.flatMap((part) => list(part.team)));
+  const capabilities = mergeCapabilities(parts.flatMap((part) => list(part.capabilities)));
   const budgetLines = mergeObjects(parts.flatMap((part) => list(part.budgetLines)), (item) => keyOf(item.item) + ":" + (Number(item.amount) || 0), ["item", "amount"])
     .map((item) => ({ item: item.item || "", amount: Number(item.amount) || 0 }));
   const objectives = distinctStrings(parts.flatMap((part) => list(part.objectives).map((item) => typeof item === "string" ? item : item?.text)));
@@ -102,7 +138,7 @@ export function mergeProposalFragments(fragments) {
   return {
     title: first("title"), projectNumber: first("projectNumber"), program: first("program"), pi: first("pi"),
     ownerRole: first("ownerRole"), duration: first("duration"), budgetTotal, budgetCurrency: first("budgetCurrency") || "SAR",
-    team, budgetLines, objectives: objectives.map((text) => ({ text, lead: "", notes: "" })), risks, workPackages,
+    team, capabilities, budgetLines, objectives: objectives.map((text) => ({ text, lead: "", notes: "" })), risks, workPackages,
   };
 }
 
@@ -125,7 +161,8 @@ export function mergeProposalIntoProject(existing, incoming) {
   const scalars = ["title", "projectNumber", "program", "pi", "ownerRole", "duration", "budgetTotal", "budgetCurrency"];
   const result = { ...existing };
   for (const field of scalars) if (!result[field] && incoming[field]) result[field] = incoming[field];
-  result.team = mergeObjects([...list(existing.team), ...list(incoming.team)], (item) => keyOf(item.name), ["name", "role", "center"]);
+  result.team = mergeTeam([...list(existing.team), ...list(incoming.team)]);
+  result.capabilities = mergeCapabilities([...list(existing.capabilities), ...list(incoming.capabilities)]);
   result.budgetLines = mergeObjects([...list(existing.budgetLines), ...list(incoming.budgetLines)], (item) => keyOf(item.item) + ":" + (Number(item.amount) || 0), ["item", "amount"]);
   const objectives = [...list(existing.objectives)];
   for (const objective of list(incoming.objectives)) if (objective?.text && !objectives.some((item) => keyOf(item.text) === keyOf(objective.text))) objectives.push(objective);

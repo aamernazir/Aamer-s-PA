@@ -38,3 +38,20 @@ test("re-import fills missing tasks while preserving manually completed work", (
   assert.deepEqual(result.workPackages[0].objectiveIdxs, [0]);
   assert.deepEqual(result.workPackages[0].deliverables, ["Validated prototype"]);
 });
+
+test("team biographies and capabilities from separate sections remain distinct and editable", () => {
+  const merged = mergeProposalFragments([
+    { facts: { team: [{ name: "Dr. A", role: "PI", expertise: ["Design"] }, { name: "Dr. B", role: "Co-I" }], capabilities: [{ title: "AM laboratory", description: "Metal printing" }] } },
+    { facts: { team: [{ name: "Dr. A", affiliation: "University", qualifications: ["PhD"], responsibilities: ["Prototype design"] }, { name: "Dr. C", experience: "10 years" }], capabilities: [{ title: "AM laboratory", owner: "University" }, { title: "Testing facility", category: "Infrastructure" }] } },
+  ]);
+  assert.equal(merged.team.length, 3);
+  assert.deepEqual(merged.team[0].qualifications, ["PhD"]);
+  assert.deepEqual(merged.team[0].responsibilities, ["Prototype design"]);
+  assert.equal(merged.capabilities.length, 2);
+  assert.equal(merged.capabilities[0].owner, "University");
+  const updated = mergeProposalIntoProject({ team: [{ name: "Dr. A", role: "Corrected role" }], capabilities: [{ title: "AM laboratory", description: "Corrected description" }] }, merged);
+  assert.equal(updated.team[0].role, "Corrected role");
+  assert.equal(updated.team.length, 3);
+  assert.equal(updated.capabilities[0].description, "Corrected description");
+  assert.equal(updated.capabilities[0].owner, "University");
+});
