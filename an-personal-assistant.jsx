@@ -493,6 +493,8 @@ const GlobalStyle = () => (
     .pd-spin { animation: pd-spin-anim 0.9s linear infinite; }
     @keyframes pd-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .pd-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
+    .pd-team-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+    @media (max-width: 900px) { .pd-team-grid { grid-template-columns: 1fr; } }
   `}</style>
 );
 
@@ -978,8 +980,12 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
   const workload = collectActiveWorkload(projects);
-  const collaboratorOrder = ["Internal", "External", "Unclassified", "Review"];
-  const groupedWorkload = [...workload].sort((a, b) => collaboratorOrder.indexOf(a.collaboratorType) - collaboratorOrder.indexOf(b.collaboratorType) || (b.loadScore ?? -1) - (a.loadScore ?? -1) || a.name.localeCompare(b.name));
+  const workloadColumns = [
+    { type: "External", label: "External collaborators" },
+    { type: "Group", label: "Group members" },
+    { type: "Internal", label: "Internal KFUPM collaborators" },
+  ];
+  const unresolvedWorkload = workload.filter((person) => !workloadColumns.some((column) => column.type === person.collaboratorType));
   const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
   const coIProjects = projects.filter(isCoIProject);
   const fundedProjects = projects.filter((project) => hasProjectNumber(project) && !isCoIProject(project));
@@ -1030,6 +1036,24 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  function WorkloadPersonCard({ person: w }) {
+    const status = workloadStatus(w);
+    const isGroupMember = w.collaboratorType === "Group";
+    return (
+      <div style={{ background: status.background, border: "1px solid " + LINE, borderLeft: `3px solid ${status.border}`, borderRadius: 5, padding: "10px 12px", minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{w.name}</div>
+        <div style={{ marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {status.label}</div>
+        <div style={{ marginTop: 6, fontSize: 11.5, color: INK }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
+        <div style={{ fontSize: 10.5, color: MUTED }}>{w.baselineUnits} baseline + {w.projectUnits} project · {w.projectCount} assigned project{w.projectCount === 1 ? "" : "s"}</div>
+        {(w.objectives > 0 || w.workPackages > 0) && <div style={{ marginTop: 4, fontSize: 10.5, color: MUTED }}>{w.objectives} objective{w.objectives === 1 ? "" : "s"} · {w.workPackages} WP{w.workPackages === 1 ? "" : "s"}</div>}
+        {!isGroupMember && w.listedProjects.some((project) => project.id) && <select aria-label={`Choose project for ${w.name} to assign work`} defaultValue="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
+          <option value="">Choose project to assign work…</option>
+          {w.listedProjects.filter((project) => project.id).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+        </select>}
       </div>
     );
   }
@@ -1099,7 +1123,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
               )
             )}
                         {portfolioTab === "workload" && (
-              workload.length === 0 ? <div style={{ fontSize: 12.5, color: MUTED }}>No student/postdoc leads assigned yet.</div> : (
+              workload.length === 0 ? <div style={{ fontSize: 12.5, color: MUTED }}>No project team members recorded yet.</div> : (
                 <>
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 8, fontSize: 11.5, color: MUTED }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#D95C5C", display: "inline-block" }} />High load</span>
@@ -1107,27 +1131,16 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
                   <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Postdocs, PhD and MS students start with 1 baseline commitment for supervision and other work, counted once per person. Each assigned active project adds 1; for postdocs a second open objective in that project adds 0.5. Planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1 commitments. 75–125% is balanced. Set a capacity in the team editor for external or unclassified members.</div>
-                  {groupedWorkload.map((w, i) => {
-                    const status = workloadStatus(w);
-                    return (
-                      <div key={w.name}>
-                      {(i === 0 || groupedWorkload[i - 1].collaboratorType !== w.collaboratorType) && <h3 style={{ margin: "14px 0 7px", fontSize: 12, color: INK }}>{w.collaboratorType === "Internal" ? "Internal collaborators" : w.collaboratorType === "External" ? "External collaborators" : w.collaboratorType === "Review" ? "Review classification" : "Needs classification"}</h3>}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < groupedWorkload.length - 1 ? "1px solid #EAECF0" : "none" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}{w.objectives > 0 ? <span style={{ marginLeft: 7, color: TEAL, fontSize: 10 }}>Objective lead</span> : null}</div>
-                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments ({w.baselineUnits} baseline + {w.projectUnits} project) · {status.label}</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
-                          {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}
-                          {w.workPackages > 0 && `${w.workPackages} WP${w.workPackages > 1 ? "s" : ""}`}
-                          {` · ${w.projectCount} assigned project${w.projectCount > 1 ? "s" : ""}`}{w.loadScore == null ? " · capacity not rated" : ` · ${Math.round(w.loadScore)}% of capacity`}
-                          {w.listedProjects.length === 1 && w.listedProjects[0].id && <button type="button" onClick={() => onOpen(w.listedProjects[0].id)} style={{ display: "block", marginLeft: "auto", marginTop: 4, border: "none", background: "none", color: TEAL, cursor: "pointer", fontSize: 11 }}>Open project to assign work</button>}
-                          {w.listedProjects.length > 1 && <select aria-label={`Open project for ${w.name} to assign work`} value="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ display: "block", marginLeft: "auto", marginTop: 4, maxWidth: 240, fontSize: 11, color: TEAL }}><option value="">Choose project to assign work…</option>{w.listedProjects.filter((p) => p.id).map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
-                        </div>
+                  <div className="pd-team-grid">
+                    {workloadColumns.map((column) => <section key={column.type} style={{ minWidth: 0, background: "#F7F9FB", border: "1px solid " + LINE, borderRadius: 6, padding: 10 }}>
+                      <h3 style={{ margin: "2px 2px 10px", fontSize: 12.5, color: INK }}>{column.label} <span style={{ color: MUTED }}>({workload.filter((person) => person.collaboratorType === column.type).length})</span></h3>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {workload.filter((person) => person.collaboratorType === column.type).map((person) => <WorkloadPersonCard key={person.name} person={person} />)}
+                        {!workload.some((person) => person.collaboratorType === column.type) && <div style={{ fontSize: 11, color: MUTED, padding: 6 }}>No members yet.</div>}
                       </div>
-                      </div>
-                    );
-                  })}
+                    </section>)}
+                  </div>
+                  {unresolvedWorkload.length > 0 && <details style={{ marginTop: 12, fontSize: 11.5, color: MUTED }}><summary>Affiliation to verify ({unresolvedWorkload.length})</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8, marginTop: 8 }}>{unresolvedWorkload.map((person) => <WorkloadPersonCard key={person.name} person={person} />)}</div><div style={{ marginTop: 6 }}>Set Internal or External in the project Team editor when the source record does not establish the affiliation.</div></details>}
                 </>
               )
             )}

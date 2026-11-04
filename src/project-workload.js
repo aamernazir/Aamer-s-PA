@@ -51,10 +51,10 @@ function personKey(name) {
 function samePerson(a, b) {
   const first = personKey(a).split(" ");
   const second = personKey(b).split(" ");
-  if (!first[0] || first[0] !== second[0]) return false;
+  if (!first[0] || !second[0]) return false;
   if (first.length === 1 || second.length === 1) return personKey(a) === personKey(b);
-  if (first[1] === second[1]) return true;
-  const left = first[1], right = second[1];
+  const compareLast = (left, right) => {
+  if (left === right) return true;
   if (left.length < 7 || right.length < 7 || Math.abs(left.length - right.length) > 1) return false;
   if (left.length === right.length) {
     const differences = [...left].filter((letter, i) => letter !== right[i]).length;
@@ -67,6 +67,9 @@ function samePerson(a, b) {
   const [longer, shorter] = left.length > right.length ? [left, right] : [right, left];
   for (let i = 0; i < longer.length; i++) if (longer.slice(0, i) + longer.slice(i + 1) === shorter) return true;
   return false;
+  };
+  return (first[0] === second[0] && compareLast(first[1], second[1]))
+    || (first[0] === second[1] && compareLast(first[1], second[0]));
 }
 
 function projectMember(name, project) {
@@ -81,6 +84,7 @@ function collaboratorKind(entry) {
   if (/external|industry partner/i.test(role)) return "External";
   if (/\binternal\b/i.test(role)) return "Internal";
   if (/\bkfupm\b|\birc[- ]/i.test(String(entry?.affiliation || "") + " " + String(entry?.center || ""))) return "Internal";
+  if (/university|institute|college|laborator|research cent(?:er|re)|corporation|company|\binc\b|\bltd\b/i.test(String(entry?.affiliation || "")) && !/\bkfupm\b/i.test(String(entry.affiliation))) return "External";
   return "Unclassified";
 }
 
@@ -109,7 +113,7 @@ export function collectActiveWorkload(projects) {
     if (!normalizedName) return null;
     const key = [...workload.keys()].find((candidate) => samePerson(candidate, normalizedName)) || personKey(normalizedName);
     if (!key) return null;
-    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), listedProjects: new Map(), objectivesByProject: new Map(), role: null, capacityUnits: null, kinds: new Set() });
+    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), listedProjects: new Map(), objectivesByProject: new Map(), role: null, capacityUnits: null, kinds: new Set(), groupMember: false });
     const member = workload.get(key);
     if (project) member.listedProjects.set(project?.id || project, { id: project?.id || "", title: project?.title || "Untitled project" });
     const teamEntry = projectMember(normalizedName, project);
@@ -138,6 +142,10 @@ export function collectActiveWorkload(projects) {
       (Array.isArray(project.team) ? project.team : []).forEach((entry) => {
         ensureMember(entry?.name, project, entry?.role);
       });
+      (project.objectives || []).forEach((objective) => {
+        const member = ensureMember(objective?.lead, project, objective?.role);
+        if (member) member.groupMember = true;
+      });
       (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
       (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
     });
@@ -157,7 +165,7 @@ export function collectActiveWorkload(projects) {
     workPackages: member.workPackages,
     projectCount: member.projects.size,
     listedProjects: [...member.listedProjects.values()],
-    collaboratorType: knownKinds.length === 1 ? knownKinds[0] : knownKinds.length > 1 ? "Review" : "Unclassified",
+    collaboratorType: member.groupMember ? "Group" : knownKinds.length === 1 ? knownKinds[0] : knownKinds.length > 1 ? "Review" : "Unclassified",
     role: member.role?.label || "Role not recorded",
     roleKey: member.role?.key || "unclassified",
     capacityUnits,

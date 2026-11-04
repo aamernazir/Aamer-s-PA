@@ -19,7 +19,7 @@ test("team workload excludes projects whose work packages are fully completed", 
     project({ id: "completed-only", objectiveLead: "Kashif", workPackageLead: "Kashif", done: true }),
   ]);
 
-  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, listedProjects: [{ id: "active", title: "active" }], collaboratorType: "Unclassified", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
+  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, listedProjects: [{ id: "active", title: "active" }], collaboratorType: "Group", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
 });
 
 test("explicitly completed or archived projects never contribute workload", () => {
@@ -36,7 +36,7 @@ test("explicitly completed or archived projects never contribute workload", () =
 test("not-started projects remain active workload", () => {
   const notStarted = { id: "new", title: "New project", objectives: [{ lead: "Aamer" }], workPackages: [] };
   assert.equal(projectIsActiveForWorkload(notStarted), true);
-  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, listedProjects: [{ id: "new", title: "New project" }], collaboratorType: "Unclassified", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
+  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, listedProjects: [{ id: "new", title: "New project" }], collaboratorType: "Group", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
 });
 
 test("only an entered official project number classifies a project as funded", () => {
@@ -152,13 +152,32 @@ test("all project participants show; baseline applies only to postdoc, PhD and M
 test("near-identical first and surname variants merge into one person", () => {
   const [member] = collectActiveWorkload([{
     id: "p", title: "Project", team: [{ name: "Benjamin Niuonkuru", role: "PhD Student", collaboratorType: "Internal" }],
-    objectives: [{ lead: "Benjamin Nuionkuru" }],
+    objectives: [{ lead: "Niyonkuru Benjamin" }],
   }]);
   assert.equal(member.name, "Benjamin Niuonkuru");
   assert.equal(member.objectives, 1);
   assert.equal(member.projectCount, 1);
-  assert.equal(member.collaboratorType, "Internal");
+  assert.equal(member.collaboratorType, "Group");
   assert.equal(member.assignedUnits, 2);
+});
+
+test("objective leads are group members even when a roster entry says external", () => {
+  const [member] = collectActiveWorkload([{
+    id: "p", team: [{ name: "Dr. Sree", role: "External collaborator", collaboratorType: "External" }],
+    objectives: [{ lead: "Dr. Sree" }],
+  }]);
+  assert.equal(member.collaboratorType, "Group");
+});
+
+test("KFUPM collaborators and explicitly non-KFUPM affiliates use distinct columns", () => {
+  const workload = collectActiveWorkload([{
+    id: "p", team: [
+      { name: "Dr. Inside", role: "Co-I", center: "IRC-IMR" },
+      { name: "Dr. Outside", role: "Co-I", affiliation: "Osaka University" },
+    ],
+  }]);
+  assert.equal(workload.find((person) => person.name === "Dr. Inside").collaboratorType, "Internal");
+  assert.equal(workload.find((person) => person.name === "Dr. Outside").collaboratorType, "External");
 });
 
 test("external collaborators without lead assignments remain visible and assignable", () => {
