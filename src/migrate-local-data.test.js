@@ -62,3 +62,13 @@ test("dashboard tile preferences are an account-scoped application record", asyn
   await migrateLocalData(fixture.local, fixture.cloud);
   assert.deepEqual(fixture.writes, [{ key, value, shared: false }]);
 });
+
+
+test("collaborator roster can load and save through account storage", async () => {
+  const key = "am2r-collaborator-roster-v1";
+  const value = JSON.stringify([{ name: "Chunjin Wang", collaboratorType: "External" }]);
+  assert.equal(isApplicationKey(key), true);
+  const fixture = adapters({ [key]: { value } });
+  await migrateLocalData(fixture.local, fixture.cloud);
+  assert.deepEqual(fixture.writes, [{ key, value, shared: false }]);
+});

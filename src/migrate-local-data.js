@@ -2,6 +2,7 @@
 // Add future module keys here; never register API keys or session credentials.
 const APPLICATION_KEYS = new Set([
   "am2r-projects-v1",
+  "am2r-collaborator-roster-v1",
   "kfupm-csf-project-v1",
   "am2r-funding-pipeline-v1",
   "am2r-competitive-landscape-v1",
