@@ -514,9 +514,10 @@ const GlobalStyle = () => (
     @keyframes pd-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .pd-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
     .pd-team-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
-    .pd-person-summary { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 10px; align-items: start; }
-    .pd-person-metrics { border-left: 1px solid #DCDFE3; padding-left: 10px; min-width: 0; }
-    @media (max-width: 420px) { .pd-person-summary { grid-template-columns: 1fr; gap: 5px; } .pd-person-metrics { border-left: 0; border-top: 1px solid #DCDFE3; padding: 5px 0 0; } }
+    .pd-person-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) minmax(0, .95fr); gap: 10px; align-items: start; }
+    .pd-person-note, .pd-person-metrics { border-left: 1px solid #C8D1DC; padding-left: 10px; min-width: 0; }
+    @media (max-width: 520px) { .pd-person-summary { grid-template-columns: 1fr 1fr; } .pd-person-note { grid-column: 1 / -1; grid-row: 2; border-left: 0; border-top: 1px solid #C8D1DC; padding: 7px 0 0; } }
+    @media (max-width: 340px) { .pd-person-summary { grid-template-columns: 1fr; } .pd-person-metrics { border-left: 0; border-top: 1px solid #C8D1DC; padding: 7px 0 0; } }
     @media (max-width: 900px) { .pd-team-grid { grid-template-columns: 1fr; } }
   `}</style>
 );
@@ -1030,7 +1031,7 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
   const evidenceGaps = collectEvidenceGaps(projects);
   const projectWorkload = collectActiveWorkload(projects);
   const personKey = (name) => String(name || "").toLowerCase().replace(/[^\p{L}]+/gu, " ").trim().split(/\s+/).sort().join(" ");
-  const workload = [...projectWorkload.map((person) => { const roster = (collaboratorRoster || []).find((entry) => personKey(entry.name) === personKey(person.name)); return { ...person, projectInterests: roster?.projectInterests || [], projectInterestStatuses: roster?.projectInterestStatuses || {}, projectInterestUpdatedAt: roster?.projectInterestUpdatedAt || {} }; }), ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
+  const workload = [...projectWorkload.map((person) => { const roster = (collaboratorRoster || []).find((entry) => personKey(entry.name) === personKey(person.name)); return { ...person, note: roster?.note || "", projectInterests: roster?.projectInterests || [], projectInterestStatuses: roster?.projectInterestStatuses || {}, projectInterestUpdatedAt: roster?.projectInterestUpdatedAt || {} }; }), ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
     ...entry, role: entry.role || "Role not recorded", capacityUnits: null, assignedUnits: 0, baselineUnits: 0, projectUnits: 0,
     projectCount: 0, objectives: 0, workPackages: 0, listedProjects: [], loadScore: null,
   }))];
@@ -1169,19 +1170,23 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
     const isGroupMember = w.collaboratorType === "Group";
     const engagement = !isGroupMember && ["Internal", "External"].includes(w.collaboratorType)
       ? collaboratorEngagement(w.projectInterests, w.projectInterestStatuses, w.projectInterestUpdatedAt) : "potential";
-    const engagementStyle = engagement === "active" ? { label: "Active engagement", background: "#EAF6EC", border: "#58A674", accent: "#24643D" }
-      : engagement === "successful" ? { label: "Successful · ready for next engagement", background: "#FFF7DE", border: "#D8AC43", accent: "#86651A" }
-      : engagement === "unsuccessful" ? { label: "Latest engagement unsuccessful", background: "#FFF0F0", border: "#D86A6A", accent: "#A13E3E" } : null;
+    const engagementStyle = engagement === "active" ? { label: "Active engagement", background: "#D6EFDC", border: "#3E925C", accent: "#24643D" }
+      : engagement === "successful" ? { label: "Successful · ready for next engagement", background: "#FFE9A8", border: "#C99726", accent: "#76540B" }
+      : engagement === "unsuccessful" ? { label: "Latest engagement unsuccessful", background: "#FAD4D4", border: "#CA4C4C", accent: "#922B2B" } : null;
     const cardStyle = engagementStyle || status;
     return (
       <div style={{ background: cardStyle.background, border: "1px solid " + LINE, borderLeft: `3px solid ${cardStyle.border}`, borderRadius: 5, padding: "10px 12px", minWidth: 0 }}>
-        <div className="pd-person-summary">
+        <div className="pd-person-summary" style={!(["Internal", "External"].includes(w.collaboratorType)) ? { gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" } : undefined}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12.5, color: INK, fontWeight: 600, overflowWrap: "anywhere" }}>{w.name}</div>
             {(w.collaboratorType === "Internal" ? w.center || w.affiliation : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")) && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3, overflowWrap: "anywhere" }}>{w.collaboratorType === "Internal" ? (w.center || w.affiliation).replace(/,?\s*KFUPM\b/ig, "").trim() : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")}</div>}
             <div style={{ marginTop: 4, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {status.label}</div>
             {engagementStyle && <div style={{ marginTop: 4, fontSize: 10.5, color: engagementStyle.accent, fontWeight: 600 }}>{engagementStyle.label}</div>}
           </div>
+          {["Internal", "External"].includes(w.collaboratorType) && <div className="pd-person-note">
+            <label htmlFor={`collaborator-note-${personKey(w.name)}`} style={{ display: "block", fontSize: 10, fontWeight: 600, color: MUTED, marginBottom: 4 }}>One-sentence note</label>
+            <textarea key={`${personKey(w.name)}:${w.note || ""}`} id={`collaborator-note-${personKey(w.name)}`} defaultValue={w.note || ""} maxLength={240} rows={3} placeholder="Add a short note…" onBlur={(event) => { const note = event.target.value.trim(); if (note === (w.note || "")) return; const entry = (collaboratorRoster || []).find((person) => personKey(person.name) === personKey(w.name)); onSaveCollaborator({ ...(entry || { name: w.name, collaboratorType: w.collaboratorType, role: w.role, affiliation: w.affiliation, center: w.center, city: w.city, country: w.country }), note }); }} style={{ width: "100%", resize: "vertical", minHeight: 50, background: "rgba(255,255,255,.76)", color: INK, border: "1px solid #B8C3CE", borderRadius: 4, padding: 6, font: "inherit", fontSize: 10.5, lineHeight: 1.4 }} />
+          </div>}
           <div className="pd-person-metrics">
             <div style={{ fontSize: 11.5, color: INK, fontWeight: 600 }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
             <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}>{w.baselineUnits} baseline + {w.projectUnits} project</div>
