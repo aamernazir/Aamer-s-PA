@@ -27,7 +27,7 @@ export function projectFundingClass(project) {
   return hasProjectNumber(project) ? "funded" : "not-funded";
 }
 
-// Objective-equivalent capacity is a planning benchmark, not a measured FTE.
+// Concurrent project capacity is a planning benchmark, not a measured FTE.
 // Unclassified and external collaborators need an explicit capacity before
 // their assignments can be called high or low.
 export const WORKLOAD_ROLE_CAPACITY = Object.freeze({ postdoc: 5, phd: 3, ms: 2, ug: 1 });
@@ -72,33 +72,28 @@ export function projectIsActiveForWorkload(project) {
 export function collectActiveWorkload(projects) {
   const workload = new Map();
 
-  function record(name, field, project, explicitRole, linkedObjectives = []) {
+  function record(name, field, project, explicitRole) {
     const normalizedName = String(name || "").trim();
     if (!normalizedName) return;
     const key = personKey(normalizedName);
     if (!key) return;
-    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, independentWPs: 0, projects: new Set(), role: null, capacityUnits: null });
+    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), role: null, capacityUnits: null });
     const member = workload.get(key);
     member[field] += 1;
-    member.projects.add(String(project?.id || project?.title || "Untitled project"));
+    member.projects.add(project?.id || project);
     const teamEntry = projectMember(normalizedName, project);
     const teamRole = workloadRole(teamEntry?.role);
     const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
     if (!member.role || (member.role.key === "unclassified" && role.key !== "unclassified")) member.role = role;
     const override = capacityOverride(teamEntry);
     if (override != null) member.capacityUnits = override;
-    if (field === "workPackages") {
-      const objectives = Array.isArray(project?.objectives) ? project.objectives : [];
-      const alreadyCounted = linkedObjectives.some((index) => personKey(objectives[index]?.lead) === key && !objectives[index]?.completed);
-      if (!alreadyCounted) member.independentWPs += 1;
-    }
   }
 
   (Array.isArray(projects) ? projects : [])
     .filter(projectIsActiveForWorkload)
     .forEach((project) => {
       (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
-      (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role, workPackage?.objectiveIdxs || []));
+      (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
     });
 
   return Array.from(workload.values(), (member) => ({
@@ -109,9 +104,9 @@ export function collectActiveWorkload(projects) {
     role: member.role?.label || "Role not recorded",
     roleKey: member.role?.key || "unclassified",
     capacityUnits: member.capacityUnits ?? member.role?.capacity ?? null,
-    assignedUnits: member.objectives + member.independentWPs * 0.5,
+    assignedUnits: member.projects.size,
     loadScore: member.capacityUnits || member.role?.capacity
-      ? ((member.objectives + member.independentWPs * 0.5) / (member.capacityUnits ?? member.role.capacity)) * 100
+      ? (member.projects.size / (member.capacityUnits ?? member.role.capacity)) * 100
       : null,
   })).sort((a, b) => (b.loadScore ?? -1) - (a.loadScore ?? -1) || a.name.localeCompare(b.name));
 }
