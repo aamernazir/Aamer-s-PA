@@ -26,6 +26,7 @@ import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
 import { collectActiveWorkload, hasProjectNumber, isCoIProject } from "./src/project-workload.js";
 import { projectDuration, projectScheduleStatus } from "./src/project-dates.js";
+import { recentCvCoauthors } from "./src/cv-collaborators.js";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
@@ -954,6 +955,9 @@ function App() {
 
 function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole, onNew, sharedProjects, onImportShared, onRefreshShared }) {
   const [showCollaboratorForm, setShowCollaboratorForm] = useState(false);
+  const [recentAuthors, setRecentAuthors] = useState([]);
+  const [authorsLoading, setAuthorsLoading] = useState(false);
+  const [authorsError, setAuthorsError] = useState("");
   const [collaboratorDraft, setCollaboratorDraft] = useState({ name: "", collaboratorType: "Internal", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
   const [collaboratorProjectId, setCollaboratorProjectId] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -995,10 +999,27 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
     const text = [project.title, project.program, ...(project.objectives || []).map((item) => item.text), ...(project.workPackages || []).map((item) => item.name)].join(" ").toLowerCase();
     return expertiseKeywords.some((keyword) => text.includes(keyword));
   }) : activeProjects;
+  async function openCollaboratorForm() {
+    setShowCollaboratorForm(true);
+    setAuthorsLoading(true);
+    setAuthorsError("");
+    try {
+      const result = await window.storage.get(PUBLICATION_ARCHIVE_STORAGE_KEY);
+      setRecentAuthors(recentCvCoauthors(JSON.parse(result?.value || "{}").outputs || [], projects));
+    } catch (error) {
+      setRecentAuthors([]);
+      setAuthorsError("Recent CV authors could not be loaded. You can still enter a collaborator manually.");
+    } finally { setAuthorsLoading(false); }
+  }
+  function chooseRecentAuthor(index) {
+    const author = recentAuthors[Number(index)];
+    if (!author) return;
+    setCollaboratorDraft({ name: author.name, collaboratorType: author.collaboratorType, role: author.role, center: author.center, affiliation: author.affiliation, city: author.city, country: author.country, expertise: author.expertise });
+  }
   function addCollaborator() {
     if (!collaboratorDraft.name.trim() || !collaboratorProjectId) return;
     const entry = { ...collaboratorDraft, name: collaboratorDraft.name.trim(), expertise: expertiseKeywords };
-    onReprocess(collaboratorProjectId, (project) => ({ ...project, team: [...(project.team || []), entry] }));
+    onReprocess(collaboratorProjectId, (project) => ({ ...project, team: (project.team || []).some((member) => member.name.trim().toLowerCase() === entry.name.toLowerCase()) ? project.team : [...(project.team || []), entry] }));
     setShowCollaboratorForm(false);
     setCollaboratorProjectId("");
     setCollaboratorDraft({ name: "", collaboratorType: "Internal", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
@@ -1158,7 +1179,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                   <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Supervised group postdocs, PhD and MS students start with 1 baseline commitment. Each assigned active project adds 1; for group postdocs a second open objective in that project adds 0.5. Group planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1. 75–125% is balanced. Collaborator capacity can be set in the project Team editor.</div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
                     <div style={{ flex: 1 }}>{owner && <WorkloadPersonCard person={owner} hidePicker />}</div>
-                    <button type="button" onClick={() => setShowCollaboratorForm(true)} style={{ background: INK, color: "#fff", border: 0, borderRadius: 4, padding: "9px 12px", cursor: "pointer", whiteSpace: "nowrap" }}>+ Add collaborator</button>
+                    <button type="button" onClick={openCollaboratorForm} style={{ background: INK, color: "#fff", border: 0, borderRadius: 4, padding: "9px 12px", cursor: "pointer", whiteSpace: "nowrap" }}>+ Add collaborator</button>
                   </div>
                   <div className="pd-team-grid">
                     {workloadColumns.map((column) => <section key={column.type} style={{ minWidth: 0, background: "#F7F9FB", border: "1px solid " + LINE, borderRadius: 6, padding: 10 }}>
@@ -1173,6 +1194,9 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                   {showCollaboratorForm && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(26,35,50,.45)", display: "grid", placeItems: "center", padding: 16 }} onClick={() => setShowCollaboratorForm(false)}>
                     <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", background: "#fff", borderRadius: 7, padding: 22 }}>
                       <h3 style={{ marginTop: 0 }}>Add collaborator</h3>
+                      <FormField label="Name — recent Live CV coauthors (last five calendar years)"><select style={inputStyle} value="" onChange={(e) => chooseRecentAuthor(e.target.value)}><option value="">{authorsLoading ? "Loading recent authors…" : "Select a coauthor or enter a name below"}</option>{recentAuthors.map((author, index) => <option key={index} value={index}>{author.name} · {author.latestYear} · {author.papers} paper{author.papers === 1 ? "" : "s"}</option>)}</select></FormField>
+                      {authorsError && <div role="status" style={{ color: RED, fontSize: 11, marginBottom: 10 }}>{authorsError}</div>}
+                      {!authorsLoading && !authorsError && !recentAuthors.length && <div style={{ color: MUTED, fontSize: 11, marginBottom: 10 }}>No recent paper authors with structured author lists were found. Enter the details manually.</div>}
                       <FormField label="Relationship"><select style={inputStyle} value={collaboratorDraft.collaboratorType} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, collaboratorType: e.target.value })}><option value="Internal">Internal KFUPM collaborator</option><option value="External">External collaborator</option></select></FormField>
                       {[["name", "Name"], ["role", "Role"], ["center", "Department / research center"], ["affiliation", "University / organization"], ["city", "City"], ["country", "Country"], ["expertise", "Expertise keywords (comma separated)"]].map(([field, label]) => <FormField key={field} label={label}><input style={inputStyle} value={collaboratorDraft[field]} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, [field]: e.target.value })} /></FormField>)}
                       <FormField label="Suggested active project"><select style={inputStyle} value={collaboratorProjectId} onChange={(e) => setCollaboratorProjectId(e.target.value)}><option value="">Select a matching project</option>{suggestedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></FormField>
