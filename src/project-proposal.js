@@ -53,7 +53,7 @@ function mergeObjects(items, keyFn, fields) {
   return [...result.values()];
 }
 
-const teamFields = ["name", "role", "center", "affiliation", "designation", "experience", "contribution"];
+const teamFields = ["name", "role", "center", "affiliation", "designation", "experience", "contribution", "collaboratorType"];
 const teamLists = ["expertise", "responsibilities", "qualifications"];
 function mergeTeam(items) {
   const result = new Map();

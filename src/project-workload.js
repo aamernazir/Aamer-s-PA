@@ -43,13 +43,45 @@ export function workloadRole(roleOrName) {
 }
 
 function personKey(name) {
-  return String(name || "").replace(/\([^)]*\)/g, "").replace(/^(?:prof(?:essor)?|dr|mr|ms|mrs)\.?\s+/i, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const parts = String(name || "").replace(/\([^)]*\)/g, "").replace(/^(?:prof(?:essor)?|dr|mr|ms|mrs)\.?\s+/i, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+  return parts.length > 1 ? parts[0] + " " + parts.at(-1) : parts[0] || "";
+}
+
+function samePerson(a, b) {
+  const first = personKey(a).split(" ");
+  const second = personKey(b).split(" ");
+  if (!first[0] || first[0] !== second[0]) return false;
+  if (first.length === 1 || second.length === 1) return personKey(a) === personKey(b);
+  if (first[1] === second[1]) return true;
+  const left = first[1], right = second[1];
+  if (left.length < 7 || right.length < 7 || Math.abs(left.length - right.length) > 1) return false;
+  if (left.length === right.length) {
+    const differences = [...left].filter((letter, i) => letter !== right[i]).length;
+    if (differences === 1) return true;
+    if (differences === 2) for (let i = 0; i < left.length - 1; i++) {
+      if (left[i] !== right[i] && left[i] === right[i + 1] && left[i + 1] === right[i] && left.slice(i + 2) === right.slice(i + 2)) return true;
+    }
+    return false;
+  }
+  const [longer, shorter] = left.length > right.length ? [left, right] : [right, left];
+  for (let i = 0; i < longer.length; i++) if (longer.slice(0, i) + longer.slice(i + 1) === shorter) return true;
+  return false;
 }
 
 function projectMember(name, project) {
-  const key = personKey(name);
-  return (Array.isArray(project?.team) ? project.team : []).find((entry) => personKey(entry?.name) === key);
+  return (Array.isArray(project?.team) ? project.team : []).find((entry) => samePerson(entry?.name, name));
+}
+
+function collaboratorKind(entry) {
+  const explicit = String(entry?.collaboratorType || "").toLowerCase();
+  if (explicit === "external") return "External";
+  if (explicit === "internal") return "Internal";
+  const role = String(entry?.role || "");
+  if (/external|industry partner/i.test(role)) return "External";
+  if (/\binternal\b/i.test(role)) return "Internal";
+  if (/\bkfupm\b|\birc[- ]/i.test(String(entry?.affiliation || "") + " " + String(entry?.center || ""))) return "Internal";
+  return "Unclassified";
 }
 
 function capacityOverride(member) {
@@ -75,11 +107,13 @@ export function collectActiveWorkload(projects) {
   function ensureMember(name, project, explicitRole) {
     const normalizedName = String(name || "").trim();
     if (!normalizedName) return null;
-    const key = personKey(normalizedName);
+    const key = [...workload.keys()].find((candidate) => samePerson(candidate, normalizedName)) || personKey(normalizedName);
     if (!key) return null;
-    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), objectivesByProject: new Map(), role: null, capacityUnits: null });
+    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), listedProjects: new Map(), objectivesByProject: new Map(), role: null, capacityUnits: null, kinds: new Set() });
     const member = workload.get(key);
+    if (project) member.listedProjects.set(project?.id || project, { id: project?.id || "", title: project?.title || "Untitled project" });
     const teamEntry = projectMember(normalizedName, project);
+    if (teamEntry) member.kinds.add(collaboratorKind(teamEntry));
     const teamRole = workloadRole(teamEntry?.role);
     const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
     if (!member.role || (member.role.key === "unclassified" && role.key !== "unclassified")) member.role = role;
@@ -100,11 +134,9 @@ export function collectActiveWorkload(projects) {
   (Array.isArray(projects) ? projects : [])
     .filter(projectIsActiveForWorkload)
     .forEach((project) => {
-      // Include researchers with no explicit objective/WP lead assignment:
-      // their background commitment still exists, but project work is zero.
+      // Every named project participant is shown, even without a lead assignment.
       (Array.isArray(project.team) ? project.team : []).forEach((entry) => {
-        const role = workloadRole(entry?.role);
-        if (["postdoc", "phd", "ms"].includes(role.key)) ensureMember(entry.name, project, entry.role);
+        ensureMember(entry?.name, project, entry?.role);
       });
       (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
       (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
@@ -118,11 +150,14 @@ export function collectActiveWorkload(projects) {
     const baselineUnits = ["postdoc", "phd", "ms"].includes(member.role?.key) ? 1 : 0;
     const assignedUnits = baselineUnits + projectUnits;
     const capacityUnits = member.capacityUnits ?? member.role?.capacity ?? null;
+    const knownKinds = [...member.kinds].filter((kind) => kind !== "Unclassified");
     return {
     name: member.name,
     objectives: member.objectives,
     workPackages: member.workPackages,
     projectCount: member.projects.size,
+    listedProjects: [...member.listedProjects.values()],
+    collaboratorType: knownKinds.length === 1 ? knownKinds[0] : knownKinds.length > 1 ? "Review" : "Unclassified",
     role: member.role?.label || "Role not recorded",
     roleKey: member.role?.key || "unclassified",
     capacityUnits,

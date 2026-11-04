@@ -738,8 +738,8 @@ function App() {
       if (!chunks.length && !images.length) throw new Error("No readable proposal content was found.");
       const instruction = "Read this section of a project proposal carefully. Extract EVERY explicit item, even if it continues another section. Do not invent facts. Preserve work package numbers, objectives, tasks, deliverables and KPI targets verbatim enough to distinguish them. Use empty values when absent. Return ONLY JSON with: " +
         '{"title":"","projectNumber":"","program":"","pi":"","ownerRole":"","duration":"","budgetTotal":0,"budgetCurrency":"","team":[{"name":"","role":"","center":""}],"budgetLines":[{"item":"","amount":0}],"objectives":[{"text":""}],"risks":[{"risk":"","mitigation":""}],"workPackages":[{"number":"","name":"","lead":"","durationMonths":0,"window":"","milestone":"","objectiveRefs":["Objective 1"],"tasks":[""],"deliverables":[""],"kpis":[{"metric":"","target":""}]}]}.';
-      const peopleInstruction = "Read the ENTIRE source section for project team, investigators, collaborators, partners, facilities, equipment, resources, technical competencies, prior experience, and institutional capability. Capture EVERY named person individually, including tables and biographies. Preserve each person's explicit role, affiliation, designation, expertise, qualifications, experience and responsibilities. Capture each distinct project capability, facility, resource or equipment item with its description and owner. Do not infer or invent. Return ONLY JSON: " +
-        '{"team":[{"name":"","role":"","center":"","affiliation":"","designation":"","expertise":[""],"qualifications":[""],"experience":"","responsibilities":[""],"contribution":""}],"capabilities":[{"title":"","description":"","category":"","owner":""}]}.';
+      const peopleInstruction = "Read the ENTIRE source section for project team, investigators, collaborators, partners, facilities, equipment, resources, technical competencies, prior experience, and institutional capability. Capture EVERY named person individually, including tables and biographies. Preserve each person's explicit role, affiliation, designation, expertise, qualifications, experience and responsibilities. Classify a collaboratorType as Internal or External only when the document clearly establishes it; otherwise leave it empty. Capture each distinct project capability, facility, resource or equipment item with its description and owner. Do not infer or invent. Return ONLY JSON: " +
+        '{"team":[{"name":"","role":"","center":"","affiliation":"","designation":"","expertise":[""],"qualifications":[""],"experience":"","responsibilities":[""],"contribution":"","collaboratorType":""}],"capabilities":[{"title":"","description":"","category":"","owner":""}]}.';
       async function readChunk(chunk, depth = 0, focused = false) {
         try {
           const facts = await claudeExtractJSON([{ type: "text", text: "SOURCE: " + chunk.source + " · section " + chunk.part + "\n" + chunk.text + "\n\n" + (focused ? peopleInstruction : instruction) }], focused ? 7000 : 6000);
@@ -978,6 +978,8 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
   const workload = collectActiveWorkload(projects);
+  const collaboratorOrder = ["Internal", "External", "Unclassified", "Review"];
+  const groupedWorkload = [...workload].sort((a, b) => collaboratorOrder.indexOf(a.collaboratorType) - collaboratorOrder.indexOf(b.collaboratorType) || (b.loadScore ?? -1) - (a.loadScore ?? -1) || a.name.localeCompare(b.name));
   const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
   const coIProjects = projects.filter(isCoIProject);
   const fundedProjects = projects.filter((project) => hasProjectNumber(project) && !isCoIProject(project));
@@ -994,8 +996,8 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
     const coI = isCoIProject(p);
     const riskCount = (p.workPackages || []).filter(wpIsAtRisk).length;
     return (
-      <div className="pd-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "16px 18px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+      <div className="pd-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, padding: "14px 16px", minWidth: 0, height: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div onClick={() => onOpen(p.id)} style={{ cursor: "pointer", flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 5 }}>
               <span className="pd-mono" style={{ fontSize: 10, background: coI ? "#FAF1DE" : funded ? "#EFF5EF" : "#E7EFF5", color: coI ? AMBER : funded ? GREEN : TEAL, padding: "2px 7px", borderRadius: 10, fontWeight: 700 }}>{coI ? "Co-I" : funded ? "Funded" : "Not-funded"}</span>
@@ -1004,11 +1006,13 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
             <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: MUTED, height: "fit-content" }}>My role <select aria-label={"My role in " + p.title} value={coI ? "Co-I" : "PI"} onChange={(e) => onSetRole(p.id, e.target.value)} style={{ border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, padding: "5px 3px", fontSize: 11 }}><option value="PI">PI</option><option value="Co-I">Co-I</option></select></label>
           <button onClick={() => reprocessProject(p)} disabled={!!reprocessingId} title="AI reprocess project metadata; review changes before saving" aria-label={"Reprocess " + p.title} style={{ background: "none", border: "1px solid " + LINE, borderRadius: 4, cursor: reprocessingId ? "wait" : "pointer", padding: "5px 8px", height: "fit-content", display: "flex", gap: 5, alignItems: "center", fontSize: 11, color: TEAL }}>{reprocessingId === p.id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingId === p.id ? "Reprocessing…" : "Reprocess"}</button>
           <button onClick={() => setConfirmDelete(confirmDelete === p.id ? null : p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, height: "fit-content" }} aria-label={`Delete ${p.title}`}>
             <Trash2 size={15} color="#9AA2AF" />
           </button>
+          </div>
         </div>
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1, height: 6, background: "#EAECF0", borderRadius: 3, overflow: "hidden" }}>
@@ -1103,19 +1107,24 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
                   <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Postdocs, PhD and MS students start with 1 baseline commitment for supervision and other work, counted once per person. Each assigned active project adds 1; for postdocs a second open objective in that project adds 0.5. Planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1 commitments. 75–125% is balanced. Set a capacity in the team editor for external or unclassified members.</div>
-                  {workload.map((w, i) => {
+                  {groupedWorkload.map((w, i) => {
                     const status = workloadStatus(w);
                     return (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < workload.length - 1 ? "1px solid #EAECF0" : "none" }}>
+                      <div key={w.name}>
+                      {(i === 0 || groupedWorkload[i - 1].collaboratorType !== w.collaboratorType) && <h3 style={{ margin: "14px 0 7px", fontSize: 12, color: INK }}>{w.collaboratorType === "Internal" ? "Internal collaborators" : w.collaboratorType === "External" ? "External collaborators" : w.collaboratorType === "Review" ? "Review classification" : "Needs classification"}</h3>}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < groupedWorkload.length - 1 ? "1px solid #EAECF0" : "none" }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}</div>
+                          <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}{w.objectives > 0 ? <span style={{ marginLeft: 7, color: TEAL, fontSize: 10 }}>Objective lead</span> : null}</div>
                           <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments ({w.baselineUnits} baseline + {w.projectUnits} project) · {status.label}</span>
                         </div>
-                        <span style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
                           {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}
                           {w.workPackages > 0 && `${w.workPackages} WP${w.workPackages > 1 ? "s" : ""}`}
-                          {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""}`}{w.loadScore == null ? " · capacity not rated" : ` · ${Math.round(w.loadScore)}% of capacity`}
-                        </span>
+                          {` · ${w.projectCount} assigned project${w.projectCount > 1 ? "s" : ""}`}{w.loadScore == null ? " · capacity not rated" : ` · ${Math.round(w.loadScore)}% of capacity`}
+                          {w.listedProjects.length === 1 && w.listedProjects[0].id && <button type="button" onClick={() => onOpen(w.listedProjects[0].id)} style={{ display: "block", marginLeft: "auto", marginTop: 4, border: "none", background: "none", color: TEAL, cursor: "pointer", fontSize: 11 }}>Open project to assign work</button>}
+                          {w.listedProjects.length > 1 && <select aria-label={`Open project for ${w.name} to assign work`} value="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ display: "block", marginLeft: "auto", marginTop: 4, maxWidth: 240, fontSize: 11, color: TEAL }}><option value="">Choose project to assign work…</option>{w.listedProjects.filter((p) => p.id).map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
+                        </div>
+                      </div>
                       </div>
                     );
                   })}
@@ -1162,7 +1171,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                 <span style={{ fontSize: 11.5, color: MUTED }}>{group.detail}</span>
               </div>
               {group.projects.length ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(460px, 1fr))", gap: 12, alignItems: "start" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))", gap: 12, alignItems: "stretch" }}>
                   {group.projects.map((project) => <ProjectCard key={project.id} project={project} />)}
                 </div>
               ) : <div style={{ background: group.background, border: `1px dashed ${group.color}`, color: MUTED, borderRadius: 5, padding: "14px 16px", fontSize: 12.5 }}>No {group.label.toLowerCase()} yet.</div>}
@@ -2057,7 +2066,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
             {data.team.length === 0 && <EmptyState text="No team members yet." />}
             {data.team.map((m, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, fontSize: 13.5, padding: "8px 0", borderBottom: "1px solid #EAECF0" }}>
-                <div><span style={{ color: INK, fontWeight: 500 }}>{m.name} <span style={{ color: MUTED, fontWeight: 400 }}>· {m.role}</span></span>
+                <div><span style={{ color: INK, fontWeight: 500 }}>{m.name} <span style={{ color: MUTED, fontWeight: 400 }}>· {m.role} · {m.collaboratorType || "Classification needed"}</span></span>
                   <div style={{ color: MUTED, fontSize: 12, whiteSpace: "pre-wrap" }}>{[m.designation, m.affiliation, ...(m.expertise || []), ...(m.qualifications || []), m.experience, ...(m.responsibilities || []), m.contribution].filter(Boolean).join(" · ")}</div></div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ color: MUTED }}>{m.center}</span>
@@ -2076,6 +2085,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
                 </div>
                 <FormField label="Name"><input style={inputStyle} value={teamDraft.name} onChange={(e) => setTeamDraft({ ...teamDraft, name: e.target.value })} placeholder="e.g. Dr. Jane Smith, or a student's name" /></FormField>
                 <FormField label="Role"><input style={inputStyle} value={teamDraft.role} onChange={(e) => setTeamDraft({ ...teamDraft, role: e.target.value })} placeholder="e.g. Co-I, PhD Student, Postdoc" /></FormField>
+                <FormField label="Collaboration"><select style={inputStyle} value={teamDraft.collaboratorType || ""} onChange={(e) => setTeamDraft({ ...teamDraft, collaboratorType: e.target.value })}><option value="">Needs classification</option><option value="Internal">Internal collaborator</option><option value="External">External collaborator</option></select></FormField>
                 <FormField label="Center / department (optional)"><input style={inputStyle} value={teamDraft.center || ""} onChange={(e) => setTeamDraft({ ...teamDraft, center: e.target.value })} /></FormField>
                 <FormField label="Planning capacity (commitments, optional)"><input type="number" min="0.5" step="0.5" style={inputStyle} value={teamDraft.capacityUnits ?? ""} onChange={(e) => setTeamDraft({ ...teamDraft, capacityUnits: e.target.value })} placeholder="Defaults: postdoc 5, PhD 3, MS 2, UG 1" /></FormField>
                 <FormField label="Affiliation"><input style={inputStyle} value={teamDraft.affiliation || ""} onChange={(e) => setTeamDraft({ ...teamDraft, affiliation: e.target.value })} /></FormField>
