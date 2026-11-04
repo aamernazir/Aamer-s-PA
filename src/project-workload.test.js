@@ -132,8 +132,8 @@ test("separate work packages in the same project do not add load and external ca
 
 test("all project participants show; baseline applies only to postdoc, PhD and MS", () => {
   const projects = [
-    { id: "p1", team: [{ name: "A", role: "Postdoc" }, { name: "B", role: "PhD Student" }, { name: "C", role: "MS Student" }, { name: "D", role: "UG Student" }, { name: "E", role: "External collaborator" }] },
-    { id: "p2", team: [{ name: "A", role: "Postdoc" }] },
+    { id: "p1", team: [{ name: "A", role: "Postdoc", collaboratorType: "Group" }, { name: "B", role: "PhD Student", collaboratorType: "Group" }, { name: "C", role: "MS Student", collaboratorType: "Group" }, { name: "D", role: "UG Student" }, { name: "E", role: "External collaborator" }] },
+    { id: "p2", team: [{ name: "A", role: "Postdoc", collaboratorType: "Group" }] },
   ];
   const workload = collectActiveWorkload(projects);
   assert.deepEqual(workload.map((member) => member.name).sort(), ["A", "B", "C", "D", "E"]);
@@ -151,10 +151,10 @@ test("all project participants show; baseline applies only to postdoc, PhD and M
 
 test("near-identical first and surname variants merge into one person", () => {
   const [member] = collectActiveWorkload([{
-    id: "p", title: "Project", team: [{ name: "Benjamin Niuonkuru", role: "PhD Student", collaboratorType: "Internal" }],
-    objectives: [{ lead: "Niyonkuru Benjamin" }],
+    id: "p", title: "Project", team: [{ name: "Niyonkuru Benjamin", role: "PhD Student", center: "Mechanical Engineering, KFUPM" }],
+    objectives: [{ lead: "Benjamin Nuionkuru" }],
   }]);
-  assert.equal(member.name, "Benjamin Niuonkuru");
+  assert.equal(member.name, "Niyonkuru Benjamin");
   assert.equal(member.objectives, 1);
   assert.equal(member.projectCount, 1);
   assert.equal(member.collaboratorType, "Group");
@@ -174,10 +174,16 @@ test("KFUPM collaborators and explicitly non-KFUPM affiliates use distinct colum
     id: "p", team: [
       { name: "Dr. Inside", role: "Co-I", center: "IRC-IMR" },
       { name: "Dr. Outside", role: "Co-I", affiliation: "Osaka University" },
+      { name: "Dr. Gokulnath Thavamani", role: "Postdoc", center: "KAUST" },
+      { name: "Dr. Sankar Sekar", role: "College of Advanced Convergence Engineering", center: "College of Advanced Convergence Engineering, Dongguk University" },
     ],
   }]);
   assert.equal(workload.find((person) => person.name === "Dr. Inside").collaboratorType, "Internal");
   assert.equal(workload.find((person) => person.name === "Dr. Outside").collaboratorType, "External");
+  assert.equal(workload.find((person) => person.name === "Dr. Gokulnath Thavamani").collaboratorType, "External");
+  assert.equal(workload.find((person) => person.name === "Dr. Sankar Sekar").collaboratorType, "External");
+  assert.equal(workload.find((person) => person.name === "Dr. Gokulnath Thavamani").baselineUnits, 0);
+  assert.equal(workload.find((person) => person.name === "Dr. Gokulnath Thavamani").capacityUnits, null);
 });
 
 test("external collaborators without lead assignments remain visible and assignable", () => {

@@ -1059,7 +1059,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
   }
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 24px 80px" }}>
+    <div style={{ maxWidth: 1800, width: "100%", margin: "0 auto", padding: "28px clamp(16px, 2vw, 40px) 60px" }}>
       {reprocessError && <div role="alert" style={{ color: "#B3392C", padding: "8px 12px" }}>{reprocessError}</div>}
       <div style={{ borderBottom: "2px solid " + INK, paddingBottom: 20, marginBottom: 28, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -1130,7 +1130,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
-                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Postdocs, PhD and MS students start with 1 baseline commitment for supervision and other work, counted once per person. Each assigned active project adds 1; for postdocs a second open objective in that project adds 0.5. Planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1 commitments. 75–125% is balanced. Set a capacity in the team editor for external or unclassified members.</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Supervised group postdocs, PhD and MS students start with 1 baseline commitment. Each assigned active project adds 1; for group postdocs a second open objective in that project adds 0.5. Group planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1. 75–125% is balanced. Collaborator capacity can be set in the project Team editor.</div>
                   <div className="pd-team-grid">
                     {workloadColumns.map((column) => <section key={column.type} style={{ minWidth: 0, background: "#F7F9FB", border: "1px solid " + LINE, borderRadius: 6, padding: 10 }}>
                       <h3 style={{ margin: "2px 2px 10px", fontSize: 12.5, color: INK }}>{column.label} <span style={{ color: MUTED }}>({workload.filter((person) => person.collaboratorType === column.type).length})</span></h3>
@@ -2098,7 +2098,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
                 </div>
                 <FormField label="Name"><input style={inputStyle} value={teamDraft.name} onChange={(e) => setTeamDraft({ ...teamDraft, name: e.target.value })} placeholder="e.g. Dr. Jane Smith, or a student's name" /></FormField>
                 <FormField label="Role"><input style={inputStyle} value={teamDraft.role} onChange={(e) => setTeamDraft({ ...teamDraft, role: e.target.value })} placeholder="e.g. Co-I, PhD Student, Postdoc" /></FormField>
-                <FormField label="Collaboration"><select style={inputStyle} value={teamDraft.collaboratorType || ""} onChange={(e) => setTeamDraft({ ...teamDraft, collaboratorType: e.target.value })}><option value="">Needs classification</option><option value="Internal">Internal collaborator</option><option value="External">External collaborator</option></select></FormField>
+                <FormField label="Project relationship"><select style={inputStyle} value={teamDraft.collaboratorType || ""} onChange={(e) => setTeamDraft({ ...teamDraft, collaboratorType: e.target.value })}><option value="">Use objective lead or affiliation</option><option value="Group">Supervised group member</option><option value="Internal">Internal KFUPM collaborator</option><option value="External">External collaborator</option></select></FormField>
                 <FormField label="Center / department (optional)"><input style={inputStyle} value={teamDraft.center || ""} onChange={(e) => setTeamDraft({ ...teamDraft, center: e.target.value })} /></FormField>
                 <FormField label="Planning capacity (commitments, optional)"><input type="number" min="0.5" step="0.5" style={inputStyle} value={teamDraft.capacityUnits ?? ""} onChange={(e) => setTeamDraft({ ...teamDraft, capacityUnits: e.target.value })} placeholder="Defaults: postdoc 5, PhD 3, MS 2, UG 1" /></FormField>
                 <FormField label="Affiliation"><input style={inputStyle} value={teamDraft.affiliation || ""} onChange={(e) => setTeamDraft({ ...teamDraft, affiliation: e.target.value })} /></FormField>

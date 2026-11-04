@@ -68,8 +68,20 @@ function samePerson(a, b) {
   for (let i = 0; i < longer.length; i++) if (longer.slice(0, i) + longer.slice(i + 1) === shorter) return true;
   return false;
   };
-  return (first[0] === second[0] && compareLast(first[1], second[1]))
-    || (first[0] === second[1] && compareLast(first[1], second[0]));
+  if (first[0] === second[0] && compareLast(first[1], second[1])) return true;
+  const reversed = first[0] === second[1] ? [first[1], second[0]]
+    : first[1] === second[0] ? [first[0], second[1]] : null;
+  if (!reversed) return false;
+  if (compareLast(reversed[0], reversed[1])) return true;
+  // Reversed first/surname entries occasionally carry two transcription
+  // differences. Keep this narrow: exact given name and long surname only.
+  const [left, right] = reversed;
+  if (left.length < 8 || right.length < 8 || Math.abs(left.length - right.length) > 2) return false;
+  const distance = Array.from({ length: left.length + 1 }, (_, i) => Array.from({ length: right.length + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+  for (let i = 1; i <= left.length; i++) for (let j = 1; j <= right.length; j++) {
+    distance[i][j] = Math.min(distance[i - 1][j] + 1, distance[i][j - 1] + 1, distance[i - 1][j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1));
+  }
+  return distance[left.length][right.length] <= 2;
 }
 
 function projectMember(name, project) {
@@ -78,13 +90,15 @@ function projectMember(name, project) {
 
 function collaboratorKind(entry) {
   const explicit = String(entry?.collaboratorType || "").toLowerCase();
+  if (explicit === "group") return "Group";
   if (explicit === "external") return "External";
   if (explicit === "internal") return "Internal";
   const role = String(entry?.role || "");
   if (/external|industry partner/i.test(role)) return "External";
   if (/\binternal\b/i.test(role)) return "Internal";
-  if (/\bkfupm\b|\birc[- ]/i.test(String(entry?.affiliation || "") + " " + String(entry?.center || ""))) return "Internal";
-  if (/university|institute|college|laborator|research cent(?:er|re)|corporation|company|\binc\b|\bltd\b/i.test(String(entry?.affiliation || "")) && !/\bkfupm\b/i.test(String(entry.affiliation))) return "External";
+  const institution = String(entry?.affiliation || "") + " " + String(entry?.center || "");
+  if (/\bkfupm\b|\birc[- ]/i.test(institution)) return "Internal";
+  if (/\bkaust\b|dongguk university|university|institute|college|research cent(?:er|re)|corporation|company|\binc\b|\bltd\b/i.test(institution)) return "External";
   return "Unclassified";
 }
 
@@ -117,7 +131,11 @@ export function collectActiveWorkload(projects) {
     const member = workload.get(key);
     if (project) member.listedProjects.set(project?.id || project, { id: project?.id || "", title: project?.title || "Untitled project" });
     const teamEntry = projectMember(normalizedName, project);
-    if (teamEntry) member.kinds.add(collaboratorKind(teamEntry));
+    if (teamEntry) {
+      const kind = collaboratorKind(teamEntry);
+      member.kinds.add(kind);
+      if (kind === "Group") member.groupMember = true;
+    }
     const teamRole = workloadRole(teamEntry?.role);
     const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
     if (!member.role || (member.role.key === "unclassified" && role.key !== "unclassified")) member.role = role;
@@ -155,9 +173,9 @@ export function collectActiveWorkload(projects) {
       ? [...member.objectivesByProject.values()].filter((count) => count >= 2).length
       : 0;
     const projectUnits = member.projects.size + postdocSecondObjectives * 0.5;
-    const baselineUnits = ["postdoc", "phd", "ms"].includes(member.role?.key) ? 1 : 0;
+    const baselineUnits = member.groupMember && ["postdoc", "phd", "ms"].includes(member.role?.key) ? 1 : 0;
     const assignedUnits = baselineUnits + projectUnits;
-    const capacityUnits = member.capacityUnits ?? member.role?.capacity ?? null;
+    const capacityUnits = member.capacityUnits ?? (member.groupMember ? member.role?.capacity : null) ?? null;
     const knownKinds = [...member.kinds].filter((kind) => kind !== "Unclassified");
     return {
     name: member.name,
