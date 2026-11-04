@@ -875,10 +875,10 @@ function App() {
         <ProjectList
           projects={projects}
           collaboratorRoster={collaboratorRoster}
-          onSaveCollaborator={(entry) => setCollaboratorRoster((current) => {
+          onSaveCollaborator={(entry, replaceInterests = false) => setCollaboratorRoster((current) => {
             const key = String(entry.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
             const previous = current.find((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() === key);
-            return [...current.filter((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() !== key), { ...previous, ...entry, projectInterests: [...new Set([...(previous?.projectInterests || []), ...(entry.projectInterests || [])])] }];
+            return [...current.filter((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() !== key), { ...previous, ...entry, projectInterests: replaceInterests ? (entry.projectInterests || []) : [...new Set([...(previous?.projectInterests || []), ...(entry.projectInterests || [])])], projectInterestStatuses: replaceInterests ? (entry.projectInterestStatuses || {}) : { ...(previous?.projectInterestStatuses || {}), ...(entry.projectInterestStatuses || {}) } }];
           })}
           error={error}
           onOpen={setActiveId}
@@ -1025,7 +1025,7 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
   const evidenceGaps = collectEvidenceGaps(projects);
   const projectWorkload = collectActiveWorkload(projects);
   const personKey = (name) => String(name || "").toLowerCase().replace(/[^\p{L}]+/gu, " ").trim().split(/\s+/).sort().join(" ");
-  const workload = [...projectWorkload.map((person) => ({ ...person, projectInterests: (collaboratorRoster || []).find((entry) => personKey(entry.name) === personKey(person.name))?.projectInterests || [] })), ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
+  const workload = [...projectWorkload.map((person) => { const roster = (collaboratorRoster || []).find((entry) => personKey(entry.name) === personKey(person.name)); return { ...person, projectInterests: roster?.projectInterests || [], projectInterestStatuses: roster?.projectInterestStatuses || {} }; }), ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
     ...entry, role: entry.role || "Role not recorded", capacityUnits: null, assignedUnits: 0, baselineUnits: 0, projectUnits: 0,
     projectCount: 0, objectives: 0, workPackages: 0, listedProjects: [], loadScore: null,
   }))];
@@ -1082,6 +1082,18 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
     setShowCollaboratorForm(false);
     setCollaboratorProjectId("");
     setCollaboratorDraft({ name: "", collaboratorType: "", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
+  }
+  function updateInterest(name, id, status) {
+    const entry = (collaboratorRoster || []).find((person) => personKey(person.name) === personKey(name));
+    if (!entry) return;
+    const statuses = { ...(entry.projectInterestStatuses || {}) };
+    if (status === "remove") {
+      delete statuses[id];
+      onSaveCollaborator({ ...entry, projectInterests: (entry.projectInterests || []).filter((projectId) => projectId !== id), projectInterestStatuses: statuses }, true);
+    } else {
+      if (status === "potential") delete statuses[id]; else statuses[id] = status;
+      onSaveCollaborator({ ...entry, projectInterestStatuses: statuses }, true);
+    }
   }
   const workloadColumns = [
     { type: "External", label: "External collaborators" },
@@ -1155,7 +1167,14 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
         <div style={{ marginTop: 6, fontSize: 11.5, color: INK }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
         <div style={{ fontSize: 10.5, color: MUTED }}>{w.baselineUnits} baseline + {w.projectUnits} project · {w.projectCount} assigned project{w.projectCount === 1 ? "" : "s"}</div>
         {(w.objectives > 0 || w.workPackages > 0) && <div style={{ marginTop: 4, fontSize: 10.5, color: MUTED }}>{w.objectives} objective{w.objectives === 1 ? "" : "s"} · {w.workPackages} WP{w.workPackages === 1 ? "" : "s"}</div>}
-        {(w.projectInterests || []).map((id) => { const project = projects.find((item) => item.id === id); return project ? <div key={id} style={{ marginTop: 5, color: TEAL, fontSize: 10.5 }}>Potential collaboration: {project.title}</div> : null; })}
+        {(w.projectInterests || []).map((id) => { const project = projects.find((item) => item.id === id); if (!project) return null; const interestStatus = w.projectInterestStatuses?.[id] || "potential"; return <div key={id} style={{ marginTop: 7, padding: "6px 0", borderTop: "1px solid " + LINE, fontSize: 10.5 }}>
+          <div style={{ color: interestStatus === "successful" ? GREEN : interestStatus === "unsuccessful" ? RED : TEAL }}>{interestStatus === "successful" ? "Successful collaboration" : interestStatus === "unsuccessful" ? "Unsuccessful collaboration" : "Potential collaboration"}: {project.title}</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
+            <button type="button" aria-label={`Mark collaboration with ${w.name} on ${project.title} successful`} onClick={() => updateInterest(w.name, id, interestStatus === "successful" ? "potential" : "successful")} style={{ border: "1px solid " + LINE, borderRadius: 3, background: interestStatus === "successful" ? "#E6F3EA" : "#fff", color: GREEN, cursor: "pointer", padding: "3px 6px" }}>✓ Successful</button>
+            <button type="button" aria-label={`Mark collaboration with ${w.name} on ${project.title} unsuccessful`} onClick={() => updateInterest(w.name, id, interestStatus === "unsuccessful" ? "potential" : "unsuccessful")} style={{ border: "1px solid " + LINE, borderRadius: 3, background: interestStatus === "unsuccessful" ? "#FBECEC" : "#fff", color: RED, cursor: "pointer", padding: "3px 6px" }}>✕ Unsuccessful</button>
+            <button type="button" aria-label={`Remove ${project.title} from ${w.name}'s possible projects`} onClick={() => updateInterest(w.name, id, "remove")} style={{ border: "1px solid " + LINE, borderRadius: 3, background: "#fff", color: MUTED, cursor: "pointer", padding: "3px 6px" }}>Remove</button>
+          </div>
+        </div>; })}
         {!hidePicker && !isGroupMember && w.listedProjects.some((project) => project.id) && <select aria-label={`Choose project for ${w.name} to assign work`} defaultValue="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
           <option value="">Choose project to assign work…</option>
           {w.listedProjects.filter((project) => project.id).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
