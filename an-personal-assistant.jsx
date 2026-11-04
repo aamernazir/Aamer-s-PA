@@ -25,6 +25,7 @@ async function extractDocxUploadText(file) {
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
 import NyxDashboard from "./src/NyxDashboard.jsx";
 import { collectActiveWorkload, hasProjectNumber, isCoIProject } from "./src/project-workload.js";
+import { projectDuration, projectScheduleStatus } from "./src/project-dates.js";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
 import { useState, useEffect, useRef } from "react";
@@ -310,6 +311,8 @@ function emptyProject(fields) {
     projectLead: "",
     ownerRole: fields.ownerRole || "PI",
     duration: fields.duration || "",
+    startDate: fields.startDate || "",
+    endDate: fields.endDate || "",
     budgetTotal: Number(fields.budgetTotal) || 0,
     budgetCurrency: fields.budgetCurrency || "SAR",
     team: fields.pi ? [{ name: fields.pi, role: "PI", center: "" }] : [],
@@ -950,6 +953,9 @@ function App() {
 }
 
 function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole, onNew, sharedProjects, onImportShared, onRefreshShared }) {
+  const [showCollaboratorForm, setShowCollaboratorForm] = useState(false);
+  const [collaboratorDraft, setCollaboratorDraft] = useState({ name: "", collaboratorType: "Internal", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
+  const [collaboratorProjectId, setCollaboratorProjectId] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [reprocessingId, setReprocessingId] = useState(null);
   const [reprocessError, setReprocessError] = useState("");
@@ -980,12 +986,29 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
   const workload = collectActiveWorkload(projects);
+  const isOwner = (person) => /\b(?:aamer|amin)\s+nazir\b/i.test(person.name);
+  const owner = workload.find(isOwner);
+  const otherWorkload = workload.filter((person) => !isOwner(person));
+  const activeProjects = projects.filter((project) => projectScheduleStatus(project) === "Ongoing");
+  const expertiseKeywords = collaboratorDraft.expertise.split(/[,;\n]/).map((keyword) => keyword.trim().toLowerCase()).filter((keyword) => keyword.length > 2);
+  const suggestedProjects = expertiseKeywords.length ? activeProjects.filter((project) => {
+    const text = [project.title, project.program, ...(project.objectives || []).map((item) => item.text), ...(project.workPackages || []).map((item) => item.name)].join(" ").toLowerCase();
+    return expertiseKeywords.some((keyword) => text.includes(keyword));
+  }) : activeProjects;
+  function addCollaborator() {
+    if (!collaboratorDraft.name.trim() || !collaboratorProjectId) return;
+    const entry = { ...collaboratorDraft, name: collaboratorDraft.name.trim(), expertise: expertiseKeywords };
+    onReprocess(collaboratorProjectId, (project) => ({ ...project, team: [...(project.team || []), entry] }));
+    setShowCollaboratorForm(false);
+    setCollaboratorProjectId("");
+    setCollaboratorDraft({ name: "", collaboratorType: "Internal", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
+  }
   const workloadColumns = [
     { type: "External", label: "External collaborators" },
     { type: "Group", label: "Group members" },
     { type: "Internal", label: "Internal KFUPM collaborators" },
   ];
-  const unresolvedWorkload = workload.filter((person) => !workloadColumns.some((column) => column.type === person.collaboratorType));
+  const unresolvedWorkload = otherWorkload.filter((person) => !workloadColumns.some((column) => column.type === person.collaboratorType));
   const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
   const coIProjects = projects.filter(isCoIProject);
   const fundedProjects = projects.filter((project) => hasProjectNumber(project) && !isCoIProject(project));
@@ -1011,6 +1034,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
             </div>
             <div className="pd-display" style={{ fontSize: 16.5, fontWeight: 700, color: INK, marginBottom: 4 }}>{p.title}</div>
             <div style={{ fontSize: 12.5, color: MUTED }}>{p.program || "No program set"}{p.pi ? ` · ${p.pi}` : ""}</div>
+            <div style={{ fontSize: 11, color: TEAL, marginTop: 5 }}>{projectScheduleStatus(p)}{p.startDate && p.endDate ? ` · ${projectDuration(p.startDate, p.endDate)} (${p.startDate} to ${p.endDate})` : ""}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: MUTED, height: "fit-content" }}>My role <select aria-label={"My role in " + p.title} value={coI ? "Co-I" : "PI"} onChange={(e) => onSetRole(p.id, e.target.value)} style={{ border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, padding: "5px 3px", fontSize: 11 }}><option value="PI">PI</option><option value="Co-I">Co-I</option></select></label>
@@ -1040,17 +1064,18 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
     );
   }
 
-  function WorkloadPersonCard({ person: w }) {
+  function WorkloadPersonCard({ person: w, hidePicker = false }) {
     const status = workloadStatus(w);
     const isGroupMember = w.collaboratorType === "Group";
     return (
       <div style={{ background: status.background, border: "1px solid " + LINE, borderLeft: `3px solid ${status.border}`, borderRadius: 5, padding: "10px 12px", minWidth: 0 }}>
         <div style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{w.name}</div>
+        {(w.collaboratorType === "Internal" ? w.center || w.affiliation : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")) && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2 }}>{w.collaboratorType === "Internal" ? (w.center || w.affiliation).replace(/,?\s*KFUPM\b/ig, "").trim() : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")}</div>}
         <div style={{ marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {status.label}</div>
         <div style={{ marginTop: 6, fontSize: 11.5, color: INK }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
         <div style={{ fontSize: 10.5, color: MUTED }}>{w.baselineUnits} baseline + {w.projectUnits} project · {w.projectCount} assigned project{w.projectCount === 1 ? "" : "s"}</div>
         {(w.objectives > 0 || w.workPackages > 0) && <div style={{ marginTop: 4, fontSize: 10.5, color: MUTED }}>{w.objectives} objective{w.objectives === 1 ? "" : "s"} · {w.workPackages} WP{w.workPackages === 1 ? "" : "s"}</div>}
-        {!isGroupMember && w.listedProjects.some((project) => project.id) && <select aria-label={`Choose project for ${w.name} to assign work`} defaultValue="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
+        {!hidePicker && !isGroupMember && w.listedProjects.some((project) => project.id) && <select aria-label={`Choose project for ${w.name} to assign work`} defaultValue="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
           <option value="">Choose project to assign work…</option>
           {w.listedProjects.filter((project) => project.id).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>}
@@ -1131,16 +1156,30 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
                   <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Supervised group postdocs, PhD and MS students start with 1 baseline commitment. Each assigned active project adds 1; for group postdocs a second open objective in that project adds 0.5. Group planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1. 75–125% is balanced. Collaborator capacity can be set in the project Team editor.</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <div style={{ flex: 1 }}>{owner && <WorkloadPersonCard person={owner} hidePicker />}</div>
+                    <button type="button" onClick={() => setShowCollaboratorForm(true)} style={{ background: INK, color: "#fff", border: 0, borderRadius: 4, padding: "9px 12px", cursor: "pointer", whiteSpace: "nowrap" }}>+ Add collaborator</button>
+                  </div>
                   <div className="pd-team-grid">
                     {workloadColumns.map((column) => <section key={column.type} style={{ minWidth: 0, background: "#F7F9FB", border: "1px solid " + LINE, borderRadius: 6, padding: 10 }}>
-                      <h3 style={{ margin: "2px 2px 10px", fontSize: 12.5, color: INK }}>{column.label} <span style={{ color: MUTED }}>({workload.filter((person) => person.collaboratorType === column.type).length})</span></h3>
+                      <h3 style={{ margin: "2px 2px 10px", fontSize: 12.5, color: INK }}>{column.label} <span style={{ color: MUTED }}>({otherWorkload.filter((person) => person.collaboratorType === column.type).length})</span></h3>
                       <div style={{ display: "grid", gap: 8 }}>
-                        {workload.filter((person) => person.collaboratorType === column.type).map((person) => <WorkloadPersonCard key={person.name} person={person} />)}
-                        {!workload.some((person) => person.collaboratorType === column.type) && <div style={{ fontSize: 11, color: MUTED, padding: 6 }}>No members yet.</div>}
+                        {otherWorkload.filter((person) => person.collaboratorType === column.type).map((person) => <WorkloadPersonCard key={person.name} person={person} />)}
+                        {!otherWorkload.some((person) => person.collaboratorType === column.type) && <div style={{ fontSize: 11, color: MUTED, padding: 6 }}>No members yet.</div>}
                       </div>
                     </section>)}
                   </div>
                   {unresolvedWorkload.length > 0 && <details style={{ marginTop: 12, fontSize: 11.5, color: MUTED }}><summary>Affiliation to verify ({unresolvedWorkload.length})</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8, marginTop: 8 }}>{unresolvedWorkload.map((person) => <WorkloadPersonCard key={person.name} person={person} />)}</div><div style={{ marginTop: 6 }}>Set Internal or External in the project Team editor when the source record does not establish the affiliation.</div></details>}
+                  {showCollaboratorForm && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(26,35,50,.45)", display: "grid", placeItems: "center", padding: 16 }} onClick={() => setShowCollaboratorForm(false)}>
+                    <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", background: "#fff", borderRadius: 7, padding: 22 }}>
+                      <h3 style={{ marginTop: 0 }}>Add collaborator</h3>
+                      <FormField label="Relationship"><select style={inputStyle} value={collaboratorDraft.collaboratorType} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, collaboratorType: e.target.value })}><option value="Internal">Internal KFUPM collaborator</option><option value="External">External collaborator</option></select></FormField>
+                      {[["name", "Name"], ["role", "Role"], ["center", "Department / research center"], ["affiliation", "University / organization"], ["city", "City"], ["country", "Country"], ["expertise", "Expertise keywords (comma separated)"]].map(([field, label]) => <FormField key={field} label={label}><input style={inputStyle} value={collaboratorDraft[field]} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, [field]: e.target.value })} /></FormField>)}
+                      <FormField label="Suggested active project"><select style={inputStyle} value={collaboratorProjectId} onChange={(e) => setCollaboratorProjectId(e.target.value)}><option value="">Select a matching project</option>{suggestedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></FormField>
+                      <div style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>{expertiseKeywords.length ? `${suggestedProjects.length} active projects match the expertise keywords.` : "Enter expertise keywords to narrow active projects."}</div>
+                      <button type="button" disabled={!collaboratorDraft.name.trim() || !collaboratorProjectId || !suggestedProjects.some((project) => project.id === collaboratorProjectId)} onClick={addCollaborator} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "10px 14px", cursor: "pointer" }}>Add to project</button>
+                    </div>
+                  </div>}
                 </>
               )
             )}
@@ -1461,6 +1500,12 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
   }
   function updateDuration(value) {
     update((p) => ({ ...p, duration: value }));
+  }
+  function updateProjectMonth(field, value) {
+    update((p) => {
+      const next = { ...p, [field]: value };
+      return { ...next, duration: projectDuration(next.startDate, next.endDate) };
+    });
   }
   function addTeamMember() {
     if (!teamDraft.name.trim()) return;
@@ -2137,10 +2182,13 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
             </div>
           </div>}
 
-          <SectionTitle title="Duration" />
-          <div style={{ marginBottom: 8 }}>
-            <input value={data.duration} onChange={(e) => updateDuration(e.target.value)} placeholder="e.g. 2 years (Jan 2024 – Dec 2025)" style={{ ...inputStyle, maxWidth: 420 }} />
+          <SectionTitle title="Project dates" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 8 }}>
+            <FormField label="Start month"><input type="month" value={data.startDate || ""} onChange={(e) => updateProjectMonth("startDate", e.target.value)} style={inputStyle} /></FormField>
+            <FormField label="End month"><input type="month" min={data.startDate || undefined} value={data.endDate || ""} onChange={(e) => updateProjectMonth("endDate", e.target.value)} style={inputStyle} /></FormField>
+            <FormField label="Calculated duration"><input readOnly value={data.startDate && data.endDate ? projectDuration(data.startDate, data.endDate) || "End must follow start" : "Select both dates"} style={{ ...inputStyle, background: "#F6F8FB" }} /></FormField>
           </div>
+          <div style={{ fontSize: 11, color: MUTED }}>Schedule: {projectScheduleStatus(data)}. A planned end date does not mark the work complete.</div>
         </div>
       )}
 

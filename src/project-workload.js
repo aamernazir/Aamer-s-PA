@@ -110,6 +110,7 @@ function capacityOverride(member) {
 export function projectIsActiveForWorkload(project) {
   const explicitStatus = String(project?.status || "").trim().toLowerCase();
   if (["completed", "complete", "closed", "archived", "cancelled", "canceled"].includes(explicitStatus)) return false;
+  if (/^\d{4}-\d{2}$/.test(project?.startDate || "") && project.startDate > new Date().toISOString().slice(0, 7)) return false;
 
   const workPackages = Array.isArray(project?.workPackages) ? project.workPackages : [];
   const objectives = Array.isArray(project?.objectives) ? project.objectives : [];
@@ -127,7 +128,7 @@ export function collectActiveWorkload(projects) {
     if (!normalizedName) return null;
     const key = [...workload.keys()].find((candidate) => samePerson(candidate, normalizedName)) || personKey(normalizedName);
     if (!key) return null;
-    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), listedProjects: new Map(), objectivesByProject: new Map(), role: null, capacityUnits: null, kinds: new Set(), groupMember: false });
+    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), listedProjects: new Map(), objectivesByProject: new Map(), role: null, capacityUnits: null, kinds: new Set(), groupMember: false, affiliation: "", center: "", city: "", country: "" });
     const member = workload.get(key);
     if (project) member.listedProjects.set(project?.id || project, { id: project?.id || "", title: project?.title || "Untitled project" });
     const teamEntry = projectMember(normalizedName, project);
@@ -135,6 +136,7 @@ export function collectActiveWorkload(projects) {
       const kind = collaboratorKind(teamEntry);
       member.kinds.add(kind);
       if (kind === "Group") member.groupMember = true;
+      for (const field of ["affiliation", "center", "city", "country"]) if (!member[field] && teamEntry[field]) member[field] = teamEntry[field];
     }
     const teamRole = workloadRole(teamEntry?.role);
     const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
@@ -184,6 +186,10 @@ export function collectActiveWorkload(projects) {
     projectCount: member.projects.size,
     listedProjects: [...member.listedProjects.values()],
     collaboratorType: member.groupMember ? "Group" : knownKinds.length === 1 ? knownKinds[0] : knownKinds.length > 1 ? "Review" : "Unclassified",
+    affiliation: member.affiliation,
+    center: member.center,
+    city: member.city,
+    country: member.country,
     role: member.role?.label || "Role not recorded",
     roleKey: member.role?.key || "unclassified",
     capacityUnits,

@@ -19,7 +19,7 @@ test("team workload excludes projects whose work packages are fully completed", 
     project({ id: "completed-only", objectiveLead: "Kashif", workPackageLead: "Kashif", done: true }),
   ]);
 
-  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, listedProjects: [{ id: "active", title: "active" }], collaboratorType: "Group", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
+  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, listedProjects: [{ id: "active", title: "active" }], collaboratorType: "Group", affiliation: "", center: "", city: "", country: "", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
 });
 
 test("explicitly completed or archived projects never contribute workload", () => {
@@ -36,7 +36,7 @@ test("explicitly completed or archived projects never contribute workload", () =
 test("not-started projects remain active workload", () => {
   const notStarted = { id: "new", title: "New project", objectives: [{ lead: "Aamer" }], workPackages: [] };
   assert.equal(projectIsActiveForWorkload(notStarted), true);
-  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, listedProjects: [{ id: "new", title: "New project" }], collaboratorType: "Group", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
+  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, listedProjects: [{ id: "new", title: "New project" }], collaboratorType: "Group", affiliation: "", center: "", city: "", country: "", role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
 });
 
 test("only an entered official project number classifies a project as funded", () => {
