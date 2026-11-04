@@ -877,7 +877,8 @@ function App() {
           collaboratorRoster={collaboratorRoster}
           onSaveCollaborator={(entry) => setCollaboratorRoster((current) => {
             const key = String(entry.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
-            return [...current.filter((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() !== key), entry];
+            const previous = current.find((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() === key);
+            return [...current.filter((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() !== key), { ...previous, ...entry, projectInterests: [...new Set([...(previous?.projectInterests || []), ...(entry.projectInterests || [])])] }];
           })}
           error={error}
           onOpen={setActiveId}
@@ -1024,7 +1025,7 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
   const evidenceGaps = collectEvidenceGaps(projects);
   const projectWorkload = collectActiveWorkload(projects);
   const personKey = (name) => String(name || "").toLowerCase().replace(/[^\p{L}]+/gu, " ").trim().split(/\s+/).sort().join(" ");
-  const workload = [...projectWorkload, ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
+  const workload = [...projectWorkload.map((person) => ({ ...person, projectInterests: (collaboratorRoster || []).find((entry) => personKey(entry.name) === personKey(person.name))?.projectInterests || [] })), ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
     ...entry, role: entry.role || "Role not recorded", capacityUnits: null, assignedUnits: 0, baselineUnits: 0, projectUnits: 0,
     projectCount: 0, objectives: 0, workPackages: 0, listedProjects: [], loadScore: null,
   }))];
@@ -1076,9 +1077,8 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
   }
   function addCollaborator() {
     if (!collaboratorDraft.name.trim()) return;
-    const entry = { ...collaboratorDraft, name: collaboratorDraft.name.trim(), expertise: expertiseKeywords };
+    const entry = { ...collaboratorDraft, name: collaboratorDraft.name.trim(), expertise: expertiseKeywords, projectInterests: collaboratorProjectId ? [collaboratorProjectId] : [] };
     onSaveCollaborator(entry);
-    if (collaboratorProjectId) onReprocess(collaboratorProjectId, (project) => ({ ...project, team: (project.team || []).some((member) => personKey(member.name) === personKey(entry.name)) ? project.team : [...(project.team || []), entry] }));
     setShowCollaboratorForm(false);
     setCollaboratorProjectId("");
     setCollaboratorDraft({ name: "", collaboratorType: "", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
@@ -1155,12 +1155,13 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
         <div style={{ marginTop: 6, fontSize: 11.5, color: INK }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
         <div style={{ fontSize: 10.5, color: MUTED }}>{w.baselineUnits} baseline + {w.projectUnits} project · {w.projectCount} assigned project{w.projectCount === 1 ? "" : "s"}</div>
         {(w.objectives > 0 || w.workPackages > 0) && <div style={{ marginTop: 4, fontSize: 10.5, color: MUTED }}>{w.objectives} objective{w.objectives === 1 ? "" : "s"} · {w.workPackages} WP{w.workPackages === 1 ? "" : "s"}</div>}
+        {(w.projectInterests || []).map((id) => { const project = projects.find((item) => item.id === id); return project ? <div key={id} style={{ marginTop: 5, color: TEAL, fontSize: 10.5 }}>Potential collaboration: {project.title}</div> : null; })}
         {!hidePicker && !isGroupMember && w.listedProjects.some((project) => project.id) && <select aria-label={`Choose project for ${w.name} to assign work`} defaultValue="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
           <option value="">Choose project to assign work…</option>
           {w.listedProjects.filter((project) => project.id).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>}
-        {!hidePicker && !isGroupMember && !w.listedProjects.some((project) => project.id) && activeProjects.length > 0 && <select aria-label={`Add ${w.name} to a project`} defaultValue="" onChange={(e) => { const id = e.target.value; if (!id) return; const entry = (collaboratorRoster || []).find((person) => personKey(person.name) === personKey(w.name)); if (entry) onReprocess(id, (project) => ({ ...project, team: [...(project.team || []), entry] })); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
-          <option value="">Add to a project later…</option>{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+        {!hidePicker && !isGroupMember && (collaboratorRoster || []).some((person) => personKey(person.name) === personKey(w.name)) && activeProjects.length > 0 && <select aria-label={`Note possible project for ${w.name}`} value="" onChange={(e) => { const id = e.target.value; const entry = (collaboratorRoster || []).find((person) => personKey(person.name) === personKey(w.name)); if (id && entry) onSaveCollaborator({ ...entry, projectInterests: [...new Set([...(entry.projectInterests || []), id])] }); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
+          <option value="">Note another possible project…</option>{activeProjects.filter((project) => !(w.projectInterests || []).includes(project.id)).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>}
       </div>
     );
@@ -1264,9 +1265,9 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
                       {[["name", "Name"], ["role", "Role"], ["center", "Department / research center"], ["affiliation", "University / organization"], ["city", "City"], ["country", "Country"], ["expertise", "Expertise keywords (comma separated)"]].map(([field, label]) => <FormField key={field} label={label}><input style={inputStyle} value={collaboratorDraft[field]} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, [field]: e.target.value })} /></FormField>)}
                       <button type="button" disabled={enrichingCollaborator || !collaboratorDraft.name.trim()} onClick={findPublicExpertise} style={{ marginBottom: 12, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", padding: "8px 10px", cursor: "pointer", color: TEAL }}>{enrichingCollaborator ? "Searching public profiles…" : "Find broader expertise on the web"}</button>
                       {profileSuggestion && <div style={{ background: "#EFF5EF", border: "1px solid #9CC9AA", padding: 10, marginBottom: 12, fontSize: 11.5 }}><strong>Review public profile suggestion:</strong> {profileSuggestion.keywords.join(", ")} · <a href={profileSuggestion.sourceUrl || profileSuggestion.profileUrl} target="_blank" rel="noreferrer">Source</a><button type="button" onClick={applyPublicExpertise} style={{ display: "block", marginTop: 8 }}>Use these keywords</button></div>}
-                      <FormField label="Optional active project"><select style={inputStyle} value={collaboratorProjectId} onChange={(e) => setCollaboratorProjectId(e.target.value)}><option value="">No project yet — add to Team workload only</option>{suggestedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></FormField>
+                      <FormField label="Optional possible project (Team workload note only)"><select style={inputStyle} value={collaboratorProjectId} onChange={(e) => setCollaboratorProjectId(e.target.value)}><option value="">No project noted yet</option>{suggestedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></FormField>
                       <div style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>{expertiseKeywords.length ? `${suggestedProjects.length} active projects match the expertise keywords.` : "Enter expertise keywords to narrow active projects."}</div>
-                      <button type="button" disabled={!collaboratorDraft.name.trim() || !collaboratorDraft.collaboratorType || (!!collaboratorProjectId && !suggestedProjects.some((project) => project.id === collaboratorProjectId))} onClick={addCollaborator} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "10px 14px", cursor: "pointer" }}>{collaboratorProjectId ? "Add to team and project" : "Add to Team workload"}</button>
+                      <button type="button" disabled={!collaboratorDraft.name.trim() || !collaboratorDraft.collaboratorType || (!!collaboratorProjectId && !suggestedProjects.some((project) => project.id === collaboratorProjectId))} onClick={addCollaborator} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "10px 14px", cursor: "pointer" }}>Add to Team workload</button>
                     </div>
                   </div>}
                 </>
