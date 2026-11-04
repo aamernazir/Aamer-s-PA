@@ -77,10 +77,12 @@ export function collectActiveWorkload(projects) {
     if (!normalizedName) return;
     const key = personKey(normalizedName);
     if (!key) return;
-    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), role: null, capacityUnits: null });
+    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), objectivesByProject: new Map(), role: null, capacityUnits: null });
     const member = workload.get(key);
     member[field] += 1;
-    member.projects.add(project?.id || project);
+    const projectKey = project?.id || project;
+    member.projects.add(projectKey);
+    if (field === "objectives") member.objectivesByProject.set(projectKey, (member.objectivesByProject.get(projectKey) || 0) + 1);
     const teamEntry = projectMember(normalizedName, project);
     const teamRole = workloadRole(teamEntry?.role);
     const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
@@ -96,17 +98,22 @@ export function collectActiveWorkload(projects) {
       (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
     });
 
-  return Array.from(workload.values(), (member) => ({
+  return Array.from(workload.values(), (member) => {
+    const postdocSecondObjectives = member.role?.key === "postdoc"
+      ? [...member.objectivesByProject.values()].filter((count) => count >= 2).length
+      : 0;
+    const assignedUnits = member.projects.size + postdocSecondObjectives * 0.5;
+    const capacityUnits = member.capacityUnits ?? member.role?.capacity ?? null;
+    return {
     name: member.name,
     objectives: member.objectives,
     workPackages: member.workPackages,
     projectCount: member.projects.size,
     role: member.role?.label || "Role not recorded",
     roleKey: member.role?.key || "unclassified",
-    capacityUnits: member.capacityUnits ?? member.role?.capacity ?? null,
-    assignedUnits: member.projects.size,
-    loadScore: member.capacityUnits || member.role?.capacity
-      ? (member.projects.size / (member.capacityUnits ?? member.role.capacity)) * 100
-      : null,
-  })).sort((a, b) => (b.loadScore ?? -1) - (a.loadScore ?? -1) || a.name.localeCompare(b.name));
+    capacityUnits,
+    assignedUnits,
+    loadScore: capacityUnits ? (assignedUnits / capacityUnits) * 100 : null,
+  };
+  }).sort((a, b) => (b.loadScore ?? -1) - (a.loadScore ?? -1) || a.name.localeCompare(b.name));
 }
