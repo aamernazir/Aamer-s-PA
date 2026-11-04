@@ -155,6 +155,7 @@ const EVIDENCE_TYPES = ["Research Paper", "Conference Paper", "Peer Review", "Re
 const PAPER_TYPES = ["Research Paper", "Conference Paper"];
 
 const INK = "#1A2332", TEAL = "#1F5C8B", MUTED = "#5B6472", AMBER = "#A6741F", GREEN = "#2F6B4F", LINE = "#DCDFE3", PAPER = "#F7F8FA";
+const RED = "#B3392C";
 
 const KFUPM_PROJECT = {
   id: "kfupm-csf-2026",
