@@ -513,6 +513,9 @@ const GlobalStyle = () => (
     @keyframes pd-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .pd-card { box-shadow: 0 1px 2px rgba(20,30,45,0.05), 0 1px 0 rgba(20,30,45,0.03); }
     .pd-team-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+    .pd-person-summary { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 10px; align-items: start; }
+    .pd-person-metrics { border-left: 1px solid #DCDFE3; padding-left: 10px; min-width: 0; }
+    @media (max-width: 420px) { .pd-person-summary { grid-template-columns: 1fr; gap: 5px; } .pd-person-metrics { border-left: 0; border-top: 1px solid #DCDFE3; padding: 5px 0 0; } }
     @media (max-width: 900px) { .pd-team-grid { grid-template-columns: 1fr; } }
   `}</style>
 );
@@ -1171,13 +1174,19 @@ function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, 
     const cardStyle = engagementStyle || status;
     return (
       <div style={{ background: cardStyle.background, border: "1px solid " + LINE, borderLeft: `3px solid ${cardStyle.border}`, borderRadius: 5, padding: "10px 12px", minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{w.name}</div>
-        {(w.collaboratorType === "Internal" ? w.center || w.affiliation : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")) && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2 }}>{w.collaboratorType === "Internal" ? (w.center || w.affiliation).replace(/,?\s*KFUPM\b/ig, "").trim() : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")}</div>}
-        <div style={{ marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {status.label}</div>
-        {engagementStyle && <div style={{ marginTop: 3, fontSize: 10.5, color: engagementStyle.accent, fontWeight: 600 }}>{engagementStyle.label}</div>}
-        <div style={{ marginTop: 6, fontSize: 11.5, color: INK }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
-        <div style={{ fontSize: 10.5, color: MUTED }}>{w.baselineUnits} baseline + {w.projectUnits} project · {w.projectCount} assigned project{w.projectCount === 1 ? "" : "s"}</div>
-        {(w.objectives > 0 || w.workPackages > 0) && <div style={{ marginTop: 4, fontSize: 10.5, color: MUTED }}>{w.objectives} objective{w.objectives === 1 ? "" : "s"} · {w.workPackages} WP{w.workPackages === 1 ? "" : "s"}</div>}
+        <div className="pd-person-summary">
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, color: INK, fontWeight: 600, overflowWrap: "anywhere" }}>{w.name}</div>
+            {(w.collaboratorType === "Internal" ? w.center || w.affiliation : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")) && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3, overflowWrap: "anywhere" }}>{w.collaboratorType === "Internal" ? (w.center || w.affiliation).replace(/,?\s*KFUPM\b/ig, "").trim() : [w.affiliation || w.center, w.city, w.country].filter(Boolean).join(" · ")}</div>}
+            <div style={{ marginTop: 4, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {status.label}</div>
+            {engagementStyle && <div style={{ marginTop: 4, fontSize: 10.5, color: engagementStyle.accent, fontWeight: 600 }}>{engagementStyle.label}</div>}
+          </div>
+          <div className="pd-person-metrics">
+            <div style={{ fontSize: 11.5, color: INK, fontWeight: 600 }}>{w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments{w.loadScore == null ? "" : ` · ${Math.round(w.loadScore)}%`}</div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}>{w.baselineUnits} baseline + {w.projectUnits} project</div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}>{w.projectCount} assigned project{w.projectCount === 1 ? "" : "s"}{(w.objectives > 0 || w.workPackages > 0) && ` · ${w.objectives} objectives · ${w.workPackages} WPs`}</div>
+          </div>
+        </div>
         {(w.projectInterests || []).map((id) => { const project = projects.find((item) => item.id === id); if (!project) return null; const interestStatus = w.projectInterestStatuses?.[id] || "potential"; return <div key={id} style={{ marginTop: 7, padding: "6px 0", borderTop: "1px solid " + LINE, fontSize: 10.5 }}>
           <div style={{ color: interestStatus === "active" ? GREEN : interestStatus === "successful" ? AMBER : interestStatus === "unsuccessful" ? RED : TEAL }}>{interestStatus === "active" ? "Active engagement" : interestStatus === "successful" ? "Successful collaboration" : interestStatus === "unsuccessful" ? "Unsuccessful collaboration" : "Potential collaboration"}: {project.title}</div>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
