@@ -464,13 +464,14 @@ function collectEvidenceGaps(projects) {
   return out;
 }
 
-function workloadStatus(workload, member) {
-  const scores = workload.map((w) => w.loadScore);
-  const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
-  if (workload.length > 1 && member.loadScore >= average * 1.35) {
+function workloadStatus(member) {
+  if (member.loadScore == null) {
+    return { label: "Set capacity", background: "#F6F8FB", border: "#C8D1DC", accent: "#51606F" };
+  }
+  if (member.loadScore > 125) {
     return { label: "High load", background: "#FFF1F1", border: "#D95C5C", accent: "#A63D3D" };
   }
-  if (workload.length > 1 && member.loadScore <= average * 0.7) {
+  if (member.loadScore < 75) {
     return { label: "Lower load", background: "#EFF8F1", border: "#78B98D", accent: "#2F6B4F" };
   }
   return { label: "Balanced", background: "#F6F8FB", border: "#C8D1DC", accent: "#51606F" };
@@ -1101,19 +1102,19 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
-                  <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 9 }}>Active projects only — completed, closed, archived, or cancelled projects are excluded. Workload is relative to expected capacity: Postdoc highest · PhD · MS · UG lowest. The same assignment therefore loads a UG researcher more heavily than a postdoc.</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Active projects only. Planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1 objective-equivalent units. Each open objective counts 1; an open work package counts 0.5 only when its objective is not already counted for that person. 75–125% is balanced. Set a capacity in the team editor for external or unclassified members.</div>
                   {workload.map((w, i) => {
-                    const status = workloadStatus(workload, w);
+                    const status = workloadStatus(w);
                     return (
                       <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < workload.length - 1 ? "1px solid #EAECF0" : "none" }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}</div>
-                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · expected capacity {w.expectedCapacity} units · {status.label}</span>
+                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} units · {status.label}</span>
                         </div>
                         <span style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
                           {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}
                           {w.workPackages > 0 && `${w.workPackages} WP${w.workPackages > 1 ? "s" : ""}`}
-                          {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""} · capacity load ${Math.round(w.loadScore)}%`}
+                          {` · ${w.projectCount} project${w.projectCount > 1 ? "s" : ""}`}{w.loadScore == null ? " · capacity not rated" : ` · ${Math.round(w.loadScore)}% of capacity`}
                         </span>
                       </div>
                     );
@@ -2076,6 +2077,7 @@ function ProjectDetail({ project, onBack, onUpdate, onSyncArchive, error, onTogg
                 <FormField label="Name"><input style={inputStyle} value={teamDraft.name} onChange={(e) => setTeamDraft({ ...teamDraft, name: e.target.value })} placeholder="e.g. Dr. Jane Smith, or a student's name" /></FormField>
                 <FormField label="Role"><input style={inputStyle} value={teamDraft.role} onChange={(e) => setTeamDraft({ ...teamDraft, role: e.target.value })} placeholder="e.g. Co-I, PhD Student, Postdoc" /></FormField>
                 <FormField label="Center / department (optional)"><input style={inputStyle} value={teamDraft.center || ""} onChange={(e) => setTeamDraft({ ...teamDraft, center: e.target.value })} /></FormField>
+                <FormField label="Planning capacity (objective-equivalent units, optional)"><input type="number" min="0.5" step="0.5" style={inputStyle} value={teamDraft.capacityUnits ?? ""} onChange={(e) => setTeamDraft({ ...teamDraft, capacityUnits: e.target.value })} placeholder="Defaults: postdoc 5, PhD 3, MS 2, UG 1" /></FormField>
                 <FormField label="Affiliation"><input style={inputStyle} value={teamDraft.affiliation || ""} onChange={(e) => setTeamDraft({ ...teamDraft, affiliation: e.target.value })} /></FormField>
                 <FormField label="Designation"><input style={inputStyle} value={teamDraft.designation || ""} onChange={(e) => setTeamDraft({ ...teamDraft, designation: e.target.value })} /></FormField>
                 <FormField label="Expertise (one per line)"><textarea style={inputStyle} value={(teamDraft.expertise || []).join("\n")} onChange={(e) => setTeamDraft({ ...teamDraft, expertise: e.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></FormField>

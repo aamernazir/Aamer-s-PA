@@ -27,26 +27,34 @@ export function projectFundingClass(project) {
   return hasProjectNumber(project) ? "funded" : "not-funded";
 }
 
-// Workload is measured against the amount of work reasonably expected for each
-// researcher level. A postdoc is expected to carry the largest portfolio, then
-// PhD, MS, and UG. Therefore one identical assignment consumes a much larger
-// share of a UG student's expected capacity than a postdoc's.
-export const WORKLOAD_ROLE_CAPACITY = Object.freeze({ postdoc: 4, phd: 3, ms: 2, ug: 1, unclassified: 1 });
+// Objective-equivalent capacity is a planning benchmark, not a measured FTE.
+// Unclassified and external collaborators need an explicit capacity before
+// their assignments can be called high or low.
+export const WORKLOAD_ROLE_CAPACITY = Object.freeze({ postdoc: 5, phd: 3, ms: 2, ug: 1 });
 
 export function workloadRole(roleOrName) {
   const value = String(roleOrName || "").trim().toLowerCase();
-  if (/post\s*doc|postdoctoral/.test(value)) return { key: "postdoc", label: "Postdoc", weight: WORKLOAD_ROLE_CAPACITY.postdoc };
-  if (/ph\.?d|doctoral/.test(value)) return { key: "phd", label: "PhD", weight: WORKLOAD_ROLE_CAPACITY.phd };
-  if (/m\.?s\.?|master|graduate\s+student/.test(value)) return { key: "ms", label: "MS", weight: WORKLOAD_ROLE_CAPACITY.ms };
-  if (/u\.?g\.?|undergraduate|bachelor/.test(value)) return { key: "ug", label: "UG", weight: WORKLOAD_ROLE_CAPACITY.ug };
-  return { key: "unclassified", label: "Role not recorded", weight: WORKLOAD_ROLE_CAPACITY.unclassified };
+  if (/post\s*doc|postdoctoral/.test(value)) return { key: "postdoc", label: "Postdoc", capacity: WORKLOAD_ROLE_CAPACITY.postdoc };
+  if (/ph\.?d|doctoral/.test(value)) return { key: "phd", label: "PhD", capacity: WORKLOAD_ROLE_CAPACITY.phd };
+  if (/m\.?s\.?|master|graduate\s+student/.test(value)) return { key: "ms", label: "MS", capacity: WORKLOAD_ROLE_CAPACITY.ms };
+  if (/u\.?g\.?|undergraduate|bachelor/.test(value)) return { key: "ug", label: "UG", capacity: WORKLOAD_ROLE_CAPACITY.ug };
+  if (/external|collaborator|consultant|industry partner/.test(value)) return { key: "external", label: "External collaborator", capacity: null };
+  return { key: "unclassified", label: "Role not recorded", capacity: null };
 }
 
-function projectMemberRole(name, project, explicitRole) {
-  if (explicitRole) return explicitRole;
-  const target = String(name || "").trim().toLowerCase();
-  const member = (Array.isArray(project?.team) ? project.team : []).find((entry) => String(entry?.name || "").trim().toLowerCase() === target);
-  return member?.role || name;
+function personKey(name) {
+  return String(name || "").replace(/\([^)]*\)/g, "").replace(/^(?:prof(?:essor)?|dr|mr|ms|mrs)\.?\s+/i, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function projectMember(name, project) {
+  const key = personKey(name);
+  return (Array.isArray(project?.team) ? project.team : []).find((entry) => personKey(entry?.name) === key);
+}
+
+function capacityOverride(member) {
+  const value = Number(member?.capacityUnits);
+  return member?.capacityUnits !== "" && member?.capacityUnits != null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function projectIsActiveForWorkload(project) {
@@ -64,33 +72,46 @@ export function projectIsActiveForWorkload(project) {
 export function collectActiveWorkload(projects) {
   const workload = new Map();
 
-  function record(name, field, project, explicitRole) {
+  function record(name, field, project, explicitRole, linkedObjectives = []) {
     const normalizedName = String(name || "").trim();
     if (!normalizedName) return;
-    if (!workload.has(normalizedName)) workload.set(normalizedName, { objectives: 0, workPackages: 0, projects: new Set(), roles: new Map() });
-    const member = workload.get(normalizedName);
+    const key = personKey(normalizedName);
+    if (!key) return;
+    if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, independentWPs: 0, projects: new Set(), role: null, capacityUnits: null });
+    const member = workload.get(key);
     member[field] += 1;
     member.projects.add(String(project?.id || project?.title || "Untitled project"));
-    const role = workloadRole(projectMemberRole(normalizedName, project, explicitRole));
-    member.roles.set(role.key, role);
+    const teamEntry = projectMember(normalizedName, project);
+    const teamRole = workloadRole(teamEntry?.role);
+    const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
+    if (!member.role || (member.role.key === "unclassified" && role.key !== "unclassified")) member.role = role;
+    const override = capacityOverride(teamEntry);
+    if (override != null) member.capacityUnits = override;
+    if (field === "workPackages") {
+      const objectives = Array.isArray(project?.objectives) ? project.objectives : [];
+      const alreadyCounted = linkedObjectives.some((index) => personKey(objectives[index]?.lead) === key && !objectives[index]?.completed);
+      if (!alreadyCounted) member.independentWPs += 1;
+    }
   }
 
   (Array.isArray(projects) ? projects : [])
     .filter(projectIsActiveForWorkload)
     .forEach((project) => {
       (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
-      (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
+      (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role, workPackage?.objectiveIdxs || []));
     });
 
-  return Array.from(workload, ([name, member]) => ({
-    name,
+  return Array.from(workload.values(), (member) => ({
+    name: member.name,
     objectives: member.objectives,
     workPackages: member.workPackages,
     projectCount: member.projects.size,
-    role: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.label || "Role not recorded",
-    roleKey: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.key || "unclassified",
-    roleWeight: [...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.weight || WORKLOAD_ROLE_CAPACITY.unclassified,
-    rawLoadScore: member.objectives + member.workPackages,
-    loadScore: (member.objectives + member.workPackages) * ([...member.roles.values()].sort((a, b) => b.weight - a.weight)[0]?.weight || WORKLOAD_ROLE_CAPACITY.unclassified),
-  })).sort((a, b) => b.loadScore - a.loadScore || a.name.localeCompare(b.name));
+    role: member.role?.label || "Role not recorded",
+    roleKey: member.role?.key || "unclassified",
+    capacityUnits: member.capacityUnits ?? member.role?.capacity ?? null,
+    assignedUnits: member.objectives + member.independentWPs * 0.5,
+    loadScore: member.capacityUnits || member.role?.capacity
+      ? ((member.objectives + member.independentWPs * 0.5) / (member.capacityUnits ?? member.role.capacity)) * 100
+      : null,
+  })).sort((a, b) => (b.loadScore ?? -1) - (a.loadScore ?? -1) || a.name.localeCompare(b.name));
 }
