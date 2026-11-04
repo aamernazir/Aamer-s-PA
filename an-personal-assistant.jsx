@@ -1102,14 +1102,14 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#78B98D", display: "inline-block" }} />Lower load</span>
                   </div>
-                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Each active project counts as 1 commitment per person. For postdocs only, a second open objective in the same project adds 0.5; further objectives add no more. Completed objectives do not count. Planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1 commitments. 75–125% is balanced. Set a capacity in the team editor for external or unclassified members.</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 9 }}>Postdocs, PhD and MS students start with 1 baseline commitment for supervision and other work, counted once per person. Each assigned active project adds 1; for postdocs a second open objective in that project adds 0.5. Planning capacity: Postdoc 5 · PhD 3 · MS 2 · UG 1 commitments. 75–125% is balanced. Set a capacity in the team editor for external or unclassified members.</div>
                   {workload.map((w, i) => {
                     const status = workloadStatus(w);
                     return (
                       <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", margin: "0 -10px", background: status.background, borderLeft: `3px solid ${status.border}`, borderBottom: i < workload.length - 1 ? "1px solid #EAECF0" : "none" }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: INK, fontWeight: 600 }}>{w.name}</div>
-                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments · {status.label}</span>
+                          <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, color: status.accent, fontWeight: 600 }}>{w.role} · {w.assignedUnits} / {w.capacityUnits ?? "capacity needed"} commitments ({w.baselineUnits} baseline + {w.projectUnits} project) · {status.label}</span>
                         </div>
                         <span style={{ fontSize: 12, color: MUTED, textAlign: "right", flexShrink: 0 }}>
                           {w.objectives > 0 && `${w.objectives} objective${w.objectives > 1 ? "s" : ""}`}{w.objectives > 0 && w.workPackages > 0 && " · "}

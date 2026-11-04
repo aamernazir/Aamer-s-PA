@@ -19,7 +19,7 @@ test("team workload excludes projects whose work packages are fully completed", 
     project({ id: "completed-only", objectiveLead: "Kashif", workPackageLead: "Kashif", done: true }),
   ]);
 
-  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, assignedUnits: 1, loadScore: null }]);
+  assert.deepEqual(workload, [{ name: "Aamer", objectives: 1, workPackages: 1, projectCount: 1, role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
 });
 
 test("explicitly completed or archived projects never contribute workload", () => {
@@ -36,7 +36,7 @@ test("explicitly completed or archived projects never contribute workload", () =
 test("not-started projects remain active workload", () => {
   const notStarted = { id: "new", title: "New project", objectives: [{ lead: "Aamer" }], workPackages: [] };
   assert.equal(projectIsActiveForWorkload(notStarted), true);
-  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, assignedUnits: 1, loadScore: null }]);
+  assert.deepEqual(collectActiveWorkload([notStarted]), [{ name: "Aamer", objectives: 1, workPackages: 0, projectCount: 1, role: "Role not recorded", roleKey: "unclassified", capacityUnits: null, baselineUnits: 0, projectUnits: 1, assignedUnits: 1, loadScore: null }]);
 });
 
 test("only an entered official project number classifies a project as funded", () => {
@@ -49,7 +49,7 @@ test("only an entered official project number classifies a project as funded", (
   assert.equal(projectFundingClass(proposalOnly), "not-funded");
 });
 
-test("role capacities normalize five, three, two and one concurrent projects equally", () => {
+test("one baseline applies to postdoc, PhD and MS but not UG", () => {
   assert.equal(workloadRole("Postdoc").capacity, 5);
   assert.equal(workloadRole("PhD Student").capacity, 3);
   assert.equal(workloadRole("MS Student").capacity, 2);
@@ -62,7 +62,9 @@ test("role capacities normalize five, three, two and one concurrent projects equ
     { id: "ug", team: [{ name: "UG A", role: "UG Student" }], objectives: [{ lead: "UG A" }], workPackages: [] },
   ];
   const workload = collectActiveWorkload(projects);
-  assert.deepEqual(workload.map((member) => [member.name, member.role, member.loadScore]), [["MS A", "MS", 100], ["PhD A", "PhD", 100], ["Postdoc A", "Postdoc", 100], ["UG A", "UG", 100]]);
+  const byName = Object.fromEntries(workload.map((member) => [member.name, member]));
+  assert.deepEqual(["Postdoc A", "PhD A", "MS A", "UG A"].map((name) => byName[name].baselineUnits), [1, 1, 1, 0]);
+  assert.deepEqual(["Postdoc A", "PhD A", "MS A", "UG A"].map((name) => Math.round(byName[name].loadScore)), [120, 133, 150, 100]);
 });
 
 test("a postdoc's second open objective adds half a commitment, capped at two", () => {
@@ -73,8 +75,10 @@ test("a postdoc's second open objective adds half a commitment, capped at two", 
   }]);
   assert.equal(member.workPackages, 8);
   assert.equal(member.objectives, 3);
-  assert.equal(member.assignedUnits, 1.5);
-  assert.equal(member.loadScore, 30);
+  assert.equal(member.projectUnits, 1.5);
+  assert.equal(member.baselineUnits, 1);
+  assert.equal(member.assignedUnits, 2.5);
+  assert.equal(member.loadScore, 50);
 });
 
 test("three projects cap the concurrent count at three despite many objectives", () => {
@@ -86,8 +90,9 @@ test("three projects cap the concurrent count at three despite many objectives",
   const [member] = collectActiveWorkload(projects);
   assert.equal(member.objectives, 12);
   assert.equal(member.workPackages, 15);
-  assert.equal(member.assignedUnits, 3);
-  assert.equal(member.loadScore, 100);
+  assert.equal(member.projectUnits, 3);
+  assert.equal(member.assignedUnits, 4);
+  assert.equal(Math.round(member.loadScore), 133);
 });
 
 test("the second postdoc objective is counted only while it remains open", () => {
@@ -96,7 +101,8 @@ test("the second postdoc objective is counted only while it remains open", () =>
     objectives: [{ lead: "A", completed: true }, { lead: "A" }],
   }]);
   assert.equal(member.objectives, 1);
-  assert.equal(member.assignedUnits, 1);
+  assert.equal(member.projectUnits, 1);
+  assert.equal(member.assignedUnits, 2);
 });
 
 test("two open objectives in each of three projects count as 4.5 for a postdoc", () => {
@@ -105,8 +111,9 @@ test("two open objectives in each of three projects count as 4.5 for a postdoc",
     objectives: [{ lead: "A" }, { lead: "A" }],
   })));
   assert.equal(member.projectCount, 3);
-  assert.equal(member.assignedUnits, 4.5);
-  assert.equal(member.loadScore, 90);
+  assert.equal(member.projectUnits, 4.5);
+  assert.equal(member.assignedUnits, 5.5);
+  assert.equal(Math.round(member.loadScore), 110);
 });
 
 test("separate work packages in the same project do not add load and external capacity can be set", () => {
@@ -121,4 +128,19 @@ test("separate work packages in the same project do not add load and external ca
   assert.equal(member.loadScore, 50);
   const [unrated] = collectActiveWorkload([{ id: "other", team: [{ name: "External A", role: "External collaborator" }], objectives: [{ lead: "External A" }] }]);
   assert.equal(unrated.loadScore, null);
+});
+
+test("unassigned postdoc, PhD and MS team members show one baseline only", () => {
+  const projects = [
+    { id: "p1", team: [{ name: "A", role: "Postdoc" }, { name: "B", role: "PhD Student" }, { name: "C", role: "MS Student" }, { name: "D", role: "UG Student" }, { name: "E", role: "External collaborator" }] },
+    { id: "p2", team: [{ name: "A", role: "Postdoc" }] },
+  ];
+  const workload = collectActiveWorkload(projects);
+  assert.deepEqual(workload.map((member) => member.name).sort(), ["A", "B", "C"]);
+  for (const member of workload) {
+    assert.equal(member.projectCount, 0);
+    assert.equal(member.projectUnits, 0);
+    assert.equal(member.baselineUnits, 1);
+    assert.equal(member.assignedUnits, 1);
+  }
 });

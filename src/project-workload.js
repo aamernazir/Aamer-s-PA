@@ -72,28 +72,40 @@ export function projectIsActiveForWorkload(project) {
 export function collectActiveWorkload(projects) {
   const workload = new Map();
 
-  function record(name, field, project, explicitRole) {
+  function ensureMember(name, project, explicitRole) {
     const normalizedName = String(name || "").trim();
-    if (!normalizedName) return;
+    if (!normalizedName) return null;
     const key = personKey(normalizedName);
-    if (!key) return;
+    if (!key) return null;
     if (!workload.has(key)) workload.set(key, { name: normalizedName, objectives: 0, workPackages: 0, projects: new Set(), objectivesByProject: new Map(), role: null, capacityUnits: null });
     const member = workload.get(key);
-    member[field] += 1;
-    const projectKey = project?.id || project;
-    member.projects.add(projectKey);
-    if (field === "objectives") member.objectivesByProject.set(projectKey, (member.objectivesByProject.get(projectKey) || 0) + 1);
     const teamEntry = projectMember(normalizedName, project);
     const teamRole = workloadRole(teamEntry?.role);
     const role = teamRole.key !== "unclassified" ? teamRole : workloadRole(explicitRole);
     if (!member.role || (member.role.key === "unclassified" && role.key !== "unclassified")) member.role = role;
     const override = capacityOverride(teamEntry);
     if (override != null) member.capacityUnits = override;
+    return member;
+  }
+
+  function record(name, field, project, explicitRole) {
+    const member = ensureMember(name, project, explicitRole);
+    if (!member) return;
+    member[field] += 1;
+    const projectKey = project?.id || project;
+    member.projects.add(projectKey);
+    if (field === "objectives") member.objectivesByProject.set(projectKey, (member.objectivesByProject.get(projectKey) || 0) + 1);
   }
 
   (Array.isArray(projects) ? projects : [])
     .filter(projectIsActiveForWorkload)
     .forEach((project) => {
+      // Include researchers with no explicit objective/WP lead assignment:
+      // their background commitment still exists, but project work is zero.
+      (Array.isArray(project.team) ? project.team : []).forEach((entry) => {
+        const role = workloadRole(entry?.role);
+        if (["postdoc", "phd", "ms"].includes(role.key)) ensureMember(entry.name, project, entry.role);
+      });
       (project.objectives || []).filter((objective) => !objective?.completed).forEach((objective) => record(objective?.lead, "objectives", project, objective?.role));
       (project.workPackages || []).filter((wp) => workPackageProgress(wp) < 100).forEach((workPackage) => record(workPackage?.execLead, "workPackages", project, workPackage?.role));
     });
@@ -102,7 +114,9 @@ export function collectActiveWorkload(projects) {
     const postdocSecondObjectives = member.role?.key === "postdoc"
       ? [...member.objectivesByProject.values()].filter((count) => count >= 2).length
       : 0;
-    const assignedUnits = member.projects.size + postdocSecondObjectives * 0.5;
+    const projectUnits = member.projects.size + postdocSecondObjectives * 0.5;
+    const baselineUnits = ["postdoc", "phd", "ms"].includes(member.role?.key) ? 1 : 0;
+    const assignedUnits = baselineUnits + projectUnits;
     const capacityUnits = member.capacityUnits ?? member.role?.capacity ?? null;
     return {
     name: member.name,
@@ -112,6 +126,8 @@ export function collectActiveWorkload(projects) {
     role: member.role?.label || "Role not recorded",
     roleKey: member.role?.key || "unclassified",
     capacityUnits,
+    baselineUnits,
+    projectUnits,
     assignedUnits,
     loadScore: capacityUnits ? (assignedUnits / capacityUnits) * 100 : null,
   };
