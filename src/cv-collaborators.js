@@ -49,7 +49,7 @@ export function recentCvCoauthors(outputs, projects = [], currentYear = new Date
       name: person.name, affiliation, center: team?.center || "", role: team?.role || "",
       city: team?.city || (parts.length >= 3 ? parts.at(-2) : ""),
       country: team?.country || (parts.length >= 2 ? parts.at(-1) : ""),
-      collaboratorType: team?.collaboratorType || (/\bkfupm\b/i.test(affiliation) ? "Internal" : affiliation ? "External" : "Internal"),
+      collaboratorType: team?.collaboratorType || (/\bkfupm\b/i.test(affiliation) ? "Internal" : affiliation ? "External" : ""),
       expertise: [...new Set([...(Array.isArray(team?.expertise) ? team.expertise : []), ...person.expertise])].join(", "),
       papers: person.papers, latestYear: person.latestYear,
     };

@@ -64,6 +64,7 @@ const HUB_MODULES = [
 // source of truth; Project Dashboard receives a linked, reviewable evidence
 // entry when the acknowledgement number matches a tracked project number.
 const PROJECTS_STORAGE_KEY = "am2r-projects-v1";
+const COLLABORATOR_ROSTER_STORAGE_KEY = "am2r-collaborator-roster-v1";
 const PUBLICATION_ARCHIVE_STORAGE_KEY = "am2r-publication-archive-v1";
 const PUBLICATION_EVIDENCE_TYPE = {
   "Journal Paper": "Research Paper",
@@ -388,6 +389,19 @@ async function claudeExtractJSON(content, maxTokens = 1000) {
   }
 }
 
+async function searchCollaboratorProfile(promptText) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1800, messages: [{ role: "user", content: promptText }], tools: [{ type: "web_search_20250305", name: "web_search" }] }),
+  });
+  const result = await response.json();
+  if (result.error) throw new Error(result.error.message || "Public profile search failed.");
+  const text = (result.content || []).filter((item) => item.type === "text").map((item) => item.text).join("\n");
+  const json = text.match(/\{[\s\S]*\}/);
+  if (!json) throw new Error("Public profile search returned no verified profile.");
+  return JSON.parse(json[0]);
+}
+
 function wpProgress(wp) {
   const tasks = wp.tasks || [];
   if (tasks.length) return Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100);
@@ -535,6 +549,8 @@ function GhostAddButton({ onClick, label }) {
 
 function App() {
   const [projects, setProjects] = useState(null);
+  const [collaboratorRoster, setCollaboratorRoster] = useState([]);
+  const [rosterLoaded, setRosterLoaded] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [error, setError] = useState("");
@@ -602,6 +618,16 @@ function App() {
   useEffect(() => {
     refreshSharedProjects();
   }, []);
+
+  useEffect(() => {
+    window.storage.get(COLLABORATOR_ROSTER_STORAGE_KEY).then((result) => {
+      const parsed = result?.value ? JSON.parse(result.value) : [];
+      setCollaboratorRoster(Array.isArray(parsed) ? parsed : []);
+    }).catch(() => setCollaboratorRoster([])).finally(() => setRosterLoaded(true));
+  }, []);
+  useEffect(() => {
+    if (rosterLoaded) window.storage.set(COLLABORATOR_ROSTER_STORAGE_KEY, JSON.stringify(collaboratorRoster)).catch(() => setError("Could not save collaborator roster. Try again."));
+  }, [collaboratorRoster, rosterLoaded]);
 
   // Reconcile publications that were archived before this project was created
   // or before its project number was entered. This makes the integration
@@ -848,6 +874,11 @@ function App() {
       {!active ? (
         <ProjectList
           projects={projects}
+          collaboratorRoster={collaboratorRoster}
+          onSaveCollaborator={(entry) => setCollaboratorRoster((current) => {
+            const key = String(entry.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+            return [...current.filter((person) => String(person.name || "").toLowerCase().replace(/[^a-z]+/g, " ").trim() !== key), entry];
+          })}
           error={error}
           onOpen={setActiveId}
           onDelete={deleteProject}
@@ -953,12 +984,14 @@ function App() {
   );
 }
 
-function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole, onNew, sharedProjects, onImportShared, onRefreshShared }) {
+function ProjectList({ projects, collaboratorRoster, onSaveCollaborator, error, onOpen, onDelete, onReprocess, onSetRole, onNew, sharedProjects, onImportShared, onRefreshShared }) {
   const [showCollaboratorForm, setShowCollaboratorForm] = useState(false);
   const [recentAuthors, setRecentAuthors] = useState([]);
   const [authorsLoading, setAuthorsLoading] = useState(false);
   const [authorsError, setAuthorsError] = useState("");
-  const [collaboratorDraft, setCollaboratorDraft] = useState({ name: "", collaboratorType: "Internal", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
+  const [enrichingCollaborator, setEnrichingCollaborator] = useState(false);
+  const [profileSuggestion, setProfileSuggestion] = useState(null);
+  const [collaboratorDraft, setCollaboratorDraft] = useState({ name: "", collaboratorType: "", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
   const [collaboratorProjectId, setCollaboratorProjectId] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [reprocessingId, setReprocessingId] = useState(null);
@@ -989,7 +1022,12 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
   const [portfolioTab, setPortfolioTab] = useState("attention");
   const atRisk = collectAtRiskWPs(projects);
   const evidenceGaps = collectEvidenceGaps(projects);
-  const workload = collectActiveWorkload(projects);
+  const projectWorkload = collectActiveWorkload(projects);
+  const personKey = (name) => String(name || "").toLowerCase().replace(/[^\p{L}]+/gu, " ").trim().split(/\s+/).sort().join(" ");
+  const workload = [...projectWorkload, ...(collaboratorRoster || []).filter((entry) => !projectWorkload.some((person) => personKey(person.name) === personKey(entry.name))).map((entry) => ({
+    ...entry, role: entry.role || "Role not recorded", capacityUnits: null, assignedUnits: 0, baselineUnits: 0, projectUnits: 0,
+    projectCount: 0, objectives: 0, workPackages: 0, listedProjects: [], loadScore: null,
+  }))];
   const isOwner = (person) => /\b(?:aamer|amin)\s+nazir\b/i.test(person.name);
   const owner = workload.find(isOwner);
   const otherWorkload = workload.filter((person) => !isOwner(person));
@@ -1003,6 +1041,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
     setShowCollaboratorForm(true);
     setAuthorsLoading(true);
     setAuthorsError("");
+    setProfileSuggestion(null);
     try {
       const result = await window.storage.get(PUBLICATION_ARCHIVE_STORAGE_KEY);
       setRecentAuthors(recentCvCoauthors(JSON.parse(result?.value || "{}").outputs || [], projects));
@@ -1015,14 +1054,34 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
     const author = recentAuthors[Number(index)];
     if (!author) return;
     setCollaboratorDraft({ name: author.name, collaboratorType: author.collaboratorType, role: author.role, center: author.center, affiliation: author.affiliation, city: author.city, country: author.country, expertise: author.expertise });
+    setProfileSuggestion(null);
+  }
+  async function findPublicExpertise() {
+    if (!collaboratorDraft.name.trim()) return;
+    setEnrichingCollaborator(true);
+    setAuthorsError("");
+    setProfileSuggestion(null);
+    try {
+      const found = await searchCollaboratorProfile("Search public academic profiles, preferably Google Scholar or an institutional page, for this researcher. Verify identity using BOTH name and affiliation/location; do not conflate namesakes. Extract broad research interests and specialties across their work, not merely one coauthored paper. Return ONLY JSON: {\"verified\":true,\"name\":\"\",\"affiliation\":\"\",\"city\":\"\",\"country\":\"\",\"keywords\":[\"\"],\"profileUrl\":\"\",\"sourceUrl\":\"\"}. If identity or source cannot be verified, set verified false and leave keywords empty. Researcher: " + JSON.stringify({ name: collaboratorDraft.name, affiliation: collaboratorDraft.affiliation, country: collaboratorDraft.country }));
+      if (!found.verified || !Array.isArray(found.keywords) || !found.keywords.length || !/^https:\/\//.test(found.sourceUrl || found.profileUrl || "")) throw new Error("No verified public profile was found for this name and affiliation.");
+      setProfileSuggestion(found);
+    } catch (error) { setAuthorsError(error.message || "Public profile search failed."); }
+    finally { setEnrichingCollaborator(false); }
+  }
+  function applyPublicExpertise() {
+    if (!profileSuggestion) return;
+    const keywords = [...new Set([...collaboratorDraft.expertise.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean), ...profileSuggestion.keywords])];
+    setCollaboratorDraft((current) => ({ ...current, affiliation: current.affiliation || profileSuggestion.affiliation || "", city: current.city || profileSuggestion.city || "", country: current.country || profileSuggestion.country || "", expertise: keywords.join(", ") }));
+    setProfileSuggestion(null);
   }
   function addCollaborator() {
-    if (!collaboratorDraft.name.trim() || !collaboratorProjectId) return;
+    if (!collaboratorDraft.name.trim()) return;
     const entry = { ...collaboratorDraft, name: collaboratorDraft.name.trim(), expertise: expertiseKeywords };
-    onReprocess(collaboratorProjectId, (project) => ({ ...project, team: (project.team || []).some((member) => member.name.trim().toLowerCase() === entry.name.toLowerCase()) ? project.team : [...(project.team || []), entry] }));
+    onSaveCollaborator(entry);
+    if (collaboratorProjectId) onReprocess(collaboratorProjectId, (project) => ({ ...project, team: (project.team || []).some((member) => personKey(member.name) === personKey(entry.name)) ? project.team : [...(project.team || []), entry] }));
     setShowCollaboratorForm(false);
     setCollaboratorProjectId("");
-    setCollaboratorDraft({ name: "", collaboratorType: "Internal", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
+    setCollaboratorDraft({ name: "", collaboratorType: "", role: "", center: "", affiliation: "", city: "", country: "", expertise: "" });
   }
   const workloadColumns = [
     { type: "External", label: "External collaborators" },
@@ -1030,7 +1089,7 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
     { type: "Internal", label: "Internal KFUPM collaborators" },
   ];
   const unresolvedWorkload = otherWorkload.filter((person) => !workloadColumns.some((column) => column.type === person.collaboratorType));
-  const hasPortfolioContent = projects.length > 0 && (atRisk.length > 0 || evidenceGaps.length > 0 || workload.length > 0);
+  const hasPortfolioContent = projects.length > 0;
   const coIProjects = projects.filter(isCoIProject);
   const fundedProjects = projects.filter((project) => hasProjectNumber(project) && !isCoIProject(project));
   const notFundedProjects = projects.filter((project) => !hasProjectNumber(project) && !isCoIProject(project));
@@ -1099,6 +1158,9 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
         {!hidePicker && !isGroupMember && w.listedProjects.some((project) => project.id) && <select aria-label={`Choose project for ${w.name} to assign work`} defaultValue="" onChange={(e) => { if (e.target.value) onOpen(e.target.value); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
           <option value="">Choose project to assign work…</option>
           {w.listedProjects.filter((project) => project.id).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+        </select>}
+        {!hidePicker && !isGroupMember && !w.listedProjects.some((project) => project.id) && activeProjects.length > 0 && <select aria-label={`Add ${w.name} to a project`} defaultValue="" onChange={(e) => { const id = e.target.value; if (!id) return; const entry = (collaboratorRoster || []).find((person) => personKey(person.name) === personKey(w.name)); if (entry) onReprocess(id, (project) => ({ ...project, team: [...(project.team || []), entry] })); }} style={{ width: "100%", marginTop: 8, padding: 5, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", color: TEAL, fontSize: 10.5 }}>
+          <option value="">Add to a project later…</option>{activeProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>}
       </div>
     );
@@ -1169,8 +1231,9 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
               )
             )}
                         {portfolioTab === "workload" && (
-              workload.length === 0 ? <div style={{ fontSize: 12.5, color: MUTED }}>No project team members recorded yet.</div> : (
+              (
                 <>
+                  {workload.length === 0 && <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 8 }}>No team members recorded yet. Add a collaborator below.</div>}
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 8, fontSize: 11.5, color: MUTED }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#D95C5C", display: "inline-block" }} />High load</span>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8D1DC", display: "inline-block" }} />Balanced</span>
@@ -1197,11 +1260,13 @@ function ProjectList({ projects, error, onOpen, onDelete, onReprocess, onSetRole
                       <FormField label="Name — recent Live CV coauthors (last five calendar years)"><select style={inputStyle} value="" onChange={(e) => chooseRecentAuthor(e.target.value)}><option value="">{authorsLoading ? "Loading recent authors…" : "Select a coauthor or enter a name below"}</option>{recentAuthors.map((author, index) => <option key={index} value={index}>{author.name} · {author.latestYear} · {author.papers} paper{author.papers === 1 ? "" : "s"}</option>)}</select></FormField>
                       {authorsError && <div role="status" style={{ color: RED, fontSize: 11, marginBottom: 10 }}>{authorsError}</div>}
                       {!authorsLoading && !authorsError && !recentAuthors.length && <div style={{ color: MUTED, fontSize: 11, marginBottom: 10 }}>No recent paper authors with structured author lists were found. Enter the details manually.</div>}
-                      <FormField label="Relationship"><select style={inputStyle} value={collaboratorDraft.collaboratorType} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, collaboratorType: e.target.value })}><option value="Internal">Internal KFUPM collaborator</option><option value="External">External collaborator</option></select></FormField>
+                      <FormField label="Relationship"><select style={inputStyle} value={collaboratorDraft.collaboratorType} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, collaboratorType: e.target.value })}><option value="">Choose relationship</option><option value="Internal">Internal KFUPM collaborator</option><option value="External">External collaborator</option></select></FormField>
                       {[["name", "Name"], ["role", "Role"], ["center", "Department / research center"], ["affiliation", "University / organization"], ["city", "City"], ["country", "Country"], ["expertise", "Expertise keywords (comma separated)"]].map(([field, label]) => <FormField key={field} label={label}><input style={inputStyle} value={collaboratorDraft[field]} onChange={(e) => setCollaboratorDraft({ ...collaboratorDraft, [field]: e.target.value })} /></FormField>)}
-                      <FormField label="Suggested active project"><select style={inputStyle} value={collaboratorProjectId} onChange={(e) => setCollaboratorProjectId(e.target.value)}><option value="">Select a matching project</option>{suggestedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></FormField>
+                      <button type="button" disabled={enrichingCollaborator || !collaboratorDraft.name.trim()} onClick={findPublicExpertise} style={{ marginBottom: 12, border: "1px solid " + LINE, borderRadius: 4, background: "#fff", padding: "8px 10px", cursor: "pointer", color: TEAL }}>{enrichingCollaborator ? "Searching public profiles…" : "Find broader expertise on the web"}</button>
+                      {profileSuggestion && <div style={{ background: "#EFF5EF", border: "1px solid #9CC9AA", padding: 10, marginBottom: 12, fontSize: 11.5 }}><strong>Review public profile suggestion:</strong> {profileSuggestion.keywords.join(", ")} · <a href={profileSuggestion.sourceUrl || profileSuggestion.profileUrl} target="_blank" rel="noreferrer">Source</a><button type="button" onClick={applyPublicExpertise} style={{ display: "block", marginTop: 8 }}>Use these keywords</button></div>}
+                      <FormField label="Optional active project"><select style={inputStyle} value={collaboratorProjectId} onChange={(e) => setCollaboratorProjectId(e.target.value)}><option value="">No project yet — add to Team workload only</option>{suggestedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></FormField>
                       <div style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>{expertiseKeywords.length ? `${suggestedProjects.length} active projects match the expertise keywords.` : "Enter expertise keywords to narrow active projects."}</div>
-                      <button type="button" disabled={!collaboratorDraft.name.trim() || !collaboratorProjectId || !suggestedProjects.some((project) => project.id === collaboratorProjectId)} onClick={addCollaborator} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "10px 14px", cursor: "pointer" }}>Add to project</button>
+                      <button type="button" disabled={!collaboratorDraft.name.trim() || !collaboratorDraft.collaboratorType || (!!collaboratorProjectId && !suggestedProjects.some((project) => project.id === collaboratorProjectId))} onClick={addCollaborator} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "10px 14px", cursor: "pointer" }}>{collaboratorProjectId ? "Add to team and project" : "Add to Team workload"}</button>
                     </div>
                   </div>}
                 </>
