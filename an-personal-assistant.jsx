@@ -5565,6 +5565,12 @@ function pendingForCode(cycleData, code) {
     .filter((e) => !e.relation.approved);
 }
 
+function pendingCountForAccordion(cycleData, accordionId) {
+  return TAGGABLE_SUBSECTIONS
+    .filter(([code]) => code.toLowerCase() === accordionId || code.toLowerCase().startsWith(accordionId + "_"))
+    .reduce((total, [code]) => total + pendingForCode(cycleData, code).length, 0);
+}
+
 function pendingEvidenceCount(cycleData) {
   return (cycleData.evidenceInbox || []).reduce(
     (total, ev) => total + (ev.subsections || []).filter((code) => !getEvidenceRelation(ev, code).approved).length,
@@ -5799,14 +5805,17 @@ function BulletList({ items, onChange, pending = [], onApprovePending, onDiscard
   );
 }
 
-function Accordion({ id, title, openId, setOpenId, children }) {
+function Accordion({ id, title, openId, setOpenId, pendingCount = 0, children }) {
   const isOpen = openId === id;
   return (
-    <div className="aps-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, marginBottom: 10, overflow: "hidden" }}>
-      <div onClick={() => setOpenId(isOpen ? null : id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 18px", cursor: "pointer" }}>
+    <div className="aps-card" style={{ background: pendingCount ? "#FFF8E8" : "#fff", border: "1px solid " + (pendingCount ? "#B77B18" : LINE), borderLeft: pendingCount ? "4px solid #B77B18" : undefined, borderRadius: 6, marginBottom: 10, overflow: "hidden" }}>
+      <button type="button" aria-expanded={isOpen} aria-label={title + (pendingCount ? ` — ${pendingCount} pending approval${pendingCount === 1 ? "" : "s"}` : "")} onClick={() => setOpenId(isOpen ? null : id)} style={{ display: "flex", width: "100%", border: 0, background: "transparent", justifyContent: "space-between", alignItems: "center", padding: "13px 18px", cursor: "pointer", textAlign: "left" }}>
         <span className="aps-mono" style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{title}</span>
-        <ChevronDown size={16} color="#9AA2AF" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
-      </div>
+        <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          {pendingCount > 0 && <span title={`${pendingCount} pending approval${pendingCount === 1 ? "" : "s"}`} style={{ background: "#A6741F", color: "#fff", borderRadius: 12, padding: "2px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{pendingCount} pending</span>}
+          <ChevronDown size={16} color={pendingCount ? "#865A12" : "#9AA2AF"} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+        </span>
+      </button>
       {isOpen && <div style={{ padding: "0 18px 18px 18px", borderTop: "1px solid #EAECF0", paddingTop: 14 }}>{children}</div>}
     </div>
   );
@@ -6491,7 +6500,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
 
         {section === "teaching" && (
           <div>
-            <Accordion id="t1" title="T1 — Teaching Load" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="t1" pendingCount={pendingCountForAccordion(cycleData, "t1")} title="T1 — Teaching Load" openId={openId} setOpenId={setOpenId}>
               <div style={{ background: "#EAECF0", border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 12px", fontSize: 12, color: MUTED, marginBottom: 12 }}>Auto-filled by the official APS system from course records — no action needed here. Kept for reference and the rollup summary.</div>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Direct sum of annual (excluding summer) teaching load in credit hours.</div>
               <div style={{ marginBottom: 10 }}>
@@ -6513,7 +6522,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.t1} onChange={(v) => update("subsectionNotes.t1", v)} />
             </Accordion>
 
-            <Accordion id="t2" title="T2 — Teaching Quality" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="t2" pendingCount={pendingCountForAccordion(cycleData, "t2")} title="T2 — Teaching Quality" openId={openId} setOpenId={setOpenId}>
               <Label>Satisfying the learning objectives</Label>
               <BulletList items={cycleData.teaching.t2Objectives} onChange={(v) => update("teaching.t2Objectives", v)} pending={pendingForCode(cycleData, "T2_OBJECTIVES")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T2_OBJECTIVES-" + pendingForCode(cycleData, "T2_OBJECTIVES").length} />
               <div style={{ marginTop: 16 }}><Label>Incorporating new instructional strategies</Label></div>
@@ -6529,7 +6538,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.t2} onChange={(v) => update("subsectionNotes.t2", v)} />
             </Accordion>
 
-            <Accordion id="t3" title="T3 — Students Evaluation" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="t3" pendingCount={pendingCountForAccordion(cycleData, "t3")} title="T3 — Students Evaluation" openId={openId} setOpenId={setOpenId}>
               <Label>By term</Label>
               {cycleData.teaching.t3TermEvals.map((r, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
@@ -6551,13 +6560,13 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.t3} onChange={(v) => update("subsectionNotes.t3", v)} />
             </Accordion>
 
-            <Accordion id="t4" title="T4 — Interdisciplinary Teaching" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="t4" pendingCount={pendingCountForAccordion(cycleData, "t4")} title="T4 — Interdisciplinary Teaching" openId={openId} setOpenId={setOpenId}>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>{cycleData.teaching.t4Comment}</div>
               <input type="number" style={{ ...inputStyle, width: 100 }} value={cycleData.teaching.t4Count} onChange={(e) => update("teaching.t4Count", Number(e.target.value))} />
                           <SubsectionComments value={cycleData.subsectionNotes.t4} onChange={(v) => update("subsectionNotes.t4", v)} />
             </Accordion>
 
-            <Accordion id="t5" title="T5 — Contributing to New Programs" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="t5" pendingCount={pendingCountForAccordion(cycleData, "t5")} title="T5 — Contributing to New Programs" openId={openId} setOpenId={setOpenId}>
               <Label>Developing new programs (e.g. CX, MX, etc.)</Label>
               <BulletList items={cycleData.teaching.t5NewPrograms} onChange={(v) => update("teaching.t5NewPrograms", v)} pending={pendingForCode(cycleData, "T5_PROGRAMS")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T5_PROGRAMS-" + pendingForCode(cycleData, "T5_PROGRAMS").length} />
               <div style={{ marginTop: 16 }}><Label>Developing new courses</Label></div>
@@ -6567,7 +6576,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.t5} onChange={(v) => update("subsectionNotes.t5", v)} />
             </Accordion>
 
-            <Accordion id="t6" title="T6 — Students Engagement" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="t6" pendingCount={pendingCountForAccordion(cycleData, "t6")} title="T6 — Students Engagement" openId={openId} setOpenId={setOpenId}>
               <Label>Availability/engagement outside classroom</Label>
               <BulletList items={cycleData.teaching.t6Availability} onChange={(v) => update("teaching.t6Availability", v)} pending={pendingForCode(cycleData, "T6_AVAILABILITY")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"T6_AVAILABILITY-" + pendingForCode(cycleData, "T6_AVAILABILITY").length} />
               <div style={{ marginTop: 16 }}><Label>Coop, summer training, special projects</Label></div>
@@ -6581,7 +6590,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
 
         {section === "research" && (
           <div>
-            <Accordion id="r1" title="R1 — Research Productivity" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="r1" pendingCount={pendingCountForAccordion(cycleData, "r1")} title="R1 — Research Productivity" openId={openId} setOpenId={setOpenId}>
               <div style={{ background: "#EAECF0", border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 12px", fontSize: 12, color: MUTED, marginBottom: 12 }}>Auto-filled by the official APS system from Pure/Scopus — no action needed here. Kept for reference and the rollup summary.</div>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Publications over the past two years (journal articles and reviews indexed in Scopus).</div>
               {cycleData.research.r1Publications.map((p, i) => (
@@ -6606,7 +6615,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.r1} onChange={(v) => update("subsectionNotes.r1", v)} />
             </Accordion>
 
-            <Accordion id="r2" title="R2 — Research Quality (Citations)" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="r2" pendingCount={pendingCountForAccordion(cycleData, "r2")} title="R2 — Research Quality (Citations)" openId={openId} setOpenId={setOpenId}>
               <div style={{ background: "#EAECF0", border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 12px", fontSize: 12, color: MUTED, marginBottom: 12 }}>Auto-filled by the official APS system from Pure/Scopus — no action needed here. Kept for reference and the rollup summary.</div>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 12 }}>Citations over the past five years.</div>
               {cycleData.research.r2Citations.map((c, i) => (
@@ -6629,7 +6638,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.r2} onChange={(v) => update("subsectionNotes.r2", v)} />
             </Accordion>
 
-            <Accordion id="r3" title="R3 — Interdisciplinary Research" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="r3" pendingCount={pendingCountForAccordion(cycleData, "r3")} title="R3 — Interdisciplinary Research" openId={openId} setOpenId={setOpenId}>
               {cycleData.research.r3Projects.map((p, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                   <input style={{ ...inputStyle, width: 220 }} value={p.center} onChange={(e) => { const rows = [...cycleData.research.r3Projects]; rows[i] = { ...rows[i], center: e.target.value }; update("research.r3Projects", rows); }} placeholder="Center / partner" />
@@ -6642,7 +6651,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.r3} onChange={(v) => update("subsectionNotes.r3", v)} />
             </Accordion>
 
-            <Accordion id="r4" title="R4 — Industry Engagement" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="r4" pendingCount={pendingCountForAccordion(cycleData, "r4")} title="R4 — Industry Engagement" openId={openId} setOpenId={setOpenId}>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>{cycleData.research.r4Comment}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13 }}>SAR</span>
@@ -6651,7 +6660,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.r4} onChange={(v) => update("subsectionNotes.r4", v)} />
             </Accordion>
 
-            <Accordion id="r5" title="R5 — Commercialization" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="r5" pendingCount={pendingCountForAccordion(cycleData, "r5")} title="R5 — Commercialization" openId={openId} setOpenId={setOpenId}>
               <Label>Patents commercialized</Label>
               <input style={{ ...inputStyle, marginBottom: 12 }} value={cycleData.research.r5PatentsCommercialized} onChange={(e) => update("research.r5PatentsCommercialized", e.target.value)} />
               <Label>Projects commercialized</Label>
@@ -6659,7 +6668,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
                           <SubsectionComments value={cycleData.subsectionNotes.r5} onChange={(v) => update("subsectionNotes.r5", v)} />
             </Accordion>
 
-            <Accordion id="r6" title="R6 — Research Leadership" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="r6" pendingCount={pendingCountForAccordion(cycleData, "r6")} title="R6 — Research Leadership" openId={openId} setOpenId={setOpenId}>
               <Label>Leading research activities / teams / areas</Label>
               <BulletList items={cycleData.research.r6Leading} onChange={(v) => update("research.r6Leading", v)} pending={pendingForCode(cycleData, "R6_LEADING")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"R6_LEADING-" + pendingForCode(cycleData, "R6_LEADING").length} />
               <div style={{ marginTop: 16 }}><Label>Organizing conferences</Label></div>
@@ -6675,11 +6684,11 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
 
         {section === "societal" && (
           <div>
-            <Accordion id="s1" title="S1 — Venture Startups" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="s1" pendingCount={pendingCountForAccordion(cycleData, "s1")} title="S1 — Venture Startups" openId={openId} setOpenId={setOpenId}>
               <BulletList items={cycleData.societal.s1Bullets} onChange={(v) => update("societal.s1Bullets", v)} pending={pendingForCode(cycleData, "S1")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S1-" + pendingForCode(cycleData, "S1").length} />
                           <SubsectionComments value={cycleData.subsectionNotes.s1} onChange={(v) => update("subsectionNotes.s1", v)} />
             </Accordion>
-            <Accordion id="s2" title="S2 — University Service" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="s2" pendingCount={pendingCountForAccordion(cycleData, "s2")} title="S2 — University Service" openId={openId} setOpenId={setOpenId}>
               <Label>Promoting university's name</Label>
               <BulletList items={cycleData.societal.s2PromotingBullets} onChange={(v) => update("societal.s2PromotingBullets", v)} pending={pendingForCode(cycleData, "S2_PROMOTE")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S2_PROMOTE-" + pendingForCode(cycleData, "S2_PROMOTE").length} />
               <div style={{ marginTop: 16 }}><Label>Contribution towards university's environment</Label></div>
@@ -6688,7 +6697,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
               <BulletList items={cycleData.societal.s2AccreditationBullets} onChange={(v) => update("societal.s2AccreditationBullets", v)} pending={pendingForCode(cycleData, "S2_ACCRED")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S2_ACCRED-" + pendingForCode(cycleData, "S2_ACCRED").length} />
                           <SubsectionComments value={cycleData.subsectionNotes.s2} onChange={(v) => update("subsectionNotes.s2", v)} />
             </Accordion>
-            <Accordion id="s3" title="S3 — Community Engagement" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="s3" pendingCount={pendingCountForAccordion(cycleData, "s3")} title="S3 — Community Engagement" openId={openId} setOpenId={setOpenId}>
               <Label>Voluntary work</Label>
               <BulletList items={cycleData.societal.s3Voluntary} onChange={(v) => update("societal.s3Voluntary", v)} pending={pendingForCode(cycleData, "S3_VOLUNTARY")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"S3_VOLUNTARY-" + pendingForCode(cycleData, "S3_VOLUNTARY").length} />
               <div style={{ marginTop: 16 }}><Label>Support students for Mawhiba, Rhodes, etc.</Label></div>
@@ -6704,7 +6713,7 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
 
         {section === "behavior" && (
           <div>
-            <Accordion id="b1" title="B1 — Safety Adherence" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="b1" pendingCount={pendingCountForAccordion(cycleData, "b1")} title="B1 — Safety Adherence" openId={openId} setOpenId={setOpenId}>
               <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>Start with 5 and subtract according to severity of violation (traffic −1, smoking in unauthorized area −2, fire −4, lab safety −4, etc.).</div>
               <BulletList items={cycleData.behavior.b1Bullets} onChange={(v) => update("behavior.b1Bullets", v)} pending={pendingForCode(cycleData, "B1")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B1-" + pendingForCode(cycleData, "B1").length} />
               <div style={{ marginTop: 16 }}><Label>Violations (if any)</Label></div>
@@ -6719,15 +6728,15 @@ update("evidenceInbox", cycleData.evidenceInbox.filter((e) => e.id !== id));
               <div style={{ marginTop: 14, fontSize: 13.5, fontWeight: 600 }}>B1 Score: <span className="aps-mono" style={{ color: b1Score === 5 ? GREEN : AMBER }}>{b1Score} / 5</span></div>
                           <SubsectionComments value={cycleData.subsectionNotes.b1} onChange={(v) => update("subsectionNotes.b1", v)} />
             </Accordion>
-            <Accordion id="b2" title="B2 — Creating a Positive Environment" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="b2" pendingCount={pendingCountForAccordion(cycleData, "b2")} title="B2 — Creating a Positive Environment" openId={openId} setOpenId={setOpenId}>
               <BulletList items={cycleData.behavior.b2Bullets} onChange={(v) => update("behavior.b2Bullets", v)} pending={pendingForCode(cycleData, "B2")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B2-" + pendingForCode(cycleData, "B2").length} />
                           <SubsectionComments value={cycleData.subsectionNotes.b2} onChange={(v) => update("subsectionNotes.b2", v)} />
             </Accordion>
-            <Accordion id="b3" title="B3 — Presence & Accessibility" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="b3" pendingCount={pendingCountForAccordion(cycleData, "b3")} title="B3 — Presence & Accessibility" openId={openId} setOpenId={setOpenId}>
               <BulletList items={cycleData.behavior.b3Bullets} onChange={(v) => update("behavior.b3Bullets", v)} pending={pendingForCode(cycleData, "B3")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B3-" + pendingForCode(cycleData, "B3").length} />
                           <SubsectionComments value={cycleData.subsectionNotes.b3} onChange={(v) => update("subsectionNotes.b3", v)} />
             </Accordion>
-            <Accordion id="b4" title="B4 — Active Engagement" openId={openId} setOpenId={setOpenId}>
+            <Accordion id="b4" pendingCount={pendingCountForAccordion(cycleData, "b4")} title="B4 — Active Engagement" openId={openId} setOpenId={setOpenId}>
               <BulletList items={cycleData.behavior.b4Bullets} onChange={(v) => update("behavior.b4Bullets", v)} pending={pendingForCode(cycleData, "B4")} onApprovePending={approveEvidence} onDiscardPending={removeEvidenceRecord} onCommentPending={(id, c) => updateEvidenceRecord(id, { comment: c })} key={"B4-" + pendingForCode(cycleData, "B4").length} />
                           <SubsectionComments value={cycleData.subsectionNotes.b4} onChange={(v) => update("subsectionNotes.b4", v)} />
             </Accordion>
