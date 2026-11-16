@@ -8155,7 +8155,7 @@ function App() {
         loadedData.outputs = loadedData.outputs.map(output => {
           if (output.type !== "Journal Paper") return output;
           const match = lookupJournalRanking(output.venue, output.year, loadedData.journalRankings || []);
-          return match.status === "matched" && (output.qRank !== match.quartile || output.qRankSource !== "Scopus Highest percentile")
+          return match.record && (output.qRank !== match.quartile || output.qRankSource !== "Scopus Highest percentile" || output.qRankYear !== match.record.year)
             ? { ...output, qRank: match.quartile, qRankSource: "Scopus Highest percentile", qRankYear: match.record.year }
             : output;
         });
@@ -9531,7 +9531,7 @@ function App() {
         outputs: previous.outputs.map(output => {
           if (output.type !== "Journal Paper") return output;
           const match = lookupJournalRanking(output.venue, output.year, merged);
-          return match.status === "matched"
+          return match.record
             ? { ...output, qRank: match.quartile, qRankSource: "Scopus Highest percentile", qRankYear: match.record.year }
             : output;
         }),
@@ -9543,7 +9543,7 @@ function App() {
 
   function displayedJournalRank(paper) {
     const lookup = lookupJournalRanking(paper.venue, paper.year, data.journalRankings || []);
-    return lookup.status === "matched" ? lookup.quartile : (paper.qRank || "");
+    return lookup.record ? lookup.quartile : (paper.qRank || "");
   }
 
   const journalPapers = data.outputs.filter((o) => o.type === "Journal Paper");
@@ -9571,8 +9571,8 @@ function App() {
               {o.type === "Journal Paper" && (
                 <select
                   value={displayedJournalRank(o)}
-                  disabled={journalRank?.status === "matched"}
-                  title={journalRank?.status === "matched" ? "Automatically set from the publication-year Scopus sheet" : "Manual rank: no publication-year Scopus match"}
+                  disabled={!!journalRank?.record}
+                  title={journalRank?.record ? `Automatically set from Scopus ${journalRank.record.year}` : "Manual rank: no matching Scopus journal"}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setData((p) => ({ ...p, outputs: p.outputs.map((x) => (x.id === o.id ? { ...x, qRank: e.target.value } : x)) }))}
                   style={{ fontSize: 10.5, padding: "1px 5px", borderRadius: 3, border: "1px solid #C7CCD3", background: displayedJournalRank(o) ? TEAL + "18" : "#fff", color: displayedJournalRank(o) ? TEAL : "#9AA2AF" }}
