@@ -9582,11 +9582,10 @@ function App() {
                 </select>
               )}
               {journalRank?.record && <span title={journalRank.record.source} style={{ fontSize: 10.5, color: journalRank.status === "matched" ? GREEN : AMBER }}>
-                Scopus {journalRank.record.year}: percentile {journalRank.record.percentile} · {journalRank.quartile}{journalRank.status === "reference-only" ? " (reference only; not publication-year rank)" : ""}
+                Scopus {journalRank.record.year} · percentile {journalRank.record.percentile} · {journalRank.quartile}
               </span>}
               {journalRank?.status === "ambiguous" && <span style={{ fontSize: 10.5, color: AMBER }}>Conflicting Scopus rows — manual review</span>}
               {journalRank?.status === "missing" && o.type === "Journal Paper" && <span style={{ fontSize: 10.5, color: AMBER }}>Not in uploaded Scopus sheets — manual Q-rank</span>}
-              {journalRank?.status === "reference-only" && o.qRank && <span style={{ fontSize: 10.5, color: AMBER }}>Manual Q-rank needs publication-year verification</span>}
             </div>
             <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{visibleCvRecordType(o, OUTPUT_TYPES)}</div>
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>{o.cvEditedAt ? "Updated in Live CV" : "Approved from CV"} · no file uploaded</div>}
