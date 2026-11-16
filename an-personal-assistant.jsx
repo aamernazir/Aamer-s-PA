@@ -8151,6 +8151,14 @@ function App() {
             reparsedAt: new Date().toISOString(),
           };
         }
+        // A same-year Scopus match supersedes old manual Q-ranks on existing saved CVs.
+        loadedData.outputs = loadedData.outputs.map(output => {
+          if (output.type !== "Journal Paper") return output;
+          const match = lookupJournalRanking(output.venue, output.year, loadedData.journalRankings || []);
+          return match.status === "matched" && (output.qRank !== match.quartile || output.qRankSource !== "Scopus Highest percentile")
+            ? { ...output, qRank: match.quartile, qRankSource: "Scopus Highest percentile", qRankYear: match.record.year }
+            : output;
+        });
         // Correct only CV-linked records created with the old, overly broad
         // conference categories. Preserve any later manual reclassification.
         loadedData.outputs = loadedData.outputs.filter((output) => output && typeof output === "object").map((output) => {
@@ -9518,7 +9526,16 @@ function App() {
       }
       if (!imported.length) throw new Error("No journal titles and percentiles were found.");
       const merged = mergeJournalRankings(data.journalRankings || [], imported);
-      setData(previous => ({ ...previous, journalRankings: merged }));
+      setData(previous => ({
+        ...previous, journalRankings: merged,
+        outputs: previous.outputs.map(output => {
+          if (output.type !== "Journal Paper") return output;
+          const match = lookupJournalRanking(output.venue, output.year, merged);
+          return match.status === "matched"
+            ? { ...output, qRank: match.quartile, qRankSource: "Scopus Highest percentile", qRankYear: match.record.year }
+            : output;
+        }),
+      }));
       setSyncMessage(`Imported ${imported.length} source rows; ${merged.length} unique journal-year records. Conflicts remain unranked for review.`);
     } catch (error) { setRankingImportError(error.message || "Could not read the Scopus workbook."); }
     finally { event.target.value = ""; }
@@ -9526,7 +9543,7 @@ function App() {
 
   function displayedJournalRank(paper) {
     const lookup = lookupJournalRanking(paper.venue, paper.year, data.journalRankings || []);
-    return paper.qRank || (lookup.status === "matched" ? lookup.quartile : "");
+    return lookup.status === "matched" ? lookup.quartile : (paper.qRank || "");
   }
 
   const journalPapers = data.outputs.filter((o) => o.type === "Journal Paper");
@@ -9554,18 +9571,22 @@ function App() {
               {o.type === "Journal Paper" && (
                 <select
                   value={displayedJournalRank(o)}
+                  disabled={journalRank?.status === "matched"}
+                  title={journalRank?.status === "matched" ? "Automatically set from the publication-year Scopus sheet" : "Manual rank: no publication-year Scopus match"}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setData((p) => ({ ...p, outputs: p.outputs.map((x) => (x.id === o.id ? { ...x, qRank: e.target.value } : x)) }))}
-                  style={{ fontSize: 10.5, padding: "1px 5px", borderRadius: 3, border: "1px solid #C7CCD3", background: o.qRank ? TEAL + "18" : "#fff", color: o.qRank ? TEAL : "#9AA2AF" }}
+                  style={{ fontSize: 10.5, padding: "1px 5px", borderRadius: 3, border: "1px solid #C7CCD3", background: displayedJournalRank(o) ? TEAL + "18" : "#fff", color: displayedJournalRank(o) ? TEAL : "#9AA2AF" }}
                 >
                   <option value="">No Q-rank</option>
                   {Q_RANKS.map((q) => <option key={q} value={q}>{q}</option>)}
                 </select>
               )}
               {journalRank?.record && <span title={journalRank.record.source} style={{ fontSize: 10.5, color: journalRank.status === "matched" ? GREEN : AMBER }}>
-                Scopus ${journalRank.record.year}: ${journalRank.record.percentile}th percentile · ${journalRank.quartile}${journalRank.status === "reference-only" ? " (reference only; not publication-year rank)" : ""}${o.qRank ? " · manual Q-rank retained" : ""}
+                Scopus {journalRank.record.year}: percentile {journalRank.record.percentile} · {journalRank.quartile}{journalRank.status === "reference-only" ? " (reference only; not publication-year rank)" : ""}
               </span>}
-              {journalRank?.status === "ambiguous" && <span style={{ fontSize: 10.5, color: AMBER }}>Conflicting Scopus rows — review</span>}
+              {journalRank?.status === "ambiguous" && <span style={{ fontSize: 10.5, color: AMBER }}>Conflicting Scopus rows — manual review</span>}
+              {journalRank?.status === "missing" && o.type === "Journal Paper" && <span style={{ fontSize: 10.5, color: AMBER }}>Not in uploaded Scopus sheets — manual Q-rank</span>}
+              {journalRank?.status === "reference-only" && o.qRank && <span style={{ fontSize: 10.5, color: AMBER }}>Manual Q-rank needs publication-year verification</span>}
             </div>
             <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{visibleCvRecordType(o, OUTPUT_TYPES)}</div>
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>{o.cvEditedAt ? "Updated in Live CV" : "Approved from CV"} · no file uploaded</div>}
