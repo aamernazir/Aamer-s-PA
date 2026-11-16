@@ -6,6 +6,7 @@ import { extractCvSection } from "./src/cv-sections.js";
 import { parseWordCvProjects } from "./src/cv-projects.js";
 import { applyCvEntryEdits, renderCvTextWithEdits, sectionForCvType, findCvEntryForRecord, visibleCvRecordType } from "./src/cv-entry-edits.js";
 import { buildCvLiveData, findCvProjectDuplicates, findCvSectionGaps } from "./src/cv-live.js";
+import { parseJournalRankingRows, mergeJournalRankings, lookupJournalRanking } from "./src/journal-rankings.js";
 
 function isDocxUpload(file) {
   return file?.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || String(file?.name || "").toLowerCase().endsWith(".docx");
@@ -8096,6 +8097,8 @@ function App() {
   const [syncingAffiliations, setSyncingAffiliations] = useState(false);
   const fileInputRef = useRef(null);
   const cvInputRef = useRef(null);
+  const rankingInputRef = useRef(null);
+  const [rankingImportError, setRankingImportError] = useState("");
   const evidenceInputRef = useRef(null);
   const evidenceTargetRef = useRef(null);
   const [evidenceTarget, setEvidenceTarget] = useState(null);
@@ -9499,9 +9502,36 @@ function App() {
   ));
   const nonProjectOutputGroups = groupedOutputs.filter((group) => group.type !== "Project / Grant Evidence" && !achievementGroups.includes(group));
 
+  async function importJournalRankings(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setRankingImportError("");
+    try {
+      const imported = [];
+      for (const file of files) {
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        for (const sheetName of workbook.SheetNames) {
+          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" });
+          if (rows.length < 2) continue;
+          imported.push(...parseJournalRankingRows(rows, file.name + " / " + sheetName, 2025));
+        }
+      }
+      if (!imported.length) throw new Error("No journal titles and percentiles were found.");
+      const merged = mergeJournalRankings(data.journalRankings || [], imported);
+      setData(previous => ({ ...previous, journalRankings: merged }));
+      setSyncMessage(`Imported ${imported.length} source rows; ${merged.length} unique journal-year records. Conflicts remain unranked for review.`);
+    } catch (error) { setRankingImportError(error.message || "Could not read the Scopus workbook."); }
+    finally { event.target.value = ""; }
+  }
+
+  function displayedJournalRank(paper) {
+    const lookup = lookupJournalRanking(paper.venue, paper.year, data.journalRankings || []);
+    return paper.qRank || (lookup.status === "matched" ? lookup.quartile : "");
+  }
+
   const journalPapers = data.outputs.filter((o) => o.type === "Journal Paper");
-  const qRankCounts = Q_RANKS.reduce((acc, q) => ({ ...acc, [q]: journalPapers.filter((p) => p.qRank === q).length }), {});
-  const unrankedCount = journalPapers.filter((p) => !p.qRank).length;
+  const qRankCounts = Q_RANKS.reduce((acc, q) => ({ ...acc, [q]: journalPapers.filter((p) => displayedJournalRank(p) === q).length }), {});
+  const unrankedCount = journalPapers.filter((p) => !displayedJournalRank(p)).length;
   const correspondingCount = data.outputs.filter((o) => o.isOwnerCorresponding).length;
   const years = data.outputs.map((o) => Number(o.year)).filter(Boolean);
   const latestYear = years.length > 0 ? Math.max(...years) : null;
@@ -9510,6 +9540,7 @@ function App() {
   function renderOutputCard(o) {
     const Icon = TYPE_ICON[o.type] || FileText;
     const isOpen = expandedId === o.id;
+    const journalRank = o.type === "Journal Paper" ? lookupJournalRanking(o.venue, o.year, data.journalRankings || []) : null;
     return (
       <div key={o.id} className="pa-card" style={{ background: "#fff", border: "1px solid " + LINE, borderRadius: 6, overflow: "hidden" }}>
         <div onClick={() => setExpandedId(isOpen ? null : o.id)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", cursor: "pointer" }}>
@@ -9522,7 +9553,7 @@ function App() {
               <span>{o.venue}{o.year ? ` · ${o.year}` : ""}</span>
               {o.type === "Journal Paper" && (
                 <select
-                  value={o.qRank || ""}
+                  value={displayedJournalRank(o)}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setData((p) => ({ ...p, outputs: p.outputs.map((x) => (x.id === o.id ? { ...x, qRank: e.target.value } : x)) }))}
                   style={{ fontSize: 10.5, padding: "1px 5px", borderRadius: 3, border: "1px solid #C7CCD3", background: o.qRank ? TEAL + "18" : "#fff", color: o.qRank ? TEAL : "#9AA2AF" }}
@@ -9531,6 +9562,10 @@ function App() {
                   {Q_RANKS.map((q) => <option key={q} value={q}>{q}</option>)}
                 </select>
               )}
+              {journalRank?.record && <span title={journalRank.record.source} style={{ fontSize: 10.5, color: journalRank.status === "matched" ? GREEN : AMBER }}>
+                Scopus ${journalRank.record.year}: ${journalRank.record.percentile}th percentile · ${journalRank.quartile}${journalRank.status === "reference-only" ? " (reference only; not publication-year rank)" : ""}${o.qRank ? " · manual Q-rank retained" : ""}
+              </span>}
+              {journalRank?.status === "ambiguous" && <span style={{ fontSize: 10.5, color: AMBER }}>Conflicting Scopus rows — review</span>}
             </div>
             <div style={{ fontSize: 11, color: AMBER, marginTop: 3, fontWeight: 600 }}>{visibleCvRecordType(o, OUTPUT_TYPES)}</div>
             {o.evidenceStatus === "approved_without_evidence" && <div style={{ fontSize: 11, color: GREEN, marginTop: 3, fontWeight: 600 }}>{o.cvEditedAt ? "Updated in Live CV" : "Approved from CV"} · no file uploaded</div>}
@@ -9764,12 +9799,16 @@ function App() {
             {renderResearchTabs()}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
               <input ref={cvInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={importCv} style={{ display: "none" }} />
+              <input ref={rankingInputRef} type="file" multiple accept=".xlsx,.xls" onChange={importJournalRankings} style={{ display: "none" }} />
+              <button type="button" onClick={() => rankingInputRef.current?.click()} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>Upload Scopus rankings</button>
+              <span style={{ alignSelf: "center", fontSize: 11, color: MUTED }}>{(data.journalRankings || []).length} journal-year records · 2025 snapshot</span>
               <button type="button" onClick={() => cvInputRef.current?.click()} disabled={importingCv} style={{ background: TEAL, color: "#fff", border: 0, borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>{importingCv ? "Importing…" : data.cvRegistry ? "Replace Word CV" : "Import Word CV"}</button>
               <button type="button" onClick={exportCvAsWord} disabled={!data.cvRegistry?.sourceText || exportingCv} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>{exportingCv ? "Preparing…" : "Export Word CV"}</button>
               <button type="button" onClick={() => { setCvDraftText(data.cvRegistry?.sourceText || ""); setEditingCvText(true); }} disabled={!data.cvRegistry?.sourceText} style={{ background: "#fff", color: TEAL, border: "1px solid #C7CCD3", borderRadius: 4, padding: "8px 11px", cursor: "pointer" }}>Edit CV text</button>
               {data.cvRegistry?.sourceFile && <span style={{ alignSelf: "center", fontSize: 11.5, color: MUTED }}>Source: {data.cvRegistry.sourceFile}</span>}
               {(Object.keys(data.cvRegistry?.entryEdits || {}).length > 0 || (!data.cvRegistry?.sourceDocxBase64 && data.cvRegistry?.sourceText)) && <span style={{ alignSelf: "center", fontSize: 11.5, color: MUTED }}>Edited entries export in an updated Word layout.</span>}
             </div>
+            {rankingImportError && <div role="alert" style={{ color: RED, fontSize: 12, marginBottom: 8 }}>{rankingImportError}</div>}
             {extractError && <div role="alert" style={{ color: RED, fontSize: 12, marginBottom: 8 }}>{extractError}</div>}
             {syncMessage && <div role="status" style={{ color: GREEN, fontSize: 12, marginBottom: 8 }}>{syncMessage}</div>}
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 12, lineHeight: 1.45 }}>Word CV entries and linked projects are validated. APS additions await your approval in their CV section.</div>
