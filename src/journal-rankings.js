@@ -6,7 +6,7 @@ export function normalizeJournalTitle(value) {
 export function quartileFromPercentile(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0 || n > 100 || value === "") return "";
-  return n >= 75 ? "Q1" : n >= 50 ? "Q2" : n >= 25 ? "Q3" : "Q4";
+  return n >= 90 ? "Q1 (Top 10%)" : n >= 75 ? "Q1" : n >= 50 ? "Q2" : n >= 25 ? "Q3" : "Q4";
 }
 
 export function parseJournalRankingRows(rows, source, year = 2025) {
