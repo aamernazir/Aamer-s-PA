@@ -31,7 +31,7 @@ import { recentCvCoauthors } from "./src/cv-collaborators.js";
 import { collaboratorEngagement } from "./src/collaboration-status.js";
 import { mailboxCategory, mailboxDeadlineHints, mailboxIgnoreRule, mailboxItemId, mailboxProjectReferences, mailboxSuggestions, mailboxText } from "./src/mailbox-triage.js";
 import { APS_SUBSECTION_LABELS, applyMailboxRoute, apsCycleDateEligibility, createRouteDraft, routePreviewFields } from "./src/mailbox-routing.js";
-import { useState, useEffect, useRef } from "react";
+import { Component, useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import * as mammoth from "mammoth/mammoth.browser";
 import {
@@ -556,6 +556,7 @@ function GhostAddButton({ onClick, label }) {
 
 function App() {
   const [projects, setProjects] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [collaboratorRoster, setCollaboratorRoster] = useState([]);
   const [rosterLoaded, setRosterLoaded] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -575,11 +576,19 @@ function App() {
       try {
         const res = await window.storage.get(STORAGE_KEY);
         if (res && res.value) {
-          setProjects(JSON.parse(res.value).map(project => {
-            // One-time correction of the confirmed Co-I record, without overriding a manually assigned role.
-            const knownCoI = String(project.projectNumber || "").trim().toUpperCase() === "IN26018"
-              && /yasmeen|yassmin|yasmin|yasmine/i.test(String(project.pi || ""));
-            return knownCoI && project.ownerRole !== "Co-I" ? { ...project, ownerRole: "Co-I" } : project;
+          const saved = JSON.parse(res.value);
+          if (!Array.isArray(saved)) throw new Error("Project records are not a list");
+          setProjects(saved.map(project => {
+            if (!project || typeof project !== "object" || Array.isArray(project)) throw new Error("Invalid project record");
+            // Older/imported projects can omit lists used by the detail view.
+            // Retain every other field and never discard a project on a read error.
+            const normalized = { ...project };
+            for (const key of ["team", "capabilities", "budgetLines", "objectives", "risks", "evidence", "receipts", "activityLog", "workPackages"]) {
+              if (!Array.isArray(normalized[key])) normalized[key] = [];
+            }
+            const knownCoI = String(normalized.projectNumber || "").trim().toUpperCase() === "IN26018"
+              && /yasmeen|yassmin|yasmin|yasmine/i.test(String(normalized.pi || ""));
+            return knownCoI && normalized.ownerRole !== "Co-I" ? { ...normalized, ownerRole: "Co-I" } : normalized;
           }));
         } else {
           // migrate legacy single-project key if present, else seed with KFUPM project
@@ -596,7 +605,8 @@ function App() {
           setProjects(seeded);
         }
       } catch (e) {
-        setProjects([KFUPM_PROJECT]);
+        // Never seed and overwrite a user's saved portfolio after a read/parse failure.
+        setLoadError("Could not read your saved projects. Nothing has been changed. Check your connection and try reloading; if it persists, share this message: " + (e?.message || "unknown error"));
       } finally {
         setLoaded(true);
       }
@@ -683,7 +693,10 @@ function App() {
     return result.projects && result.projects[0] ? result.projects[0] : project;
   }
 
-  if (!projects) return null;
+  if (!projects) return <div role="alert" style={{ maxWidth: 700, margin: "48px auto", padding: 24, background: "#FFF8E8", color: "#694F1D", border: "1px solid #D7B76A", borderRadius: 8 }}>
+    {loadError || "Loading your project dashboard…"}
+    {loadError && <div style={{ marginTop: 16 }}><button onClick={() => window.location.reload()} style={{ padding: "8px 14px", cursor: "pointer" }}>Reload Nyx</button></div>}
+  </div>;
 
   function updateProject(id, updater) {
     setProjects((prev) => prev.map((p) => (p.id === id ? updater(p) : p)));
@@ -10690,11 +10703,30 @@ function ModuleFrame({ onBack, children }) {
   );
 }
 
+class ProjectViewErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("Project dashboard render failed", error, info);
+  }
+  render() {
+    if (this.state.error) return <div role="alert" style={{ maxWidth: 700, margin: "48px auto", padding: 24, background: "#FFF8E8", border: "1px solid #D7B76A", borderRadius: 8, color: "#694F1D" }}>
+      The project dashboard could not display a saved record. Your data has not been deleted. Please share this error so we can repair the affected record: {String(this.state.error.message || this.state.error)}
+    </div>;
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [activeModule, setActiveModule] = useState(null);
 
   if (activeModule === "projects") {
-    return <ModuleFrame onBack={() => setActiveModule(null)}><ProjectDashboardModule /></ModuleFrame>;
+    return <ModuleFrame onBack={() => setActiveModule(null)}><ProjectViewErrorBoundary><ProjectDashboardModule /></ProjectViewErrorBoundary></ModuleFrame>;
   }
   if (activeModule === "strategic") {
     return <ModuleFrame onBack={() => setActiveModule(null)}><StrategicPositioningModule /></ModuleFrame>;
