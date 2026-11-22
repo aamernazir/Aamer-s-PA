@@ -33,7 +33,7 @@ const ALLOWED_ACCOUNT_EMAILS = new Set([
 const ALLOWED_GMAIL_EMAILS = new Set([
   "aamernazir.an@gmail.com",
   "rajaaamer30@gmail.com",
-  "aamers.pa@gmail.com",
+  "aamer.pa26@gmail.com",
 ]);
 
 function isAllowedAccount(userOrEmail) {
