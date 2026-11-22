@@ -138,9 +138,11 @@ function AccessGate() {
       <CloudSyncBanner />
       <SyncStatus status={status} onReload={reloadData} />
     </div>}
-    {status.sync?.blocked
-      ? <p role="alert" style={{ padding: 24 }}>This module could not load safely. Reconnect, then choose Reload data. Existing cloud records have not been replaced with sample data.</p>
-      : <ModuleErrorBoundary key={status.user.uid}><App /></ModuleErrorBoundary>}
+    {status.sync?.blocked && <div role="alert" style={{ padding: "10px 18px", background: "#FFF4E5", borderBottom: "1px solid #E6C77A", color: "#78350F", fontFamily: "Inter, Arial, sans-serif", fontSize: 13 }}>
+      Some cloud records could not be loaded. Affected records cannot be saved or overwritten. {status.sync.errors?.length ? status.sync.errors.join(" ") : "Open account and sync tools for details."}
+      {" "}<button onClick={() => setShowAccountTools(true)} style={{ border: "1px solid #D7B76A", background: "#fff", borderRadius: 4, padding: "4px 8px", cursor: "pointer" }}>View sync details</button>
+    </div>}
+    <ModuleErrorBoundary key={status.user.uid}><App /></ModuleErrorBoundary>
   </React.Fragment>;
 }
 
