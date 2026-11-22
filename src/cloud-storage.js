@@ -28,9 +28,22 @@ const ALLOWED_ACCOUNT_EMAILS = new Set([
   "rajaaamer30@gmail.com",
 ]);
 
+// Gmail is a separate read-only connection; permission to read a mailbox
+// must not grant access to a different user's Firestore records.
+const ALLOWED_GMAIL_EMAILS = new Set([
+  "aamernazir.an@gmail.com",
+  "rajaaamer30@gmail.com",
+  "aamers.pa@gmail.com",
+]);
+
 function isAllowedAccount(userOrEmail) {
   const email = typeof userOrEmail === "string" ? userOrEmail : userOrEmail?.email;
   return ALLOWED_ACCOUNT_EMAILS.has(String(email || "").trim().toLowerCase());
+}
+
+function isAllowedGmailAccount(userOrEmail) {
+  const email = typeof userOrEmail === "string" ? userOrEmail : userOrEmail?.email;
+  return ALLOWED_GMAIL_EMAILS.has(String(email || "").trim().toLowerCase());
 }
 
 const app = initializeApp(firebaseConfig);
@@ -166,9 +179,9 @@ export const cloudStorage = {
   async connectGmailReadonly() {
     if (!currentUser) throw new Error("Connect Google cloud sync first.");
     const result = await signInWithPopup(gmailAuth, gmailProvider);
-    if (!isAllowedAccount(result.user)) {
+    if (!isAllowedGmailAccount(result.user)) {
       await signOut(gmailAuth);
-      throw new Error("This Gmail account is not on the approved account list.");
+      throw new Error("This Gmail account is not approved for read-only Mailbox scanning.");
     }
     gmailAccessToken = GoogleAuthProvider.credentialFromResult(result)?.accessToken || null;
     gmailAccountEmail = result.user?.email || null;
