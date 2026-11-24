@@ -12,6 +12,8 @@ const APPLICATION_KEYS = new Set([
   "am2r-research-intelligence-skills-v1",
   "an2r-gmail-deadlines-v1",
   "an2r-mailbox-archive-v1",
+  "an2r-gmail-deadlines-v1:aamer.pa26@gmail.com",
+  "an2r-mailbox-archive-v1:aamer.pa26@gmail.com",
   "nyx-dashboard-tiles-v1",
 ]);
 

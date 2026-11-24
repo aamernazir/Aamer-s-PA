@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { cloudStorage } from "./cloud-storage.js";
-import { FOCUSED_SCAN_SCOPE, MAILBOX_SCAN_STORAGE_KEY, scanMailbox, scanOptionsForPeriod, scanRange } from "./mailbox-scan.js";
+import { FOCUSED_SCAN_SCOPE, MAILBOX_ACCOUNT_EMAIL, MAILBOX_SCAN_STORAGE_KEY, scanMailbox, scanOptionsForPeriod, scanRange } from "./mailbox-scan.js";
 
 let scanInProgress = false;
 const field = { padding: "8px 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: "white", color: "#1F2937" };
@@ -54,7 +54,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
     if (loading || !saved || busy || autoScanAttempted.current) return;
     const uid = storage.getStatus().user?.uid;
     const token = storage.getGmailAccessToken();
-    if (!uid || !token) return;
+    if (!uid || !token || storage.getGmailAccountEmail()?.toLowerCase() !== MAILBOX_ACCOUNT_EMAIL) return;
     autoScanAttempted.current = true;
     const lastCompleted = saved?.history?.find((run) => run?.status === "completed");
     const lastTime = Date.parse(lastCompleted?.completedAt || lastCompleted?.startedAt || 0);
@@ -92,8 +92,9 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
     const uid = storage.getStatus().user?.uid;
     try {
       if (!uid) throw new Error("Sign in before scanning.");
-      if (!storage.getGmailAccessToken()) await storage.connectGmailReadonly();
+      if (!storage.getGmailAccessToken() || storage.getGmailAccountEmail()?.toLowerCase() !== MAILBOX_ACCOUNT_EMAIL) await storage.connectGmailReadonly();
       const accountEmail = storage.getGmailAccountEmail();
+      if (accountEmail?.toLowerCase() !== MAILBOX_ACCOUNT_EMAIL) throw new Error("Choose " + MAILBOX_ACCOUNT_EMAIL + " for the read-only Mailbox connection. Your Nyx data sign-in stays separate.");
       // Read again before scanning so a remounted module never scans from stale IDs.
       const result = await storage.get(MAILBOX_SCAN_STORAGE_KEY);
       const previous = result?.value ? JSON.parse(result.value) : {};
@@ -127,6 +128,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
     setMessage("");
     try {
       await storage.connectGmailReadonly();
+      if (storage.getGmailAccountEmail()?.toLowerCase() !== MAILBOX_ACCOUNT_EMAIL) throw new Error("Choose " + MAILBOX_ACCOUNT_EMAIL + " for Mailbox scanning.");
       setMessage("Gmail reconnected. Press Scan Gmail to retry.");
     } catch (error) {
       setMessage(error.message || "Gmail could not be reconnected.");
@@ -149,7 +151,7 @@ export default function MailboxScanControls({ onSaved, storage = cloudStorage })
   return <section aria-label="Mailbox scan controls" style={{ background: "#fff", border: "1px solid #D9E1EA", borderRadius: 7, padding: 16, marginBottom: 18 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 10px" }}>Scan Gmail</h2>
     <p style={{ fontSize: 13, color: "#64748B" }}>Nyx checks for new Gmail automatically when Mailbox opens and the last successful check is more than 15 minutes old. You can still run a manual scan or choose a historical period. Only Gmail’s Primary category is checked.</p>
-    {saved?.accountEmail && <p style={{ fontSize: 12 }}>Mailbox account: {saved.accountEmail}</p>}
+    <p style={{ fontSize: 13 }}>Mailbox account: <strong>{MAILBOX_ACCOUNT_EMAIL}</strong>{storage.getGmailAccessToken() && storage.getGmailAccountEmail()?.toLowerCase() === MAILBOX_ACCOUNT_EMAIL ? " · connected for this page" : " · connect when scanning"}</p>
     <fieldset disabled={busy || loading || saved === null} style={{ border: 0, margin: 0, padding: 0, display: "flex", alignItems: "end", flexWrap: "wrap", gap: 12 }}>
       <div style={{ flexBasis: "100%" }}><div style={{ marginBottom: 6 }}>Scan period</div><div role="group" aria-label="Scan period" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {periods.map(option => <button key={option.id} type="button" aria-pressed={period === option.id} onClick={() => setPeriod(option.id)} style={{ ...field, padding: "9px 12px", cursor: "pointer", borderColor: period === option.id ? "#1F5C8B" : "#CBD5E1", background: period === option.id ? "#EAF2F8" : "#fff", color: period === option.id ? "#174B70" : "#475569", fontWeight: period === option.id ? 700 : 400 }}>{option.label}</button>)}

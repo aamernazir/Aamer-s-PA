@@ -10,8 +10,10 @@ const MODULE_NAMES = {
   "am2r-publication-archive-v1": "Publication archive",
   "am2r-research-impact-v1": "Research impact",
   "am2r-research-intelligence-skills-v1": "Research skills",
-  "an2r-gmail-deadlines-v1": "Gmail deadline scan",
-  "an2r-mailbox-archive-v1": "Mailbox archive",
+  "an2r-gmail-deadlines-v1": "Older Gmail deadline scan",
+  "an2r-mailbox-archive-v1": "Older mailbox archive",
+  "an2r-gmail-deadlines-v1:aamer.pa26@gmail.com": "PA Gmail deadline scan",
+  "an2r-mailbox-archive-v1:aamer.pa26@gmail.com": "PA mailbox archive",
 };
 
 export default function SyncStatus({ status, onReload }) {

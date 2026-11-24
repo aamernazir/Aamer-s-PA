@@ -31,8 +31,6 @@ const ALLOWED_ACCOUNT_EMAILS = new Set([
 // Gmail is a separate read-only connection; permission to read a mailbox
 // must not grant access to a different user's Firestore records.
 const ALLOWED_GMAIL_EMAILS = new Set([
-  "aamernazir.an@gmail.com",
-  "rajaaamer30@gmail.com",
   "aamer.pa26@gmail.com",
 ]);
 

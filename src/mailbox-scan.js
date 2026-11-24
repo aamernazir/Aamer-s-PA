@@ -1,6 +1,8 @@
 import { matchesMailboxIgnoreRule } from "./mailbox-triage.js";
 
-export const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
+export const MAILBOX_ACCOUNT_EMAIL = "aamer.pa26@gmail.com";
+// A new key keeps the previous Gmail account's scan history untouched.
+export const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1:aamer.pa26@gmail.com";
 export const FOCUSED_SCAN_SCOPE = "focused";
 
 // Use the relevant words themselves rather than relying on Gmail stemming.

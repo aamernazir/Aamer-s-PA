@@ -10336,8 +10336,8 @@ function App() {
   return App;
 })();
 
-const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1";
-const MAILBOX_ARCHIVE_STORAGE_KEY = "an2r-mailbox-archive-v1";
+const MAILBOX_SCAN_STORAGE_KEY = "an2r-gmail-deadlines-v1:aamer.pa26@gmail.com";
+const MAILBOX_ARCHIVE_STORAGE_KEY = "an2r-mailbox-archive-v1:aamer.pa26@gmail.com";
 
 function mailboxDate(value) {
   if (!value) return "Date not available";
@@ -10752,7 +10752,7 @@ function AssistantHub({ onOpenModule }) {
     projects: "am2r-projects-v1",
     aps: "am2r-aps-v1",
     archive: "am2r-publication-archive-v1",
-    mailbox: "an2r-mailbox-archive-v1",
+    mailbox: "an2r-mailbox-archive-v1:aamer.pa26@gmail.com",
   };
 
   function summarize(id, raw) {

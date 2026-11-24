@@ -44,8 +44,8 @@ const STORAGE_KEYS = {
   archive: "am2r-publication-archive-v1",
   impact: "am2r-research-impact-v1",
   skills: "am2r-research-intelligence-skills-v1",
-  mailbox: "an2r-mailbox-archive-v1",
-  mailboxScan: "an2r-gmail-deadlines-v1",
+  mailbox: "an2r-mailbox-archive-v1:aamer.pa26@gmail.com",
+  mailboxScan: "an2r-gmail-deadlines-v1:aamer.pa26@gmail.com",
   funding: "am2r-funding-pipeline-v1",
   dashboardTiles: "nyx-dashboard-tiles-v1",
 };
