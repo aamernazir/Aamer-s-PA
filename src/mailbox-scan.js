@@ -42,7 +42,7 @@ function htmlToPlainText(value) {
   // Template contents are inert: email HTML must never execute or load remote images.
   const node = document.createElement("template");
   node.innerHTML = value || "";
-  node.content.querySelectorAll("script, style").forEach(element => element.remove());
+  node.content.querySelectorAll("script, style, blockquote, .gmail_quote").forEach(element => element.remove());
   return (node.content.textContent || "").replace(/\s+/g, " ").trim();
 }
 
@@ -61,7 +61,7 @@ function gmailBody(payload) {
   visit(payload);
   // multipart/alternative commonly repeats the same email as plain text and HTML.
   // Analyze one preferred representation rather than concatenating duplicates.
-  return (plain.find(Boolean) || html.find(Boolean) || "").replace(/\s+/g, " ").trim();
+  return (plain.find(Boolean) || html.find(Boolean) || "").trim();
 }
 
 function cleanMessageText(text) {
@@ -150,7 +150,7 @@ export function deriveContributionSummary(subject, emailText, attachmentText = "
 }
 
 function messageSummary(subject, body, hints) {
-  const boilerplate = /unsubscribe|manage (?:your )?preferences|view (?:this )?in (?:a )?browser|privacy policy|do not reply/i;
+  const boilerplate = /unsubscribe|manage (?:your )?preferences|view (?:this )?in (?:a )?browser|privacy policy|do not reply|confidentiality notice|sent from my|follow us on|this message (?:and|is)/i;
   // Gmail often returns the whole quoted thread. Summarize only the newest
   // message above common reply/forward separators.
   const newestMessage = newestMessageText(body);
@@ -169,7 +169,20 @@ function messageSummary(subject, body, hints) {
     ].filter(Boolean);
     return [...new Set(reviewDetails)].join(" ").slice(0, 700);
   }
-  const details = [...new Set([...(hints || []), ...sentences])].slice(0, 5).join(" ").slice(0, 700);
+  // Favor the actual academic outcome or request over greetings, journal
+  // marketing, generic thanks and signatures. Keep deadlines separate.
+  const useful = sentences.map((sentence, index) => {
+    let score = 0;
+    if (/\b(?:accepted|published|awarded|appointed|selected|certificate|recognition|completed|presented|delivered|approved|granted)\b/i.test(sentence)) score += 7;
+    if (/\b(?:please|kindly|request|confirm|respond|submit|revision|invitation|invited|deadline|due date|by (?:\w+ )?20\d{2})\b/i.test(sentence)) score += 5;
+    if (/\b(?:project|grant|funding|manuscript|paper|publication|conference|committee|review|teaching|thesis|student|patent)\b/i.test(sentence)) score += 3;
+    if (/\b(?:dear|greetings|hope this|thank you for your interest|pleased to contact|we are delighted to announce|our journal|best regards|sincerely)\b/i.test(sentence)) score -= 8;
+    if (/\b(?:abstract|introduction|references|journal metrics|impact factor|editorial office|copyright)\b/i.test(sentence)) score -= 5;
+    if (sentence.length > 300) score -= 3;
+    return { sentence, score, index };
+  }).filter(entry => entry.score > 0).sort((a, b) => b.score - a.score || a.index - b.index);
+  const selected = useful.slice(0, 2).sort((a, b) => a.index - b.index).map(entry => entry.sentence);
+  const details = [...new Set([...selected, ...(hints || []).slice(0, 1)])].join(" ").slice(0, 500);
   return details || String(subject || "Email record").slice(0, 500);
 }
 
@@ -339,6 +352,8 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
   const range = scanRange(options, previous, now);
   // Legacy results have no verified Gmail owner: keep them, but do not use their IDs to skip analysis.
   const known = new Set(previous.accountEmail ? previous.processedMessageIds || [] : []);
+  const targetMessageId = options.targetMessageId ? String(options.targetMessageId) : "";
+  if (targetMessageId) known.delete(targetMessageId);
   const items = new Map((previous.items || []).map(item => [item.id, savedMetadata(item)]));
   const seen = new Set();
   const scope = range.scope;
@@ -390,6 +405,7 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
       for (const message of page.messages || []) {
         if (!message.id || seen.has(message.id)) continue;
         seen.add(message.id);
+        if (targetMessageId && message.id !== targetMessageId) continue;
         history.found++;
         // Successfully processed Gmail message IDs are immutable checkpoints.
         // Date-range and legacy force options must never bypass them.
@@ -447,6 +463,11 @@ export async function scanMailbox({ accessToken, accountEmail, previous = {}, op
       if (pageToken && pages.has(pageToken)) throw new Error("Gmail repeated a page token. Retry the scan.");
       if (pageToken) pages.add(pageToken);
     } while (pageToken);
+    if (targetMessageId && !seen.has(targetMessageId)) {
+      history.status = "partial";
+      history.errorCode = "not-found";
+      history.error = "The selected email was not found in this scan period. Check its date and Gmail access.";
+    }
     if (history.failed) {
       history.status = "partial";
       history.errorCode = "message-failures";

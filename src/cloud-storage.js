@@ -55,7 +55,7 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 const gmailProvider = new GoogleAuthProvider();
 gmailProvider.addScope("https://www.googleapis.com/auth/gmail.readonly");
-gmailProvider.setCustomParameters({ prompt: "select_account" });
+gmailProvider.setCustomParameters({ login_hint: "aamer.pa26@gmail.com" });
 
 let currentUser = null;
 let pageAccountUid = null;

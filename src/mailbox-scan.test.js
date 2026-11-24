@@ -273,3 +273,37 @@ test("user cancellation is recorded as cancelled and remains retryable", async (
   assert.equal(next.history[0].listFailures,0);
   assert.deepEqual(next.processedMessageIds,[]);
 });
+
+test("summary prioritizes the academic outcome over greeting and promotional prose", () => {
+  const email = message("outcome", "Dear Professor. We hope this message finds you well. Our journal offers many services. Your paper on mechanical metamaterials has been accepted for publication. Please submit the final files by November 15, 2026. Best regards, Editorial Office.");
+  email.payload.headers[0].value = "Paper accepted for publication";
+  const item = messageMetadata(email);
+  assert.match(item.summary, /accepted for publication/);
+  assert.doesNotMatch(item.summary, /hope this message|many services|Best regards/);
+  assert.match(item.requestedAction, /submit the final files/);
+});
+
+test("quoted thread text does not turn an old invitation into the newest message", () => {
+  const email = message("thread", "Your manuscript has been accepted for publication.\n\n-----Original Message-----\nFrom: editor@example.test\nWe invite you to review a manuscript.");
+  email.payload.headers[0].value = "Re: Publication decision";
+  const item = messageMetadata(email);
+  assert.match(item.summary, /accepted for publication/);
+  assert.doesNotMatch(item.summary, /invitation to review/);
+});
+
+test("a targeted correction fetches only the selected already-scanned message", async () => {
+  const first = message("a", "We invite you to review a manuscript.");
+  first.threadId = "thread-a";
+  const second = message("b", "Your paper has been accepted for publication.");
+  second.threadId = "thread-b";
+  const previous = await run(fixture({first:{messages:[{id:"a"},{id:"b"}]}}, {a:first,b:second}), {options:{scope:"all-primary"}});
+  const changed = message("a", "Your contribution as a committee member was recognized with a certificate.");
+  changed.threadId = "thread-a";
+  const f = fixture({first:{messages:[{id:"a"},{id:"b"}]}}, {a:changed,b:second});
+  const result = await run(f, {previous,options:{mode:"manual",scope:"all-primary",startDate:"2026-10-01",endDate:"2026-10-02",targetMessageId:"a"}});
+  assert.equal(result.history[0].analyzed, 1);
+  assert.ok(f.calls.some(url => url.pathname.endsWith("/a")));
+  assert.ok(!f.calls.some(url => url.pathname.endsWith("/b")));
+  assert.ok(result.items.some(item => item.id === "b"));
+  assert.match(result.items.find(item => item.id === "a").summary, /committee member/);
+});

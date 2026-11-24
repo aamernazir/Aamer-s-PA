@@ -24,6 +24,8 @@ async function extractDocxUploadText(file) {
 }
 
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
+import { scanMailbox, MAILBOX_ACCOUNT_EMAIL } from "./src/mailbox-scan.js";
+import { cloudStorage } from "./src/cloud-storage.js";
 import NyxDashboard from "./src/NyxDashboard.jsx";
 import { collectActiveWorkload, hasProjectNumber, isCoIProject } from "./src/project-workload.js";
 import { projectDuration, projectScheduleStatus } from "./src/project-dates.js";
@@ -10374,27 +10376,38 @@ function MailboxModule({ onOpenModule }) {
     setReprocessingMailId(id);
     setReprocessMailError("");
     try {
-      const parsed = await claudeExtractJSON([{ type: "text", text:
-        "Re-evaluate this existing email triage record from the supplied email content only. Do not invent facts or imply attachments were read. Return ONLY JSON with optional string fields summary, contributionSummary, category, and explanation. Summary must be concise and factual; contributionSummary must describe the user's actual contribution only if supported. Email: " +
-        JSON.stringify({ subject: item.subject, from: item.from, receivedAt: item.receivedAt, snippet: item.snippet, body: item.body, text: item.text, summary: item.summary, contributionSummary: item.contributionSummary, category: item.category, attachments: (item.attachments || []).map(a => ({ filename: a.filename, readStatus: a.readStatus })) })
-      }]);
-      const keys = ["summary", "contributionSummary", "category"];
-      const changes = Object.fromEntries(keys.filter(key => typeof parsed[key] === "string" && parsed[key].trim() && parsed[key].trim() !== (item[key] || "")).map(key => [key, parsed[key].trim()]));
-      if (!Object.keys(changes).length) {
-        setMessage("Reprocessing finished. No supported changes identified.");
+      if (!cloudStorage.getGmailAccessToken() || cloudStorage.getGmailAccountEmail()?.toLowerCase() !== MAILBOX_ACCOUNT_EMAIL) {
+        await cloudStorage.connectGmailReadonly();
+      }
+      if (cloudStorage.getGmailAccountEmail()?.toLowerCase() !== MAILBOX_ACCOUNT_EMAIL) throw new Error("Connect the Mailbox account " + MAILBOX_ACCOUNT_EMAIL + ".");
+      const day = new Date(item.receivedAt).toISOString().slice(0, 10);
+      const result = await window.storage.get(MAILBOX_SCAN_STORAGE_KEY);
+      const previous = result?.value ? JSON.parse(result.value) : {};
+      const next = await scanMailbox({
+        accessToken: cloudStorage.getGmailAccessToken(),
+        accountEmail: cloudStorage.getGmailAccountEmail(),
+        previous,
+        options: { mode: "manual", period: "custom", scope: "all-primary", startDate: day, endDate: day, targetMessageId: id },
+      });
+      const fresh = next.items.find(entry => entry.id === id);
+      if (next.history[0].status !== "completed" || !fresh) throw new Error(next.history[0].error || "The selected email could not be re-read.");
+      const fields = ["summary", "contributionSummary", "purpose", "requestedAction"];
+      const changes = fields.filter(key => (fresh[key] || "") !== (item[key] || "")).map(key => key + ": " + (fresh[key] || "Not supported by this email."));
+      if (!changes.length) {
+        setMessage("Re-read the original email and readable PDF evidence. No different supported summary was found.");
         return;
       }
-      const preview = Object.entries(changes).map(([key, value]) => key + ": " + value).join("\n\n");
-      if (!window.confirm("Review proposed Mailbox updates:\n\n" + preview + (parsed.explanation ? "\n\nReason: " + parsed.explanation : "") + "\n\nSave changes?")) return;
-      const existing = archive[id] || {};
-      const record = { ...item, ...existing, ...changes, id, reprocessedAt: new Date().toISOString() };
+      if (!window.confirm("Review the proposed updates from the actual email and readable PDF evidence:\n\n" + changes.join("\n\n") + "\n\nSave these changes?")) return;
+      await window.storage.set(MAILBOX_SCAN_STORAGE_KEY, JSON.stringify(next));
+      const record = { ...(archive[id] || {}), ...fresh, id, reprocessedAt: new Date().toISOString() };
       const nextArchive = { ...archive, [id]: record };
       await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(nextArchive));
       setArchive(nextArchive);
-      setItems(current => current.map(entry => mailboxItemId(entry) === id ? record : entry));
-      setMessage("Reprocessed email saved. Review suggested destinations before transferring.");
+      setItems(current => current.map(entry => mailboxItemId(entry) === id ? fresh : entry));
+      setRereadIds(current => { const updated = new Set(current); updated.delete(id); return updated; });
+      setMessage("Updated from the original email. Review the contribution before routing it.");
     } catch (error) {
-      setReprocessMailError("Could not reprocess email: " + (error.message || "unknown error"));
+      setReprocessMailError("Could not re-read email: " + (error.message || "unknown error"));
     } finally { setReprocessingMailId(null); }
   }
   const [confirmClearIgnored, setConfirmClearIgnored] = useState(false);
@@ -10655,7 +10668,7 @@ function MailboxModule({ onOpenModule }) {
                   {reviewStatus !== "ignored" && <button onClick={() => setReviewStatus(item, "ignored")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #D2D6DC", background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><X size={13} /> Ignore</button>}
                   {reviewStatus === "ignored" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>Restore to review</button>}
                   {reviewStatus === "kept" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Return to review</button>}
-                  <button onClick={() => reprocessMailItem(item)} disabled={!!reprocessingMailId} title="AI reprocess email summary and classification; review before saving" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: reprocessingMailId ? "wait" : "pointer" }}>{reprocessingMailId === id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingMailId === id ? "Reprocessing…" : "Reprocess"}</button>
+                  <button onClick={() => reprocessMailItem(item)} disabled={!!reprocessingMailId} title="Re-read this email and readable PDF evidence; review changes before saving" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: reprocessingMailId ? "wait" : "pointer" }}>{reprocessingMailId === id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingMailId === id ? "Re-reading…" : "Re-read & correct"}</button>
                   <button onClick={() => queueMessageReread(item)} disabled={rereadIds.has(id)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: rereadIds.has(id) ? "default" : "pointer" }}>{rereadIds.has(id) ? "Queued for re-read" : "Re-read this email on next scan"}</button>
                 </div>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
