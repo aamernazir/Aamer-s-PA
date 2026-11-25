@@ -24,6 +24,7 @@ async function extractDocxUploadText(file) {
 }
 
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
+import { parseMailboxPaste, normalizeMailboxPaste, mailboxPasteFingerprint, mergeMailboxPasteItem } from "./src/mailbox-paste.js";
 import { scanMailbox, MAILBOX_ACCOUNT_EMAIL } from "./src/mailbox-scan.js";
 import { cloudStorage } from "./src/cloud-storage.js";
 import NyxDashboard from "./src/NyxDashboard.jsx";
@@ -10370,6 +10371,101 @@ function MailboxModule({ onOpenModule }) {
   const [rereadIds, setRereadIds] = useState(new Set());
   const [reprocessingMailId, setReprocessingMailId] = useState(null);
   const [reprocessMailError, setReprocessMailError] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [pasteEntries, setPasteEntries] = useState([]);
+  const [pasteError, setPasteError] = useState("");
+  const [savingPaste, setSavingPaste] = useState(false);
+  const pastePanelRef = useRef(null);
+  function editMailboxItem(item) {
+    const id = mailboxItemId(item);
+    const routed = (archive[id]?.approvedRoutes || []).length;
+    if (routed) {
+      setMessage("This entry was already transferred. Edit the corresponding destination record so Mailbox and that module do not disagree.");
+      return;
+    }
+    setPasteText("");
+    setPasteError("");
+    setPasteEntries([{ ...item, originalId: id }]);
+    if (pastePanelRef.current) {
+      pastePanelRef.current.open = true;
+      pastePanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function previewPaste() {
+    try {
+      const parsed = parseMailboxPaste(pasteText);
+      setPasteEntries(parsed);
+      setPasteError("");
+    } catch (error) {
+      setPasteEntries([]);
+      setPasteError(error.message || "Could not read the pasted entries.");
+    }
+  }
+
+  function editPasteEntry(index, field, value) {
+    setPasteEntries(current => current.map((entry, position) => position === index ? { ...entry, [field]: value } : entry));
+  }
+
+  async function savePastedEntries() {
+    if (!pasteEntries.length || savingPaste) return;
+    setSavingPaste(true);
+    setPasteError("");
+    try {
+      const prepared = pasteEntries.map((entry, index) => {
+        const normalized = normalizeMailboxPaste({
+          date: String(entry.receivedAt || "").slice(0, 10),
+          subject: entry.subject, from: entry.from, summary: entry.summary,
+          contributionSummary: entry.contributionSummary,
+          contributionDate: entry.contributionDate,
+          deadline: String(entry.deadlineHints?.[0] || "").replace(/^Deadline:\s*/i, ""),
+          projectReferences: entry.projectReferences,
+        }, index);
+        return { ...normalized, originalId: entry.originalId || "" };
+      });
+      const fingerprints = prepared.map(mailboxPasteFingerprint);
+      if (new Set(fingerprints).size !== fingerprints.length) throw new Error("Two edited entries have the same date, sender and subject.");
+      // Reload cloud records before applying the import, including any scan
+      // completed while the user was reviewing this preview.
+      const [scanResult, archiveResult] = await Promise.all([
+        window.storage.get(MAILBOX_SCAN_STORAGE_KEY),
+        window.storage.get(MAILBOX_ARCHIVE_STORAGE_KEY),
+      ]);
+      const scanItems = scanResult?.value ? JSON.parse(scanResult.value).items || [] : [];
+      const latestArchive = archiveResult?.value ? JSON.parse(archiveResult.value) : {};
+      const existing = [...scanItems, ...Object.values(latestArchive)];
+      const matches = prepared.map(entry => {
+        const original = entry.originalId && existing.find(item => mailboxItemId(item) === entry.originalId);
+        return original || existing.find(item => mailboxPasteFingerprint(item) === mailboxPasteFingerprint(entry));
+      });
+      const routed = matches.find(match => latestArchive[mailboxItemId(match)]?.approvedRoutes?.length);
+      if (routed) throw new Error("An entry is already routed. Edit it in the destination module before replacing its Mailbox summary.");
+      const now = new Date().toISOString();
+      const updated = { ...latestArchive };
+      for (const [index, entry] of prepared.entries()) {
+        const match = matches[index];
+        const id = match ? mailboxItemId(match) : entry.id;
+        const prior = latestArchive[id] || {};
+        const { originalId, ...record } = entry;
+        updated[id] = {
+          ...match, ...prior, ...record, id,
+          reviewStatus: prior.reviewStatus || "pending",
+          approvedRoutes: prior.approvedRoutes || [],
+          manualRevisionAt: now,
+        };
+      }
+      await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(updated));
+      setArchive(updated);
+      setItems([...scanItems.map(item => mergeMailboxPasteItem(item, updated[mailboxItemId(item)])), ...Object.values(updated).filter(item => !scanItems.some(scanItem => mailboxItemId(scanItem) === mailboxItemId(item)))]);
+      setPasteEntries([]);
+      setPasteText("");
+      setFilter("all");
+      setMessage(`Saved ${prepared.length} reviewed entr${prepared.length === 1 ? "y" : "ies"} to Mailbox. No module was changed; review each suggested destination before transferring.`);
+    } catch (error) {
+      setPasteError(error.message || "The pasted records could not be saved.");
+    } finally { setSavingPaste(false); }
+  }
+
   async function reprocessMailItem(item) {
     if (reprocessingMailId) return;
     const id = mailboxItemId(item);
@@ -10426,7 +10522,7 @@ function MailboxModule({ onOpenModule }) {
       const scanIds = new Set(scanItems.map(mailboxItemId));
       const archivedItems = Object.values(storedArchive).filter((item) => !scanIds.has(mailboxItemId(item)));
       setArchive(storedArchive);
-      setItems([...scanItems, ...archivedItems]);
+      setItems([...scanItems.map(item => mergeMailboxPasteItem(item, storedArchive[mailboxItemId(item)])), ...archivedItems]);
       if (apsResult?.value) {
         const apsData = JSON.parse(apsResult.value);
         if (apsData.activeCycle) setApsCycle(apsData.activeCycle);
@@ -10606,8 +10702,45 @@ function MailboxModule({ onOpenModule }) {
         </div>
 
         <div style={{ background: "#EFF8F1", border: "1px solid #B9D8C1", borderRadius: 7, padding: "12px 14px", marginBottom: 18, color: "#315B43", fontSize: 13, lineHeight: 1.5 }}>
-          Gmail access is read-only. The mailbox stores message metadata, deadline hints, and routing decisions. Scanning starts only when you press Scan Gmail below.
+          Gmail access is read-only. You may scan Gmail or paste dot-prepared summaries. Nyx saves reviewed fields and routing decisions, not email bodies or attachments.
         </div>
+
+        <details ref={pastePanelRef} style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 8, padding: "13px 15px", marginBottom: 16 }}>
+          <summary style={{ cursor: "pointer", color: HUB_TEAL, fontWeight: 700, fontSize: 15 }}>Paste reviewed results from ChatGPT dot</summary>
+          <p style={{ color: HUB_MUTED, fontSize: 13, lineHeight: 1.5, margin: "10px 0" }}>Have your dot prepare factual listings, then edit them here. Only the fields below are saved—not the full email or attachments. Pasted claims are not independently verified by Nyx.</p>
+          <div style={{ background: "#F3F8FC", color: HUB_INK, borderRadius: 5, padding: 10, fontSize: 12.5, lineHeight: 1.5, marginBottom: 10 }}>
+            Use one block per email, separated by ---: <span className="an-mono">Date: YYYY-MM-DD · Subject: · From: · Summary: · Contribution: · Contribution date: YYYY-MM-DD · Deadline: YYYY-MM-DD · Project:</span>. Contribution, contribution date, deadline and project are optional. You may also paste a JSON array with these field names.
+          </div>
+          <textarea aria-label="Paste structured email summaries" value={pasteText} onChange={event => { setPasteText(event.target.value); setPasteEntries([]); setPasteError(""); }} placeholder={"Date: 2026-11-15\nContribution date: 2026-11-12\nSubject: ...\nFrom: ...\nSummary: ...\nContribution: ...\nDeadline: 2026-11-30\nProject: IN26080\n---\nDate: ..."} rows={7} style={{ boxSizing: "border-box", width: "100%", border: "1px solid " + HUB_LINE, borderRadius: 5, padding: 10, fontSize: 14, lineHeight: 1.5, resize: "vertical" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 9 }}>
+            <button type="button" onClick={previewPaste} disabled={!pasteText.trim()} style={{ background: HUB_TEAL, color: "#fff", border: 0, borderRadius: 5, padding: "9px 14px", cursor: "pointer" }}>Preview entries</button>
+            <span style={{ fontSize: 12, color: HUB_MUTED }}>Preview and correct before saving. Routing happens later, one entry at a time.</span>
+          </div>
+          {pasteError && <div role="alert" style={{ color: "#A33126", padding: "9px 0" }}>{pasteError}</div>}
+          {pasteEntries.length > 0 && <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+            {pasteEntries.map((entry, index) => {
+              const match = items.find(item => mailboxItemId(item) === entry.originalId || mailboxPasteFingerprint(item) === mailboxPasteFingerprint(entry));
+              const routed = match && (archive[mailboxItemId(match)]?.approvedRoutes || []).length > 0;
+              const fieldStyle = { boxSizing: "border-box", width: "100%", border: "1px solid " + HUB_LINE, borderRadius: 5, padding: "7px 9px", fontSize: 14, marginTop: 4 };
+              return <div key={index} style={{ border: "1px solid " + HUB_LINE, borderRadius: 6, padding: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Entry {index + 1} {match ? <span style={{ fontWeight: 400, color: routed ? "#A33126" : HUB_AMBER }}>· {routed ? "Already routed; edit in destination" : "Matches an existing Mailbox entry"}</span> : <span style={{ fontWeight: 400, color: HUB_MUTED }}>· New</span>}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 9 }}>
+                  <label>Date<input type="date" value={String(entry.receivedAt || "").slice(0, 10)} onChange={event => editPasteEntry(index, "receivedAt", event.target.value + "T12:00:00.000Z")} style={fieldStyle} /></label>
+                  <label>Sender<input value={entry.from} onChange={event => editPasteEntry(index, "from", event.target.value)} style={fieldStyle} /></label>
+                  <label>Contribution / event date (if different)<input type="date" value={entry.contributionDate || ""} onChange={event => editPasteEntry(index, "contributionDate", event.target.value)} style={fieldStyle} /></label>
+                </div>
+                <label style={{ display: "block", marginTop: 8 }}>Subject<input value={entry.subject} onChange={event => editPasteEntry(index, "subject", event.target.value)} style={fieldStyle} /></label>
+                <label style={{ display: "block", marginTop: 8 }}>Email summary<textarea value={entry.summary} onChange={event => editPasteEntry(index, "summary", event.target.value)} rows={2} style={fieldStyle} /></label>
+                <label style={{ display: "block", marginTop: 8 }}>Contribution / recognition (leave blank if not evidenced)<textarea value={entry.contributionSummary} onChange={event => editPasteEntry(index, "contributionSummary", event.target.value)} rows={2} style={fieldStyle} /></label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 9, marginTop: 8 }}>
+                  <label>Deadline, optional<input type="date" value={String(entry.deadlineHints?.[0] || "").replace(/^Deadline:\s*/i, "")} onChange={event => editPasteEntry(index, "deadlineHints", event.target.value ? ["Deadline: " + event.target.value] : [])} style={fieldStyle} /></label>
+                  <label>Project number(s), optional<input value={(entry.projectReferences || []).join(", ")} onChange={event => editPasteEntry(index, "projectReferences", event.target.value.split(/[,\s]+/).filter(Boolean))} style={fieldStyle} /></label>
+                </div>
+              </div>;
+            })}
+            <button type="button" onClick={savePastedEntries} disabled={savingPaste} style={{ justifySelf: "start", border: 0, background: HUB_GREEN, color: "#fff", borderRadius: 5, padding: "10px 15px", cursor: savingPaste ? "wait" : "pointer" }}>{savingPaste ? "Saving…" : `Save ${pasteEntries.length} to Mailbox for review`}</button>
+          </div>}
+        </details>
 
         <MailboxScanControls onSaved={loadMailbox} />
 
@@ -10652,7 +10785,7 @@ function MailboxModule({ onOpenModule }) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 7 }}><span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: HUB_TEAL, background: "#EAF2F8", padding: "4px 7px", borderRadius: 4 }}>{saved.category || mailboxCategory(item)}</span>{approved.length ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Routed</span> : reviewStatus === "kept" ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Kept</span> : reviewStatus === "ignored" ? <span style={{ fontSize: 10, color: HUB_MUTED, background: "#EEF0F2", padding: "4px 7px", borderRadius: 4 }}>Ignored</span> : <span style={{ fontSize: 10, color: HUB_AMBER, background: "#FFF8E8", padding: "4px 7px", borderRadius: 4 }}>Needs review</span>}</div>
-                  <h2 style={{ fontSize: 16, lineHeight: 1.35, color: HUB_INK, margin: 0, overflowWrap: "anywhere" }}>{item.subject || "(No subject)"}</h2>
+                  <h2 style={{ fontSize: 16, lineHeight: 1.35, color: HUB_INK, margin: 0, overflowWrap: "anywhere" }}>{item.subject || "(No subject)"}</h2>{item.sourceKind === "dot" && <span style={{ fontSize: 11, color: HUB_AMBER }}>Dot-prepared · check against source email</span>}
                   <div style={{ fontSize: 12, color: HUB_MUTED, marginTop: 5 }}>{item.from || "Unknown sender"} · {mailboxDate(item.receivedAt)}</div>
                 </div>
                 <button onClick={() => togglePriority(item)} title="Toggle priority" style={{ border: "none", background: saved.priority ? "#FFF1D6" : "#F6F8FB", color: saved.priority ? HUB_AMBER : HUB_MUTED, borderRadius: 5, padding: "7px 9px", cursor: "pointer", flexShrink: 0 }}>{saved.priority ? "★" : "☆"}</button>
@@ -10668,8 +10801,9 @@ function MailboxModule({ onOpenModule }) {
                   {reviewStatus !== "ignored" && <button onClick={() => setReviewStatus(item, "ignored")} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid #D2D6DC", background: "#fff", color: HUB_MUTED, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}><X size={13} /> Ignore</button>}
                   {reviewStatus === "ignored" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}>Restore to review</button>}
                   {reviewStatus === "kept" && <button onClick={() => setReviewStatus(item, "pending")} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: "pointer" }}>Return to review</button>}
-                  <button onClick={() => reprocessMailItem(item)} disabled={!!reprocessingMailId} title="Re-read this email and readable PDF evidence; review changes before saving" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: reprocessingMailId ? "wait" : "pointer" }}>{reprocessingMailId === id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingMailId === id ? "Re-reading…" : "Re-read & correct"}</button>
-                  <button onClick={() => queueMessageReread(item)} disabled={rereadIds.has(id)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: rereadIds.has(id) ? "default" : "pointer" }}>{rereadIds.has(id) ? "Queued for re-read" : "Re-read this email on next scan"}</button>
+                  <button onClick={() => editMailboxItem(item)} disabled={approved.length > 0} title={approved.length ? "Edit the destination record after routing" : "Edit and verify this summary before routing"} style={{ border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", cursor: approved.length ? "default" : "pointer" }}><Pencil size={13} /> Edit summary</button>
+                  {!id.startsWith("dot-") && <button onClick={() => reprocessMailItem(item)} disabled={!!reprocessingMailId} title="Re-read this email and readable PDF evidence; review changes before saving" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + HUB_LINE, background: "#fff", color: HUB_TEAL, borderRadius: 5, padding: "7px 10px", fontSize: 12, cursor: reprocessingMailId ? "wait" : "pointer" }}>{reprocessingMailId === id ? <Loader2 size={13} className="an-spin" /> : <RefreshCw size={13} />} {reprocessingMailId === id ? "Re-reading…" : "Re-read & correct"}</button>}
+                  {!id.startsWith("dot-") && <button onClick={() => queueMessageReread(item)} disabled={rereadIds.has(id)} style={{ border: "none", background: "none", color: HUB_MUTED, padding: "7px 3px", fontSize: 12, cursor: rereadIds.has(id) ? "default" : "pointer" }}>{rereadIds.has(id) ? "Queued for re-read" : "Re-read this email on next scan"}</button>}
                 </div>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: HUB_MUTED, fontWeight: 700, marginBottom: 7 }}>Suggested destinations</div>
                 {suggestions.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{suggestions.map((route) => { const routeKey = route.id === "aps" ? "aps:" + apsCycle : route.id; const isApproved = approved.includes(routeKey); return <button key={route.id} onClick={() => openRoutePreview(item, route.id)} title={isApproved ? `Review or update the saved ${mailboxRouteLabel(routeKey)} record` : route.reason} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (isApproved ? "#9CC9AA" : HUB_LINE), background: isApproved ? "#EFF8F1" : "#fff", color: isApproved ? HUB_GREEN : HUB_TEAL, borderRadius: 5, padding: "7px 9px", fontSize: 12, cursor: "pointer" }}>{isApproved ? <Check size={13} /> : <Target size={13} />}{isApproved ? `Review/update ${mailboxRouteLabel(routeKey)}` : `Review transfer to ${mailboxRouteLabel(routeKey)}`}</button>; })}</div> : <div style={{ fontSize: 12, color: HUB_MUTED }}>No archive destination recommended. Keep this message in Mailbox while it is active, then ignore it when it is no longer needed.</div>}
@@ -10685,7 +10819,7 @@ function MailboxModule({ onOpenModule }) {
             <div><div style={{ fontSize: 11, color: HUB_MUTED, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Review before transfer</div><h2 style={{ margin: 0, fontSize: 21, color: HUB_INK }}>Save to {mailboxRouteLabel(routeDraft.destination === "aps" ? "aps:" + routeDraft.apsCycle : routeDraft.destination)}</h2></div>
             <button aria-label="Close transfer preview" onClick={() => setRouteDraft(null)} disabled={savingRoute} style={{ border: 0, background: "none", cursor: "pointer", padding: 4 }}><X size={18} /></button>
           </div>
-          <div style={{ background: "#F3F8FC", border: "1px solid #B9D8E8", borderRadius: 6, padding: "10px 12px", color: HUB_TEAL, fontSize: 12.5, lineHeight: 1.5, marginBottom: 15 }}>This is the complete record that will be transferred. Review and edit the title and summary first. The email body and attachments are not saved.</div>
+          <div style={{ background: "#F3F8FC", border: "1px solid #B9D8E8", borderRadius: 6, padding: "10px 12px", color: HUB_TEAL, fontSize: 12.5, lineHeight: 1.5, marginBottom: 15 }}>This is the record to transfer. Review and edit the title and summary first. Pasted entries have not been verified against the original email; neither email bodies nor attachments are saved.</div>
           <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Record title<input value={routeDraft.title} onChange={(event) => setRouteDraft({ ...routeDraft, title: event.target.value })} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, color: HUB_INK }} /></label>
           <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Contribution / outcome summary<textarea value={routeDraft.summary} onChange={(event) => setRouteDraft({ ...routeDraft, summary: event.target.value })} rows={6} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, color: HUB_INK, resize: "vertical", lineHeight: 1.5 }} /></label>
           {routeDraft.destination === "projects" && <label style={{ display: "block", fontSize: 12, color: HUB_MUTED, marginBottom: 14 }}>Destination project<select value={routeDraft.projectId} onChange={(event) => setRouteDraft({ ...routeDraft, projectId: event.target.value })} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: "1px solid " + HUB_LINE, borderRadius: 5, background: "#fff" }}><option value="">Choose a project…</option>{routeProjects.map(project => <option key={project.id} value={project.id}>{project.title}{project.projectNumber ? " · " + project.projectNumber : ""}</option>)}</select></label>}

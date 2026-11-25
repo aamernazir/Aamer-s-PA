@@ -20,7 +20,7 @@ export function apsCycleDateEligibility(item, cycle = "APS27") {
 }
 
 function sourceDate(item) {
-  const parsed = new Date(item?.receivedAt || "");
+  const parsed = new Date(item?.contributionDate || item?.receivedAt || "");
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
@@ -49,6 +49,8 @@ export function createRouteDraft(item, destination, apsCycle = "APS27") {
   const summary = String(evidenceSummary || item?.summary || deadline || item?.subject || "Email record").slice(0, 1200);
   const draft = {
     messageId: String(item?.id || ""), destination, apsCycle,
+    dateBasis: item?.contributionDate ? "contribution date" : "email date (verify for APS)",
+    sourceKind: item?.sourceKind === "dot" ? "dot-prepared" : "gmail-scan",
     title: String(item?.subject || "Untitled email record").slice(0, 500),
     summary,
     source: String(item?.from || "Unknown sender").slice(0, 300),
@@ -74,7 +76,7 @@ export function suggestApsSubsections(draft) {
 export function routePreviewFields(draft) {
   return [
     ["Title", draft.title], ["Contribution / outcome summary", draft.summary],
-    ["Source", draft.source], ["Source date", draft.sourceDate || "Not available"],
+    ["Source", draft.source], ["Relevant date", (draft.sourceDate || "Not available") + " · " + (draft.dateBasis || "email date")],
     ["Deadline", draft.deadline || "None detected"],
   ];
 }
@@ -87,13 +89,13 @@ export function applyMailboxRoute(destination, current, draft) {
     const outputs = data.outputs || [];
     if (outputs.some(entry => entry.sourceMailboxMessageId === draft.messageId)) return { data, duplicate: true };
     const text = `${draft.title} ${draft.summary}`.toLowerCase();
-    const type = /certificate|award|committee|service/.test(text) ? "Other" : /patent/.test(text) ? "Patent" : /conference/.test(text) ? "Conference Paper" : "Journal Paper";
+    const type = /patent/.test(text) ? "Patent" : /conference/.test(text) && /\bpaper\b/.test(text) ? "Conference Paper" : /\b(?:journal|article|paper|manuscript)\b/.test(text) && /\b(?:accepted|published)\b/.test(text) ? "Journal Paper" : "Other";
     const record = {
       id: `mailbox-${draft.messageId}`, title: draft.title.trim(), type,
       venue: draft.source, year: draft.sourceDate ? Number(draft.sourceDate.slice(0, 4)) : new Date().getFullYear(),
       authors: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "",
       summary: draft.summary.trim(), methods: "", keywords: [], qRank: "",
-      sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source, sourceDate: draft.sourceDate,
+      sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source, sourceDate: draft.sourceDate, sourceKind: draft.sourceKind,
       deadline: draft.deadline, needsReview: true, addedAt,
     };
     return { data: { ...data, outputs: [record, ...outputs] }, record, duplicate: false };
@@ -111,7 +113,7 @@ export function applyMailboxRoute(destination, current, draft) {
       id: `mailbox-${draft.messageId}`, fileName: `Mailbox: ${draft.title.trim()}`,
       summary: draft.summary.trim(), contributionSummary: draft.summary.trim(), bulletText: draft.summary.trim(),
       subsections, subsectionApprovals: Object.fromEntries(subsections.map(code => [code, { approved: false, bulletText: draft.summary.trim(), comment: "" }])), period: draft.sourceDate ? draft.sourceDate.slice(0, 4) : "",
-      approved: false, sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source,
+      approved: false, sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source, sourceKind: draft.sourceKind,
       sourceDate: draft.sourceDate, deadline: draft.deadline, addedAt,
     };
     const duplicateIndex = inbox.findIndex(entry => entry.sourceMailboxMessageId === draft.messageId);
@@ -133,7 +135,7 @@ export function applyMailboxRoute(destination, current, draft) {
       id: `mailbox-${draft.messageId}`, title: draft.title.trim(), type: "Other",
       date: draft.sourceDate, dateType: draft.deadline ? "Deadline" : "Received",
       authors: draft.source, objectiveIdxs: [], summary: draft.summary.trim(),
-      sourceMailboxMessageId: draft.messageId, sourceModule: "Mailbox", deadline: draft.deadline,
+      sourceMailboxMessageId: draft.messageId, sourceModule: "Mailbox", sourceKind: draft.sourceKind, deadline: draft.deadline,
       uploadedAt: addedAt, needsReview: true,
     };
     const data = projects.map((project, projectIndex) => projectIndex === index ? { ...project, evidence: [record, ...evidence] } : project);

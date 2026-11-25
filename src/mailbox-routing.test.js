@@ -6,7 +6,7 @@ const item = { id: "gmail-1", subject: "Certificate awarded for workshop contrib
 
 test("route preview shows the complete bounded record before saving", () => {
   const draft = createRouteDraft(item, "aps", "APS27");
-  assert.deepEqual(routePreviewFields(draft).map(([label]) => label), ["Title", "Contribution / outcome summary", "Source", "Source date", "Deadline"]);
+  assert.deepEqual(routePreviewFields(draft).map(([label]) => label), ["Title", "Contribution / outcome summary", "Source", "Relevant date", "Deadline"]);
   assert.equal(draft.summary, item.summary);
   assert.equal(draft.sourceDate, "2026-10-02");
 });
@@ -68,4 +68,12 @@ test("project routing requires a selected project and saves reviewable evidence"
   assert.equal(first.data[0].evidence[0].summary, item.summary);
   assert.equal(first.data[0].evidence[0].needsReview, true);
   assert.throws(() => applyMailboxRoute("projects", first.data, { ...draft, messageId: "gmail-2", projectId: "missing" }), /Choose the project/);
+});
+
+test("APS uses a documented contribution date, not a later email date", () => {
+  const lateEmail = { ...item, sourceKind: "dot", receivedAt: "2026-11-15T10:00:00Z", contributionDate: "2025-10-02" };
+  assert.throws(() => createRouteDraft(lateEmail, "aps", "APS27"), /outside the APS27 contribution period/);
+  const archive = createRouteDraft(lateEmail, "archive");
+  assert.equal(archive.sourceDate, "2025-10-02");
+  assert.equal(archive.sourceKind, "dot-prepared");
 });

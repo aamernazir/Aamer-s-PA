@@ -3,7 +3,7 @@ export function mailboxItemId(item) {
 }
 
 export function mailboxText(item) {
-  return [item?.subject, item?.from, item?.summary, ...mailboxDeadlineHints(item)].filter(Boolean).join(" ");
+  return [item?.subject, item?.from, item?.summary, item?.contributionSummary, ...(item?.projectReferences || []), ...mailboxDeadlineHints(item)].filter(Boolean).join(" ");
 }
 
 export function mailboxDeadlineHints(item) {
@@ -33,7 +33,7 @@ export function mailboxSuggestions(item) {
   const suggestions = [];
   const completedResearch = /\b(?:paper|article|manuscript|publication|journal|patent)\b/.test(text)
     && /\b(?:accepted|published|publication confirmation|patent granted|final decision[^.]{0,30}accept)\b/.test(text);
-  const completedActivity = /\b(?:certificate (?:awarded|issued)|award(?:ed)?|course completed|workshop completed|service completed)\b/.test(text);
+  const completedActivity = /\b(?:certificate (?:awarded|issued)|award(?:ed)?|course completed|workshop completed|service completed|served as|delivered an? (?:oral|invited|keynote) (?:presentation|talk)|presented (?:a|the) (?:paper|poster)|completed (?:a|the) (?:peer )?review)\b/.test(text);
   const completedAcademicRecord = /\bcertificate\b/.test(text) && /\b(?:conference|committee|review|workshop|award|contribution|service)\b/.test(text);
 
   if (references.length || /project|grant|funding|work package|milestone/.test(text)) {
@@ -42,8 +42,8 @@ export function mailboxSuggestions(item) {
   if (completedActivity || completedAcademicRecord) {
     suggestions.push({ id: "aps", label: "Module 03 · APS", reason: "A completed or awarded academic activity may be suitable as APS evidence." });
   }
-  if (completedResearch || completedAcademicRecord) {
-    suggestions.push({ id: "archive", label: "Module 04 · Research Intelligence", reason: completedAcademicRecord ? "A completed certificate or academic-service record was detected." : "A completed publication or granted research outcome was detected." });
+  if (completedResearch || completedAcademicRecord || completedActivity) {
+    suggestions.push({ id: "archive", label: "Module 04 · Live CV", reason: completedAcademicRecord ? "A completed certificate or academic-service record was detected." : "A completed publication or granted research outcome was detected." });
   }
   return suggestions;
 }

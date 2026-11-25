@@ -30,3 +30,8 @@ test("explicit ignore creates a narrow preference for similar future mail", () =
   assert.ok(matchesMailboxIgnoreRule({ from: "alerts@example.test", subject: "Materials research weekly editorial digest" }, [rule]));
   assert.equal(matchesMailboxIgnoreRule({ from: "alerts@example.test", subject: "Editorial decision for your manuscript" }, [rule]), null);
 });
+
+test("reviewed dot contributions can suggest existing project, APS and CV routes", () => {
+  const item = {subject:"Research project service",summary:"Completed project milestone IN26080.",contributionSummary:"Served as technical committee member and received a certificate.",projectReferences:["IN26080"]};
+  assert.deepEqual(mailboxSuggestions(item).map(route => route.id), ["projects","aps","archive"]);
+});
