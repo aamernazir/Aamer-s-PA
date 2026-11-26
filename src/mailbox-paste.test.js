@@ -45,6 +45,9 @@ test("one natural-language paste becomes seven distinct, cautiously dated entrie
   assert.ok(items.every(item => !item.receivedAt && !item.from));
   assert.equal(items[4].contributionDate, "2026-10");
   assert.equal(items[6].contributionDate, "2026-08-05");
+  assert.equal(items[6].subject, "ICEIM 2026 — Technical Committee service and recognition");
+  assert.match(items[6].summary, /Certificate of Appreciation for this contribution/);
+  assert.ok(items[6].subject.length < 70);
   assert.equal(items[5].contributionDate, "");
   assert.deepEqual(items.map(automaticMailboxDestinations), [
     ["archive"], ["archive"], ["archive"], ["archive"], ["aps", "archive"], ["archive"], ["aps", "archive"],

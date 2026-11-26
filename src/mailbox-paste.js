@@ -82,13 +82,21 @@ function parseBulletList(text) {
     const appointed = /\bappointed to\b/i.test(sentence);
     const activityStatus = future ? "planned" : certificate || served ? "completed" : editorial ? "ongoing" : appointed ? "appointment" : "needs review";
     const contributionDate = activityStatus === "completed" || editorial ? date : "";
-    const subject = sentence.split(/,\s*(?:scheduled for|held on)/i)[0]
-      .replace(/\s+from\s+\d{1,2}\s+[A-Za-z]+\s+20\d{2}.*$/i, "")
-      .slice(0, 180);
+    const code = sentence.match(/\b[A-Z]{2,}\s*20\d{2}\b/)?.[0] || "";
+    const journal = sentence.match(/Editorial Board Member of (.+?) from \d/i)?.[1] || "";
+    const subject = code && /technical committee/i.test(sentence)
+      ? `${code} — ${certificate ? "Technical Committee service and recognition" : appointed ? "Technical Committee appointment" : /publication technical committee/i.test(sentence) ? "Publication Technical Committee" : "Technical Committee"}`
+      : journal ? `${journal} — Early Career Editorial Board`
+      : /KFUPM Mechanical Engineering departmental service/i.test(sentence) ? "KFUPM Mechanical Engineering — Departmental service"
+      : sentence.split(/,\s*(?:scheduled for|held on)/i)[0].slice(0, 120);
+    const servedCertificate = sentence.match(/^Served on the Technical Committee for ([A-Z]{2,}\s*20\d{2}) in (.+?), on (.+?) and received a Certificate of Appreciation for the contribution$/i);
+    const statement = servedCertificate
+      ? `Served on the Technical Committee for ${servedCertificate[1]} in ${servedCertificate[2]} on ${servedCertificate[3]} and received a Certificate of Appreciation for this contribution.`
+      : sentence + ".";
     return {
       sourceKind: "dot-bullet",
-      subject, summary: sentence + ".", from: "",
-      contributionSummary: activityStatus === "planned" ? "" : sentence + ".",
+      subject, summary: statement, from: "",
+      contributionSummary: activityStatus === "planned" ? "" : statement,
       contributionDate, eventPeriod: period, eventYear: (date || sentence.match(/\b20\d{2}\b/)?.[0] || "").slice(0, 4),
       activityStatus,
     };
