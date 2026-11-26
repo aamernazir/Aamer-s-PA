@@ -24,7 +24,7 @@ async function extractDocxUploadText(file) {
 }
 
 import MailboxScanControls from "./src/MailboxScanControls.jsx";
-import { parseMailboxPaste, normalizeMailboxPaste, mailboxPasteFingerprint, mergeMailboxPasteItem } from "./src/mailbox-paste.js";
+import { parseMailboxPaste, normalizeMailboxPaste, mailboxPasteFingerprint, mergeMailboxPasteItem, automaticMailboxDestinations } from "./src/mailbox-paste.js";
 import { scanMailbox, MAILBOX_ACCOUNT_EMAIL } from "./src/mailbox-scan.js";
 import { cloudStorage } from "./src/cloud-storage.js";
 import NyxDashboard from "./src/NyxDashboard.jsx";
@@ -10416,17 +10416,15 @@ function MailboxModule({ onOpenModule }) {
         const normalized = normalizeMailboxPaste({
           date: String(entry.receivedAt || "").slice(0, 10),
           subject: entry.subject, from: entry.from, summary: entry.summary,
-          contributionSummary: entry.contributionSummary,
-          contributionDate: entry.contributionDate,
+          contributionSummary: entry.contributionSummary, contributionDate: entry.contributionDate,
           deadline: String(entry.deadlineHints?.[0] || "").replace(/^Deadline:\s*/i, ""),
-          projectReferences: entry.projectReferences,
+          projectReferences: entry.projectReferences, sourceKind: entry.sourceKind,
+          activityStatus: entry.activityStatus, eventPeriod: entry.eventPeriod, eventYear: entry.eventYear,
         }, index);
         return { ...normalized, originalId: entry.originalId || "" };
       });
       const fingerprints = prepared.map(mailboxPasteFingerprint);
       if (new Set(fingerprints).size !== fingerprints.length) throw new Error("Two edited entries have the same date, sender and subject.");
-      // Reload cloud records before applying the import, including any scan
-      // completed while the user was reviewing this preview.
       const [scanResult, archiveResult] = await Promise.all([
         window.storage.get(MAILBOX_SCAN_STORAGE_KEY),
         window.storage.get(MAILBOX_ARCHIVE_STORAGE_KEY),
@@ -10440,9 +10438,10 @@ function MailboxModule({ onOpenModule }) {
       });
       const routed = matches.find(match => latestArchive[mailboxItemId(match)]?.approvedRoutes?.length);
       if (routed) throw new Error("An entry is already routed. Edit it in the destination module before replacing its Mailbox summary.");
+
       const now = new Date().toISOString();
       const updated = { ...latestArchive };
-      for (const [index, entry] of prepared.entries()) {
+      const savedEntries = prepared.map((entry, index) => {
         const match = matches[index];
         const id = match ? mailboxItemId(match) : entry.id;
         const prior = latestArchive[id] || {};
@@ -10453,14 +10452,56 @@ function MailboxModule({ onOpenModule }) {
           approvedRoutes: prior.approvedRoutes || [],
           manualRevisionAt: now,
         };
+        return updated[id];
+      });
+
+      const storageKeys = { projects: "am2r-projects-v1", aps: "am2r-aps-v1", archive: "am2r-publication-archive-v1" };
+      const staged = {};
+      const changed = new Set();
+      const skippedRoutes = [];
+      let routedCount = 0;
+      for (const entry of savedEntries) {
+        const suggestions = entry.sourceKind === "dot-bullet"
+          ? automaticMailboxDestinations(entry)
+          : mailboxSuggestions(entry).map(route => route.id);
+        for (const destination of suggestions) {
+          if (destination === "aps" && !apsCycleDateEligibility(entry, apsCycle).eligible) {
+            skippedRoutes.push(`${entry.subject}: APS date needs review`);
+            continue;
+          }
+          try {
+            if (!(destination in staged)) {
+              const response = await window.storage.get(storageKeys[destination]);
+              staged[destination] = response?.value ? JSON.parse(response.value) : destination === "projects" ? [] : destination === "archive" ? { outputs: [] } : null;
+            }
+            const draft = createRouteDraft(entry, destination, apsCycle);
+            if (destination === "projects") {
+              const refs = mailboxProjectReferences(entry).map(value => value.replace(/[^A-Z0-9]/g, ""));
+              const candidates = staged.projects.filter(project => refs.includes(String(project.projectNumber || "").toUpperCase().replace(/[^A-Z0-9]/g, "")));
+              if (candidates.length !== 1) throw new Error("Project number must match exactly one tracked project.");
+              draft.projectId = candidates[0].id;
+            }
+            const applied = applyMailboxRoute(destination, staged[destination], draft);
+            staged[destination] = applied.data;
+            if (!applied.duplicate || applied.updated) changed.add(destination);
+            const routeKey = destination === "aps" ? "aps:" + apsCycle : destination;
+            entry.approvedRoutes = [...new Set([...(entry.approvedRoutes || []), routeKey])];
+            routedCount++;
+          } catch (error) {
+            skippedRoutes.push(`${entry.subject}: ${mailboxRouteLabel(destination)} — ${error.message || "routing unavailable"}`);
+          }
+        }
       }
+      // Destination writes are idempotent by Mailbox ID. If interrupted, the
+      // next import can safely retry without duplicating already-created items.
+      for (const destination of changed) await window.storage.set(storageKeys[destination], JSON.stringify(staged[destination]));
       await window.storage.set(MAILBOX_ARCHIVE_STORAGE_KEY, JSON.stringify(updated));
       setArchive(updated);
       setItems([...scanItems.map(item => mergeMailboxPasteItem(item, updated[mailboxItemId(item)])), ...Object.values(updated).filter(item => !scanItems.some(scanItem => mailboxItemId(scanItem) === mailboxItemId(item)))]);
       setPasteEntries([]);
       setPasteText("");
       setFilter("all");
-      setMessage(`Saved ${prepared.length} reviewed entr${prepared.length === 1 ? "y" : "ies"} to Mailbox. No module was changed; review each suggested destination before transferring.`);
+      setMessage(`Saved ${prepared.length} entries; ${routedCount} pending module link${routedCount === 1 ? "" : "s"} created.${skippedRoutes.length ? " Needs manual routing: " + skippedRoutes.slice(0, 4).join(" · ") + (skippedRoutes.length > 4 ? ` · +${skippedRoutes.length - 4} more` : "") : ""} Review every destination before approval.`);
     } catch (error) {
       setPasteError(error.message || "The pasted records could not be saved.");
     } finally { setSavingPaste(false); }
@@ -10707,14 +10748,14 @@ function MailboxModule({ onOpenModule }) {
 
         <details ref={pastePanelRef} style={{ background: "#fff", border: "1px solid " + HUB_LINE, borderRadius: 8, padding: "13px 15px", marginBottom: 16 }}>
           <summary style={{ cursor: "pointer", color: HUB_TEAL, fontWeight: 700, fontSize: 15 }}>Paste reviewed results from ChatGPT dot</summary>
-          <p style={{ color: HUB_MUTED, fontSize: 13, lineHeight: 1.5, margin: "10px 0" }}>Have your dot prepare factual listings, then edit them here. Only the fields below are saved—not the full email or attachments. Pasted claims are not independently verified by Nyx.</p>
+          <p style={{ color: HUB_MUTED, fontSize: 13, lineHeight: 1.5, margin: "10px 0" }}>Paste a list of bullet points (one activity per line), structured fields, or JSON. Nyx splits the list, shows editable records, and routes confident matches as pending records. It does not verify the original email or approve APS evidence.</p>
           <div style={{ background: "#F3F8FC", color: HUB_INK, borderRadius: 5, padding: 10, fontSize: 12.5, lineHeight: 1.5, marginBottom: 10 }}>
-            Use one block per email, separated by ---: <span className="an-mono">Date: YYYY-MM-DD · Subject: · From: · Summary: · Contribution: · Contribution date: YYYY-MM-DD · Deadline: YYYY-MM-DD · Project:</span>. Contribution, contribution date, deadline and project are optional. You may also paste a JSON array with these field names.
+            For structured entries, use one block per email, separated by ---: <span className="an-mono">Date: YYYY-MM-DD · Subject: · From: · Summary: · Contribution: · Contribution date: YYYY-MM-DD · Deadline: YYYY-MM-DD · Project:</span>. Contribution, contribution date, deadline and project are optional. Email date and sender are not required for plain bullet lists; missing details remain blank.
           </div>
           <textarea aria-label="Paste structured email summaries" value={pasteText} onChange={event => { setPasteText(event.target.value); setPasteEntries([]); setPasteError(""); }} placeholder={"Date: 2026-11-15\nContribution date: 2026-11-12\nSubject: ...\nFrom: ...\nSummary: ...\nContribution: ...\nDeadline: 2026-11-30\nProject: IN26080\n---\nDate: ..."} rows={7} style={{ boxSizing: "border-box", width: "100%", border: "1px solid " + HUB_LINE, borderRadius: 5, padding: 10, fontSize: 14, lineHeight: 1.5, resize: "vertical" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 9 }}>
             <button type="button" onClick={previewPaste} disabled={!pasteText.trim()} style={{ background: HUB_TEAL, color: "#fff", border: 0, borderRadius: 5, padding: "9px 14px", cursor: "pointer" }}>Preview entries</button>
-            <span style={{ fontSize: 12, color: HUB_MUTED }}>Preview and correct before saving. Routing happens later, one entry at a time.</span>
+            <span style={{ fontSize: 12, color: HUB_MUTED }}>Preview and correct each entry. Save then creates pending destination records automatically.</span>
           </div>
           {pasteError && <div role="alert" style={{ color: "#A33126", padding: "9px 0" }}>{pasteError}</div>}
           {pasteEntries.length > 0 && <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
@@ -10722,12 +10763,14 @@ function MailboxModule({ onOpenModule }) {
               const match = items.find(item => mailboxItemId(item) === entry.originalId || mailboxPasteFingerprint(item) === mailboxPasteFingerprint(entry));
               const routed = match && (archive[mailboxItemId(match)]?.approvedRoutes || []).length > 0;
               const fieldStyle = { boxSizing: "border-box", width: "100%", border: "1px solid " + HUB_LINE, borderRadius: 5, padding: "7px 9px", fontSize: 14, marginTop: 4 };
+              const autoRoutes = entry.sourceKind === "dot-bullet" ? automaticMailboxDestinations(entry) : mailboxSuggestions(entry).map(route => route.id);
               return <div key={index} style={{ border: "1px solid " + HUB_LINE, borderRadius: 6, padding: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>Entry {index + 1} {match ? <span style={{ fontWeight: 400, color: routed ? "#A33126" : HUB_AMBER }}>· {routed ? "Already routed; edit in destination" : "Matches an existing Mailbox entry"}</span> : <span style={{ fontWeight: 400, color: HUB_MUTED }}>· New</span>}</div>
+                {entry.sourceKind === "dot-bullet" && <div style={{ marginBottom: 8, fontSize: 12, color: HUB_MUTED }}><div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}><label>Activity status <select value={entry.activityStatus} onChange={event => editPasteEntry(index, "activityStatus", event.target.value)} style={{ ...fieldStyle, width: "auto" }}>{["planned", "appointment", "ongoing", "completed", "needs review"].map(status => <option key={status} value={status}>{status}</option>)}</select></label><label>Event period <input value={entry.eventPeriod || ""} onChange={event => editPasteEntry(index, "eventPeriod", event.target.value)} style={{ ...fieldStyle, width: 190 }} /></label></div><div style={{ marginTop: 6 }}>Pending routes: {autoRoutes.length ? autoRoutes.map(route => mailboxRouteLabel(route)).join(", ") : "manual review"}. Missing email date and sender are not inferred.</div></div>}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 9 }}>
-                  <label>Date<input type="date" value={String(entry.receivedAt || "").slice(0, 10)} onChange={event => editPasteEntry(index, "receivedAt", event.target.value + "T12:00:00.000Z")} style={fieldStyle} /></label>
+                  <label>Email date (optional for bullet lists)<input type="date" value={String(entry.receivedAt || "").slice(0, 10)} onChange={event => editPasteEntry(index, "receivedAt", event.target.value ? event.target.value + "T12:00:00.000Z" : "")} style={fieldStyle} /></label>
                   <label>Sender<input value={entry.from} onChange={event => editPasteEntry(index, "from", event.target.value)} style={fieldStyle} /></label>
-                  <label>Contribution / event date (if different)<input type="date" value={entry.contributionDate || ""} onChange={event => editPasteEntry(index, "contributionDate", event.target.value)} style={fieldStyle} /></label>
+                  <label>Contribution date (YYYY-MM or YYYY-MM-DD)<input type="text" value={entry.contributionDate || ""} onChange={event => editPasteEntry(index, "contributionDate", event.target.value)} style={fieldStyle} /></label>
                 </div>
                 <label style={{ display: "block", marginTop: 8 }}>Subject<input value={entry.subject} onChange={event => editPasteEntry(index, "subject", event.target.value)} style={fieldStyle} /></label>
                 <label style={{ display: "block", marginTop: 8 }}>Email summary<textarea value={entry.summary} onChange={event => editPasteEntry(index, "summary", event.target.value)} rows={2} style={fieldStyle} /></label>
@@ -10738,7 +10781,7 @@ function MailboxModule({ onOpenModule }) {
                 </div>
               </div>;
             })}
-            <button type="button" onClick={savePastedEntries} disabled={savingPaste} style={{ justifySelf: "start", border: 0, background: HUB_GREEN, color: "#fff", borderRadius: 5, padding: "10px 15px", cursor: savingPaste ? "wait" : "pointer" }}>{savingPaste ? "Saving…" : `Save ${pasteEntries.length} to Mailbox for review`}</button>
+            <button type="button" onClick={savePastedEntries} disabled={savingPaste} style={{ justifySelf: "start", border: 0, background: HUB_GREEN, color: "#fff", borderRadius: 5, padding: "10px 15px", cursor: savingPaste ? "wait" : "pointer" }}>{savingPaste ? "Saving…" : `Save & route ${pasteEntries.length} pending entries`}</button>
           </div>}
         </details>
 
@@ -10785,7 +10828,7 @@ function MailboxModule({ onOpenModule }) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 7 }}><span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: HUB_TEAL, background: "#EAF2F8", padding: "4px 7px", borderRadius: 4 }}>{saved.category || mailboxCategory(item)}</span>{approved.length ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Routed</span> : reviewStatus === "kept" ? <span style={{ fontSize: 10, color: HUB_GREEN, background: "#EFF8F1", padding: "4px 7px", borderRadius: 4 }}>Kept</span> : reviewStatus === "ignored" ? <span style={{ fontSize: 10, color: HUB_MUTED, background: "#EEF0F2", padding: "4px 7px", borderRadius: 4 }}>Ignored</span> : <span style={{ fontSize: 10, color: HUB_AMBER, background: "#FFF8E8", padding: "4px 7px", borderRadius: 4 }}>Needs review</span>}</div>
-                  <h2 style={{ fontSize: 16, lineHeight: 1.35, color: HUB_INK, margin: 0, overflowWrap: "anywhere" }}>{item.subject || "(No subject)"}</h2>{item.sourceKind === "dot" && <span style={{ fontSize: 11, color: HUB_AMBER }}>Dot-prepared · check against source email</span>}
+                  <h2 style={{ fontSize: 16, lineHeight: 1.35, color: HUB_INK, margin: 0, overflowWrap: "anywhere" }}>{item.subject || "(No subject)"}</h2>{String(item.sourceKind || "").startsWith("dot") && <span style={{ fontSize: 11, color: HUB_AMBER }}>Dot-prepared · source not independently verified</span>}
                   <div style={{ fontSize: 12, color: HUB_MUTED, marginTop: 5 }}>{item.from || "Unknown sender"} · {mailboxDate(item.receivedAt)}</div>
                 </div>
                 <button onClick={() => togglePriority(item)} title="Toggle priority" style={{ border: "none", background: saved.priority ? "#FFF1D6" : "#F6F8FB", color: saved.priority ? HUB_AMBER : HUB_MUTED, borderRadius: 5, padding: "7px 9px", cursor: "pointer", flexShrink: 0 }}>{saved.priority ? "★" : "☆"}</button>

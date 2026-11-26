@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mailboxPasteFingerprint, mergeMailboxPasteItem, normalizeMailboxPaste, parseMailboxPaste } from "./mailbox-paste.js";
+import { mailboxPasteFingerprint, mergeMailboxPasteItem, normalizeMailboxPaste, parseMailboxPaste, automaticMailboxDestinations } from "./mailbox-paste.js";
 
 test("parses multiple human-edited entries without inventing contributions", () => {
   const items = parseMailboxPaste(`Date: 2026-11-15\nContribution date: 2025-10-02\nSubject: Accepted paper\nFrom: Editor <editor@example.org>\nSummary: Paper accepted for publication.\nContribution: Coauthored the accepted paper.\nProject: IN26080\n---\nDate: 2026-11-16\nSubject: Review reminder\nSummary: Reply requested.\nDeadline: 2026-11-30`);
@@ -29,4 +29,24 @@ test("manual corrections survive a scanner reload without losing status", () => 
   const saved = { manualRevisionAt: "2026-11-25", summary: "Corrected", contributionSummary: "Verified service" };
   assert.deepEqual(mergeMailboxPasteItem(scanned, saved), { ...scanned, summary: "Corrected", contributionSummary: "Verified service", manualRevisionAt: "2026-11-25" });
   assert.equal(mergeMailboxPasteItem(scanned, { summary: "Old" }).summary, "Incorrect");
+});
+
+test("one natural-language paste becomes seven distinct, cautiously dated entries", () => {
+  const source = `- Publication Technical Committee Member for ICMME 2027, scheduled for 24–26 September 2027 in Dalian, China.
+- Technical Committee Member for AMEM 2027, scheduled for 3–5 December 2027 in Shenzhen, China.
+- Early Career Editorial Board Member of Materiale Plastice from 17 November 2026 through 31 December 2028.
+- Technical Committee Member for ICEIM 2027, scheduled for 2–4 September 2027 in Sapporo, Japan.
+- Contributed to KFUPM Mechanical Engineering departmental service in October 2026 by referring a candidate and reviewing and signing the departmental interview report.
+- Appointed to the Technical Committee for ICMME 2026, held on 16–18 October 2026 in Dalian, China.
+- Served on the Technical Committee for ICEIM 2026 in Kyoto, Japan, on 5–7 August 2026 and received a Certificate of Appreciation for the contribution.`;
+  const items = parseMailboxPaste(source);
+  assert.equal(items.length, 7);
+  assert.deepEqual(items.map(item => item.activityStatus), ["planned", "planned", "ongoing", "planned", "completed", "appointment", "completed"]);
+  assert.ok(items.every(item => !item.receivedAt && !item.from));
+  assert.equal(items[4].contributionDate, "2026-10");
+  assert.equal(items[6].contributionDate, "2026-08-05");
+  assert.equal(items[5].contributionDate, "");
+  assert.deepEqual(items.map(automaticMailboxDestinations), [
+    ["archive"], ["archive"], ["archive"], ["archive"], ["aps", "archive"], ["archive"], ["aps", "archive"],
+  ]);
 });

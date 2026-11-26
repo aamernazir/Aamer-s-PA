@@ -5,6 +5,7 @@ export const APS_SUBSECTION_LABELS = {
   R6_RECOG: "R6 — Recognition by professional organizations",
   R6_MENTOR: "R6 — Mentoring young researchers",
   S2_PROMOTE: "S2 — Promoting the university’s name",
+  S2_ENV: "S2 — University environment",
   S3_OUTREACH: "S3 — Outreach programs",
   B4: "B4 — Active engagement",
 };
@@ -15,12 +16,15 @@ export const APS_CYCLE_DATE_BOUNDS = { APS27: { start: "2026-01-01", end: "2027-
 export function apsCycleDateEligibility(item, cycle = "APS27") {
   const date = sourceDate(item), bounds = APS_CYCLE_DATE_BOUNDS[cycle];
   if (!bounds) return { eligible: true, date, reason: "" };
-  const eligible = !!date && date >= bounds.start && date <= bounds.end;
+  const comparable = /^\d{4}-\d{2}$/.test(date) ? date + "-15" : date;
+  const eligible = !!date && comparable >= bounds.start && comparable <= bounds.end;
   return { eligible, date, reason: eligible ? "" : `${date || "Undated"} is outside the ${cycle} contribution period (${bounds.start} to ${bounds.end}). Keep it in Mailbox or route it to the long-term Archive instead.` };
 }
 
 function sourceDate(item) {
-  const parsed = new Date(item?.contributionDate || item?.receivedAt || "");
+  const value = item?.contributionDate || item?.receivedAt || "";
+  if (/^\d{4}-\d{2}$/.test(value)) return value;
+  const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
@@ -49,11 +53,12 @@ export function createRouteDraft(item, destination, apsCycle = "APS27") {
   const summary = String(evidenceSummary || item?.summary || deadline || item?.subject || "Email record").slice(0, 1200);
   const draft = {
     messageId: String(item?.id || ""), destination, apsCycle,
-    dateBasis: item?.contributionDate ? "contribution date" : "email date (verify for APS)",
-    sourceKind: item?.sourceKind === "dot" ? "dot-prepared" : "gmail-scan",
+    dateBasis: item?.contributionDate ? "contribution date" : item?.sourceKind === "dot-bullet" ? "no contribution date supplied" : "email date (verify for APS)",
+    sourceKind: String(item?.sourceKind || "").startsWith("dot") ? "dot-prepared" : "gmail-scan",
+    activityStatus: item?.activityStatus || "", eventPeriod: item?.eventPeriod || "", eventYear: item?.eventYear || "",
     title: String(item?.subject || "Untitled email record").slice(0, 500),
     summary,
-    source: String(item?.from || "Unknown sender").slice(0, 300),
+    source: String(item?.from || (item?.sourceKind === "dot-bullet" ? "" : "Unknown sender")).slice(0, 300),
     sourceDate: date,
     deadline: deadline.slice(0, 600),
     projectId: "",
@@ -65,7 +70,8 @@ export function createRouteDraft(item, destination, apsCycle = "APS27") {
 export function suggestApsSubsections(draft) {
   const text = `${draft?.title || ""} ${draft?.summary || ""}`.toLowerCase();
   const suggestions = [];
-  if (/conference|symposium|congress/.test(text) && /technical committee|organizing committee|organis(?:e|ing|ed)|session chair/.test(text)) suggestions.push("R6_CONF");
+  if (/(?:conference|symposium|congress|\b[a-z]{2,}\s*20\d{2}\b)/.test(text) && /technical committee|organizing committee|organis(?:e|ing|ed)|session chair/.test(text)) suggestions.push("R6_CONF");
+  if (/departmental service|departmental interview|candidate referral/.test(text)) suggestions.push("S2_ENV", "B4");
   if (/certificate|award|recognition|recognized|honou?r/.test(text)) suggestions.push("R6_RECOG");
   if (/technical committee|professional committee|conference committee|external committee/.test(text)) suggestions.push("S2_PROMOTE", "B4");
   if (/mentor|mentoring|young researcher/.test(text)) suggestions.push("R6_MENTOR");
@@ -76,7 +82,7 @@ export function suggestApsSubsections(draft) {
 export function routePreviewFields(draft) {
   return [
     ["Title", draft.title], ["Contribution / outcome summary", draft.summary],
-    ["Source", draft.source], ["Relevant date", (draft.sourceDate || "Not available") + " · " + (draft.dateBasis || "email date")],
+    ["Source", draft.source || "Not supplied"], ["Relevant date", (draft.sourceDate || "Not available") + " · " + (draft.dateBasis || "email date")],
     ["Deadline", draft.deadline || "None detected"],
   ];
 }
@@ -91,8 +97,9 @@ export function applyMailboxRoute(destination, current, draft) {
     const text = `${draft.title} ${draft.summary}`.toLowerCase();
     const type = /patent/.test(text) ? "Patent" : /conference/.test(text) && /\bpaper\b/.test(text) ? "Conference Paper" : /\b(?:journal|article|paper|manuscript)\b/.test(text) && /\b(?:accepted|published)\b/.test(text) ? "Journal Paper" : "Other";
     const record = {
-      id: `mailbox-${draft.messageId}`, title: draft.title.trim(), type,
-      venue: draft.source, year: draft.sourceDate ? Number(draft.sourceDate.slice(0, 4)) : new Date().getFullYear(),
+      id: `mailbox-${draft.messageId}`, title: draft.title.trim() + (draft.activityStatus === "planned" ? " (planned)" : ""), type,
+      venue: draft.sourceKind === "dot-prepared" ? "" : draft.source, year: draft.sourceDate || draft.eventYear ? Number((draft.sourceDate || draft.eventYear).slice(0, 4)) : new Date().getFullYear(),
+      activityStatus: draft.activityStatus || "", eventPeriod: draft.eventPeriod || "",
       authors: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "",
       summary: draft.summary.trim(), methods: "", keywords: [], qRank: "",
       sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source, sourceDate: draft.sourceDate, sourceKind: draft.sourceKind,
@@ -114,6 +121,7 @@ export function applyMailboxRoute(destination, current, draft) {
       summary: draft.summary.trim(), contributionSummary: draft.summary.trim(), bulletText: draft.summary.trim(),
       subsections, subsectionApprovals: Object.fromEntries(subsections.map(code => [code, { approved: false, bulletText: draft.summary.trim(), comment: "" }])), period: draft.sourceDate ? draft.sourceDate.slice(0, 4) : "",
       approved: false, sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source, sourceKind: draft.sourceKind,
+      activityStatus: draft.activityStatus || "", eventPeriod: draft.eventPeriod || "",
       sourceDate: draft.sourceDate, deadline: draft.deadline, addedAt,
     };
     const duplicateIndex = inbox.findIndex(entry => entry.sourceMailboxMessageId === draft.messageId);

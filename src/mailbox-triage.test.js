@@ -35,3 +35,8 @@ test("reviewed dot contributions can suggest existing project, APS and CV routes
   const item = {subject:"Research project service",summary:"Completed project milestone IN26080.",contributionSummary:"Served as technical committee member and received a certificate.",projectReferences:["IN26080"]};
   assert.deepEqual(mailboxSuggestions(item).map(route => route.id), ["projects","aps","archive"]);
 });
+
+test("planned committee roles remain CV review items, completed service also reaches APS", () => {
+  assert.deepEqual(mailboxSuggestions({sourceKind:"dot-bullet",activityStatus:"planned",subject:"Technical Committee Member for ICMME 2027"}).map(route=>route.id),["archive"]);
+  assert.deepEqual(mailboxSuggestions({sourceKind:"dot-bullet",activityStatus:"completed",contributionDate:"2026-10",subject:"Departmental service"}).map(route=>route.id),["aps","archive"]);
+});

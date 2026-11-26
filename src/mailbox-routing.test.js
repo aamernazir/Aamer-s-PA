@@ -77,3 +77,20 @@ test("APS uses a documented contribution date, not a later email date", () => {
   assert.equal(archive.sourceDate, "2025-10-02");
   assert.equal(archive.sourceKind, "dot-prepared");
 });
+
+test("month-only completed service and 2026 certificate route to pending APS, future planned role remains CV-only", () => {
+  const service = {id:"dot-service",subject:"Departmental service",summary:"Contributed to departmental service in October 2026 by reviewing an interview report.",contributionSummary:"Reviewed and signed the departmental interview report.",contributionDate:"2026-10",sourceKind:"dot-bullet",activityStatus:"completed"};
+  const draft = createRouteDraft(service,"aps","APS27");
+  assert.equal(draft.sourceDate,"2026-10");
+  assert.deepEqual(draft.apsSubsections, ["S2_ENV","B4"]);
+  const data = {activeCycle:"APS27",cycles:{APS27:{status:"In Progress",evidenceInbox:[]}}};
+  const result = applyMailboxRoute("aps",data,draft);
+  assert.equal(result.record.approved,false);
+  assert.equal(result.record.subsectionApprovals.S2_ENV.approved,false);
+  const future = {id:"dot-future",subject:"Technical Committee Member for ICMME 2027",summary:"Technical Committee Member for ICMME 2027, scheduled for 24–26 September 2027.",sourceKind:"dot-bullet",activityStatus:"planned",eventYear:"2027",eventPeriod:"24–26 September 2027"};
+  const cv = applyMailboxRoute("archive",{outputs:[]},createRouteDraft(future,"archive")).record;
+  assert.equal(cv.year,2027);
+  assert.equal(cv.activityStatus,"planned");
+  assert.match(cv.title,/planned/);
+  assert.equal(cv.needsReview,true);
+});

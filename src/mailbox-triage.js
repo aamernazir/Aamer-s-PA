@@ -1,3 +1,5 @@
+import { automaticMailboxDestinations } from "./mailbox-paste.js";
+
 export function mailboxItemId(item) {
   return String(item?.id || ((item?.subject || "message") + "-" + (item?.receivedAt || "")));
 }
@@ -28,6 +30,7 @@ export function mailboxCategory(item) {
 }
 
 export function mailboxSuggestions(item) {
+  if (item?.sourceKind === "dot-bullet") return automaticMailboxDestinations(item).map(id => ({ id, label: id === "archive" ? "Module 04 · Live CV" : id === "aps" ? "Module 03 · APS" : "Module 01 · Project Dashboard", reason: "Dot-prepared entry; review the source and destination before approval." }));
   const text = mailboxText(item).toLowerCase();
   const references = mailboxProjectReferences(item);
   const suggestions = [];
