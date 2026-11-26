@@ -33,11 +33,7 @@ function completedEvidenceSummary(item) {
   const text = `${item?.subject || ""} ${item?.summary || ""}`;
   const technicalCommittee = /technical committee/i.test(text);
   const certificate = /certificate(?: of appreciation)?/i.test(text);
-  if (technicalCommittee && certificate) {
-    const event = text.match(/\b([A-Z][A-Z0-9-]{2,})\s*(20\d{2})\b/) || text.match(/\b([A-Z][A-Z0-9-]{2,}\s+20\d{2})\b/);
-    const eventName = event ? (event[2] ? `${event[1]} ${event[2]}` : event[1]) : "the conference";
-    return `Served as a Technical Committee Member for ${eventName} and received a Certificate of Appreciation recognizing valuable support, expertise, and contribution to the success of the conference.`;
-  }
+  if (technicalCommittee && certificate) return String(item?.summary || item?.subject || "").slice(0, 1200);
   if (/\baward(?:ed)?\b/i.test(text)) return String(item?.summary || item?.subject || "Award or formal recognition received.").slice(0, 1200);
   return "";
 }
@@ -95,13 +91,18 @@ export function applyMailboxRoute(destination, current, draft) {
     const outputs = data.outputs || [];
     if (outputs.some(entry => entry.sourceMailboxMessageId === draft.messageId)) return { data, duplicate: true };
     const text = `${draft.title} ${draft.summary}`.toLowerCase();
-    const type = /patent/.test(text) ? "Patent" : /conference/.test(text) && /\bpaper\b/.test(text) ? "Conference Paper" : /\b(?:journal|article|paper|manuscript)\b/.test(text) && /\b(?:accepted|published)\b/.test(text) ? "Journal Paper" : "Other";
+    const type = draft.sourceKind === "dot-prepared" && draft.activityStatus
+      ? /technical committee|organizing committee|session chair/.test(text) ? "Conference Committee Service"
+        : /editorial board|journal reviewer|peer review/.test(text) ? "Editorial / Reviewer Service"
+        : /departmental service|interview report/.test(text) ? "Conference / Professional Service"
+        : /certificate|award/.test(text) ? "Award / Certificate" : "Other"
+      : /patent/.test(text) ? "Patent" : /conference/.test(text) && /\bpaper\b/.test(text) ? "Conference Paper" : /\b(?:journal|article|paper|manuscript)\b/.test(text) && /\b(?:accepted|published)\b/.test(text) ? "Journal Paper" : "Other";
     const record = {
-      id: `mailbox-${draft.messageId}`, title: draft.title.trim() + (draft.activityStatus === "planned" ? " (planned)" : ""), type,
+      id: `mailbox-${draft.messageId}`, title: draft.sourceKind === "dot-prepared" && draft.activityStatus ? draft.summary.trim() : draft.title.trim(), type,
       venue: draft.sourceKind === "dot-prepared" ? "" : draft.source, year: draft.sourceDate || draft.eventYear ? Number((draft.sourceDate || draft.eventYear).slice(0, 4)) : new Date().getFullYear(),
       activityStatus: draft.activityStatus || "", eventPeriod: draft.eventPeriod || "",
       authors: "", correspondingAuthors: "", isOwnerCorresponding: false, fundingProjectNumber: "",
-      summary: draft.summary.trim(), methods: "", keywords: [], qRank: "",
+      summary: draft.sourceKind === "dot-prepared" && draft.activityStatus ? "" : draft.summary.trim(), methods: "", keywords: [], qRank: "",
       sourceMailboxMessageId: draft.messageId, sourceEmail: draft.source, sourceDate: draft.sourceDate, sourceKind: draft.sourceKind,
       deadline: draft.deadline, needsReview: true, addedAt,
     };

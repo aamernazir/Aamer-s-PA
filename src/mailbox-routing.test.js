@@ -27,7 +27,7 @@ test("a 2025 email cannot be saved as APS27 evidence", () => {
 test("technical committee certificates reach every plausible APS subsection pending approval", () => {
   const certificate = createRouteDraft({ ...item, subject: "ICEIM2026 Technical Committee Certificate", summary: "Received a certificate for service on the conference technical committee.", deadlineHints: ["Return the old review by July 3, 2026"] }, "aps", "APS27");
   assert.deepEqual(certificate.apsSubsections, ["R6_CONF", "R6_RECOG", "S2_PROMOTE", "B4"]);
-  assert.match(certificate.summary, /Served as a Technical Committee Member for ICEIM 2026/);
+  assert.match(certificate.summary, /Received a certificate for service on the conference technical committee/);
   assert.equal(certificate.deadline, "");
   const original = { activeCycle: "APS27", cycles: { APS27: { status: "In Progress", evidenceInbox: [] } } };
   const record = applyMailboxRoute("aps", original, certificate).record;
@@ -91,6 +91,18 @@ test("month-only completed service and 2026 certificate route to pending APS, fu
   const cv = applyMailboxRoute("archive",{outputs:[]},createRouteDraft(future,"archive")).record;
   assert.equal(cv.year,2027);
   assert.equal(cv.activityStatus,"planned");
-  assert.match(cv.title,/planned/);
+  assert.equal(cv.title,future.summary);
+  assert.equal(cv.summary,"");
+  assert.equal(cv.type,"Conference Committee Service");
   assert.equal(cv.needsReview,true);
+});
+
+test("dot activities use existing CV categories and a single CV sentence", () => {
+  const editorial = {id:"dot-editorial",subject:"Materiale Plastice — Editorial Board",summary:"Early Career Editorial Board Member of Materiale Plastice from 17 November 2026 through 31 December 2028.",contributionDate:"2026-11-17",sourceKind:"dot-bullet",activityStatus:"ongoing"};
+  const record = applyMailboxRoute("archive",{outputs:[]},createRouteDraft(editorial,"archive")).record;
+  assert.equal(record.type,"Editorial / Reviewer Service");
+  assert.equal(record.title,editorial.summary);
+  assert.equal(record.summary,"");
+  const service = {id:"dot-dept",subject:"Departmental service",summary:"Contributed to KFUPM Mechanical Engineering departmental service in October 2026.",contributionDate:"2026-10",sourceKind:"dot-bullet",activityStatus:"completed"};
+  assert.equal(applyMailboxRoute("archive",{outputs:[]},createRouteDraft(service,"archive")).record.type,"Conference / Professional Service");
 });
